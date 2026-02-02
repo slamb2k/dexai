@@ -6,6 +6,7 @@
 ## User Preferences
 
 - (Add your preferences here)
+- Always use uv (not pip/pip3) for virtual environment creation and dependency management
 
 ## Key Facts
 
