@@ -63,3 +63,4 @@ memory/logs/*.md
 
 # Claude Code
 .claude/
+*.backup
