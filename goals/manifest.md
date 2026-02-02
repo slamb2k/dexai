@@ -9,6 +9,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | Goal | Description |
 |------|-------------|
 | `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
+| `future_roadmap.md` | **Roadmap** — Phases 10-14 future development plans (mobile, voice, calendar, collaboration, analytics) |
 | `phase9_ci_testing.md` | Phase 9 tactical implementation guide — CI/CD, pytest, Vitest, GitHub Actions |
 | `build_app.md` | ATLAS workflow for building full-stack applications with AI assistance |
 | `phase1_security.md` | Phase 1 tactical implementation guide — security tools (vault, audit, sanitizer, etc.) |
@@ -47,7 +48,12 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 6 | Learning (Energy patterns, personalization) | ✅ Complete |
 | Phase 7 | Web Dashboard (Monitoring + configuration) | ✅ Complete |
 | Phase 8 | Guided Installation (Setup wizard) | ✅ Complete |
-| Phase 9 | CI/CD & Testing (GitHub Actions, pytest, Vitest) | 🔜 In Progress |
+| Phase 9 | CI/CD & Testing (GitHub Actions, pytest, Vitest) | ✅ Complete |
+| Phase 10 | Mobile Push Notifications (FCM, APNs) | 📋 Planned |
+| Phase 11 | Voice Interface (Speech-to-text, commands) | 📋 Planned |
+| Phase 12 | Calendar Integration (Google, Outlook sync) | 📋 Planned |
+| Phase 13 | Collaborative Features (Accountability partners) | 📋 Planned |
+| Phase 14 | Analytics & Insights (Patterns, reports) | 📋 Planned |
 
 ---
 
