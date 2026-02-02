@@ -56,6 +56,18 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
+## Automation Tools (`tools/automation/`)
+
+| Tool | Description |
+|------|-------------|
+| `scheduler.py` | Cron job scheduling with execution tracking, retry logic, and cost limits |
+| `heartbeat.py` | Periodic background awareness checks parsed from HEARTBEAT.md |
+| `notify.py` | Notification dispatch with priority queuing, DND support, and channel routing |
+| `triggers.py` | Event triggers for file changes (watchdog) and webhooks with debouncing |
+| `runner.py` | Background daemon that orchestrates all automation components |
+
+---
+
 ## Shell Scripts (`scripts/`)
 
 | Script | Description |
