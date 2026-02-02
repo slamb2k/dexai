@@ -159,7 +159,81 @@ Document Claude-specific mistakes here (not script bugs—those go in goals):
 
 ---
 
-### **7. First Run Initialization**
+### **7. Git Workflow — Branch Protection Enforced**
+
+**Direct pushes to `main` are blocked.** Branch protection is enabled on GitHub and enforced locally via pre-push hook.
+
+**Required workflow for all changes:**
+
+```
+1. SYNC MAIN
+   git checkout main
+   git pull origin main
+
+2. CREATE FEATURE BRANCH
+   git checkout -b feature/descriptive-name
+   # Or: fix/bug-name, phase/phase-name, docs/topic
+
+3. MAKE CHANGES & COMMIT IN GROUPS
+   # Commit related changes together with detailed messages
+   git add <specific-files>
+   git commit -m "feat(scope): description
+
+   - Detail 1
+   - Detail 2
+
+   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+
+4. PUSH TO FEATURE BRANCH
+   git push -u origin feature/descriptive-name
+
+5. CREATE PR WITH DETAILS
+   gh pr create --title "feat: Title" --body "## Summary
+   - Change 1
+   - Change 2
+
+   ## Test Plan
+   - [ ] Test step 1
+   - [ ] Test step 2"
+
+6. FIX BUILD ERRORS
+   # If CI fails, fix and push again
+   git add . && git commit -m "fix: address CI feedback"
+   git push
+
+7. MERGE & CLEANUP
+   # Squash merge via GitHub UI or:
+   gh pr merge --squash --delete-branch
+
+8. SYNC MAIN FOR NEXT WORK
+   git checkout main
+   git pull origin main
+```
+
+**Commit message conventions:**
+- `feat(scope):` — New feature
+- `fix(scope):` — Bug fix
+- `docs(scope):` — Documentation
+- `refactor(scope):` — Code refactoring
+- `chore(scope):` — Maintenance tasks
+- `phase(N):` — Phase completion
+
+**When to commit:**
+- Phase completion
+- Security fixes (immediately)
+- Bug fixes
+- Logical feature groups
+- Before switching context
+
+**Branch naming:**
+- `feature/add-heartbeat-engine`
+- `fix/scheduler-timezone-bug`
+- `phase/4-automation`
+- `docs/update-readme`
+
+---
+
+### **8. First Run Initialization**
 
 **On first session in a new environment, check if memory infrastructure exists. If not, create it:**
 
@@ -257,7 +331,7 @@ print('Memory infrastructure initialized!')
 
 ---
 
-### **8. Memory Protocol**
+### **9. Memory Protocol**
 
 The system has persistent memory across sessions. At session start, read the memory context:
 
@@ -290,7 +364,7 @@ python tools/memory/memory_read.py --format markdown
 
 ---
 
-### **9. Task System — Efficient Work Orchestration**
+### **10. Task System — Efficient Work Orchestration**
 
 Claude Code has a built-in task system for tracking work across sessions. Use it for any non-trivial work.
 
