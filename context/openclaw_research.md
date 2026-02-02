@@ -1,6 +1,6 @@
 # OpenClaw (Moltbot/Clawdbot) — Deep Research Analysis
 
-> **Purpose:** Comprehensive analysis of OpenClaw's features, architecture, and popularity drivers for gap analysis against addulting-ai and PRD/roadmap creation.
+> **Purpose:** Comprehensive analysis of OpenClaw's features, architecture, and popularity drivers for gap analysis against DexAI and PRD/roadmap creation.
 >
 > **Research Date:** 2026-02-02
 
@@ -436,7 +436,7 @@ Adorable mascot + autonomous demos on social media = shareable, memorable conten
 - **Open skill ecosystem** creates defensible moats through community
 - **Cost transparency** matters—users accept API costs but hate surprises
 
-### Gaps to Evaluate Against addulting-ai
+### Gaps to Evaluate Against DexAI
 1. Multi-channel messaging integration
 2. Persistent memory architecture (markdown + vectors)
 3. Proactive automation (heartbeat/cron)
@@ -469,4 +469,4 @@ Adorable mascot + autonomous demos on social media = shareable, memorable conten
 ---
 
 *Document generated: 2026-02-02*
-*For addulting-ai gap analysis and PRD/roadmap planning*
+*For DexAI gap analysis and PRD/roadmap planning*

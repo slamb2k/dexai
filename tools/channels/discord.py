@@ -1,6 +1,6 @@
 """
 Tool: Discord Channel Adapter
-Purpose: Discord bot integration for addulting-ai
+Purpose: Discord bot integration for DexAI
 
 Connects to Discord using discord.py with slash commands.
 Handles DMs, mentions, and slash commands (/ask, /pair).
@@ -458,7 +458,7 @@ class DiscordAdapter(ChannelAdapter):
         import discord
 
         embed = discord.Embed(
-            title="addulting-ai Help",
+            title="DexAI Help",
             description="Your AI assistant for adulting tasks",
             color=0x5865F2
         )

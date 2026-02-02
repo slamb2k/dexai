@@ -1,7 +1,7 @@
 # Goal: Phase 1 Security Foundation
 
 ## Objective
-Build the security infrastructure layer for addulting-ai, providing authentication, authorization, audit logging, and input protection.
+Build the security infrastructure layer for DexAI, providing authentication, authorization, audit logging, and input protection.
 
 ## Context
 This is the foundation for all future security features. Every other component will depend on these tools working correctly.

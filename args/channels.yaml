@@ -46,7 +46,7 @@ channels:
 
     # Welcome message
     welcome_message: |
-      Welcome to addulting-ai!
+      Welcome to DexAI!
       I'm your AI assistant for adulting tasks.
       Use /pair to link your account.
 

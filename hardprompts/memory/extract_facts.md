@@ -43,12 +43,12 @@ Return a JSON array of objects:
 
 **Examples:**
 
-Input: "I'm working on the addulting-ai project. We use Python with FastAPI. I really hate dealing with YAML configs — always prefer JSON."
+Input: "I'm working on the DexAI project. We use Python with FastAPI. I really hate dealing with YAML configs — always prefer JSON."
 
 Output:
 ```json
 [
-  {"type": "fact", "content": "Working on addulting-ai project", "importance": 7, "tags": ["project"]},
+  {"type": "fact", "content": "Working on DexAI project", "importance": 7, "tags": ["project"]},
   {"type": "fact", "content": "Project uses Python with FastAPI", "importance": 8, "tags": ["tech-stack", "python"]},
   {"type": "preference", "content": "Prefers JSON over YAML for configs", "importance": 6, "tags": ["preference", "config"]}
 ]
