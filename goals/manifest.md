@@ -9,6 +9,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | Goal | Description |
 |------|-------------|
 | `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
+| `phase9_ci_testing.md` | Phase 9 tactical implementation guide — CI/CD, pytest, Vitest, GitHub Actions |
 | `build_app.md` | ATLAS workflow for building full-stack applications with AI assistance |
 | `phase1_security.md` | Phase 1 tactical implementation guide — security tools (vault, audit, sanitizer, etc.) |
 | `phase2_working_memory.md` | Phase 2 tactical implementation guide — external working memory (context capture, commitments) |
@@ -46,6 +47,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 6 | Learning (Energy patterns, personalization) | ✅ Complete |
 | Phase 7 | Web Dashboard (Monitoring + configuration) | ✅ Complete |
 | Phase 8 | Guided Installation (Setup wizard) | ✅ Complete |
+| Phase 9 | CI/CD & Testing (GitHub Actions, pytest, Vitest) | 🔜 In Progress |
 
 ---
 

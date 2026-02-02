@@ -164,4 +164,27 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
+## Testing Infrastructure (`tests/`)
+
+| File | Description |
+|------|-------------|
+| `conftest.py` | Shared pytest fixtures (temp_db, mock_user_id, sample_task, etc.) |
+| `unit/security/*.py` | Unit tests for security tools (sanitizer, audit, permissions) |
+| `unit/adhd/*.py` | Unit tests for ADHD communication tools (language_filter, response_formatter) |
+| `unit/tasks/*.py` | Unit tests for task engine (manager) |
+| `unit/memory/*.py` | Unit tests for memory tools (commitments) |
+
+---
+
+## CI/CD Configuration
+
+| File | Description |
+|------|-------------|
+| `pyproject.toml` | Python project configuration (dependencies, pytest, ruff, mypy) |
+| `.github/workflows/ci.yml` | GitHub Actions CI pipeline (lint, typecheck, test, frontend) |
+| `tools/dashboard/frontend/vitest.config.ts` | Frontend test configuration |
+| `tools/dashboard/frontend/__tests__/` | Frontend component tests |
+
+---
+
 *Update this manifest when adding new tools.*

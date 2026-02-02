@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
     "next": "^14.2.0",
@@ -28,6 +31,11 @@
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.0"
+    "eslint-config-next": "^14.2.0",
+    "vitest": "^2.1.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "jsdom": "^25.0.0"
   }
 }
