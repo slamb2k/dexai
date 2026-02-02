@@ -410,6 +410,95 @@ Every failure strengthens the system:
 
 ---
 
+## **Design Documents & Specs**
+
+**Where design documents live:**
+
+| Type | Location | Purpose |
+|------|----------|---------|
+| **PRD / Product Spec** | `goals/prd_addulting_ai_v1.md` | Complete product requirements, roadmap, personas |
+| **Phase Plans** | `goals/phase{N}_{name}.md` | Tactical implementation guides per phase |
+| **Competitive Analysis** | `context/openclaw_research.md` | Deep dive on competitors |
+| **Gap Analysis** | `context/gap_analysis.md` | Feature comparison, roadmap justification |
+| **Methodologies** | `goals/build_app.md`, `goals/task_orchestration.md` | Reusable workflows |
+| **Goals Index** | `goals/manifest.md` | Quick reference to all goals |
+| **Tools Index** | `tools/manifest.md` | Master list of all implementations |
+| **LLM Templates** | `hardprompts/{category}/` | Reusable instruction templates |
+
+**Summary:**
+- `goals/` = WHAT to achieve (specs, PRDs, phase plans)
+- `context/` = WHY decisions were made (research, analysis)
+- `hardprompts/` = HOW to instruct LLMs (templates)
+- `tools/` = Implementations (Python scripts)
+- `args/` = Configuration (behavior settings)
+
+---
+
+## **Adding New Features — Checklist**
+
+When implementing a new feature or phase, follow this checklist:
+
+### 1. Create or Update Phase Plan
+**Location:** `goals/phase{N}_{name}.md`
+
+Include:
+- Objective and prerequisites
+- Tools to build (with database schemas, CLI interfaces)
+- Implementation order
+- Verification checklist
+
+### 2. Update Goals Manifest
+**File:** `goals/manifest.md`
+
+Add entry to the goals table and update phase status.
+
+### 3. Build the Tools
+**Location:** `tools/{category}/`
+
+Follow existing patterns:
+- `__init__.py` with path constants (PROJECT_ROOT, DB_PATH, CONFIG_PATH)
+- Each tool has CLI interface + programmatic API
+- Returns `{"success": bool, ...}` format
+- Database tables created in `get_connection()` function
+
+### 4. Update Tools Manifest
+**File:** `tools/manifest.md`
+
+Add one-line description for each new tool.
+
+### 5. Update Permissions (if needed)
+**File:** `tools/security/permissions.py`
+
+Add new permission strings to appropriate roles in `DEFAULT_ROLES`.
+Also update the database if roles already exist.
+
+### 6. Create Configuration (if needed)
+**File:** `args/{feature}.yaml`
+
+Add YAML config with sensible defaults.
+
+### 7. Update PRD (if scope changes)
+**File:** `goals/prd_addulting_ai_v1.md`
+
+Update feature list, roadmap, or requirements.
+
+### 8. Commit in Logical Groups
+Use conventional commit format: `feat(scope): description`
+
+**Quick Reference Checklist:**
+```
+□ Phase plan exists in goals/ (or update existing)
+□ goals/manifest.md updated
+□ Tools built in tools/{category}/
+□ tools/manifest.md updated
+□ permissions.py updated (if new permissions needed)
+□ args/{config}.yaml created (if configurable)
+□ Database schema in data/ (if persistent)
+□ Commits use conventional format
+```
+
+---
+
 ## **Deliverables vs Scratch**
 
 * **Deliverables**: outputs needed by the user (Sheets, Slides, processed data, etc.)
