@@ -26,7 +26,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Check code style (ruff check)
         run: uv run ruff check .
@@ -50,7 +50,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Run mypy
         run: uv run mypy tools/
@@ -79,7 +79,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev --python ${{ matrix.python-version }}
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
 
       - name: Run tests with coverage
         run: |
