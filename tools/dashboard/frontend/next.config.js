@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable standalone output for Docker deployment
+  output: 'standalone',
   // API backend URL for server-side requests
   env: {
     API_URL: process.env.API_URL || 'http://localhost:8080',

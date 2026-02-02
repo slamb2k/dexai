@@ -25,15 +25,17 @@ import json
 import sys
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Callable, List, Optional, Tuple
+from typing import Any
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.channels.models import UnifiedMessage, ChannelUser, Attachment
+from tools.channels.models import ChannelUser, UnifiedMessage
 
 
 class ChannelAdapter(ABC):
@@ -75,7 +77,7 @@ class ChannelAdapter(ABC):
         ...
 
     @abstractmethod
-    async def send_message(self, message: UnifiedMessage) -> Dict[str, Any]:
+    async def send_message(self, message: UnifiedMessage) -> dict[str, Any]:
         """
         Send a message through this channel.
 
@@ -113,7 +115,7 @@ class ChannelAdapter(ABC):
         """
         ...
 
-    def set_router(self, router: 'MessageRouter') -> None:
+    def set_router(self, router: "MessageRouter") -> None:
         """
         Set reference to the parent router.
 
@@ -135,11 +137,11 @@ class MessageRouter:
     """
 
     def __init__(self):
-        self.adapters: Dict[str, ChannelAdapter] = {}
-        self.message_handlers: List[Callable] = []
+        self.adapters: dict[str, ChannelAdapter] = {}
+        self.message_handlers: list[Callable] = []
         self.response_queue: asyncio.Queue = asyncio.Queue()
         self._started = False
-        self._start_time: Optional[datetime] = None
+        self._start_time: datetime | None = None
 
     def register_adapter(self, adapter: ChannelAdapter) -> None:
         """
@@ -182,10 +184,7 @@ class MessageRouter:
         if handler in self.message_handlers:
             self.message_handlers.remove(handler)
 
-    async def security_pipeline(
-        self,
-        message: UnifiedMessage
-    ) -> Tuple[bool, str, Dict[str, Any]]:
+    async def security_pipeline(self, message: UnifiedMessage) -> tuple[bool, str, dict[str, Any]]:
         """
         Run security checks on inbound message.
 
@@ -202,28 +201,29 @@ class MessageRouter:
         Returns:
             Tuple of (allowed: bool, reason: str, context: dict)
         """
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
 
         # 1. Input sanitization
         try:
             from tools.security import sanitizer
+
             sanitize_result = sanitizer.sanitize(message.content)
-            context['sanitized'] = sanitize_result
+            context["sanitized"] = sanitize_result
 
             # Check if content should be blocked
-            security = sanitize_result.get('security', {})
-            recommendation = security.get('recommendation', 'allow')
-            if recommendation in ['block', 'escalate']:
-                return False, 'content_blocked', context
+            security = sanitize_result.get("security", {})
+            recommendation = security.get("recommendation", "allow")
+            if recommendation in ["block", "escalate"]:
+                return False, "content_blocked", context
 
             # Use sanitized content
-            message.content = sanitize_result.get('sanitized', message.content)
+            message.content = sanitize_result.get("sanitized", message.content)
 
         except ImportError:
             # Sanitizer not available, skip
-            context['sanitized'] = {'skipped': True}
+            context["sanitized"] = {"skipped": True}
         except Exception as e:
-            context['sanitized'] = {'error': str(e)}
+            context["sanitized"] = {"error": str(e)}
 
         # 2. Get user from channel
         try:
@@ -237,69 +237,69 @@ class MessageRouter:
                     id=str(uuid.uuid4()),
                     channel=message.channel,
                     channel_user_id=message.channel_user_id,
-                    display_name=message.metadata.get('display_name', 'Unknown'),
-                    username=message.metadata.get('username'),
-                    is_paired=False
+                    display_name=message.metadata.get("display_name", "Unknown"),
+                    username=message.metadata.get("username"),
+                    is_paired=False,
                 )
                 inbox.create_or_update_user(user)
 
-            context['user'] = user.to_dict() if hasattr(user, 'to_dict') else user
+            context["user"] = user.to_dict() if hasattr(user, "to_dict") else user
             message.user_id = user.id
 
         except Exception as e:
-            context['user'] = {'error': str(e)}
+            context["user"] = {"error": str(e)}
             # Generate a temporary user ID if we can't look up
             if not message.user_id:
                 message.user_id = f"temp_{message.channel}_{message.channel_user_id}"
 
         # 3. Check if user is paired (required for full access)
-        user_obj = context.get('user', {})
-        is_paired = user_obj.get('is_paired', False) if isinstance(user_obj, dict) else getattr(user_obj, 'is_paired', False)
+        user_obj = context.get("user", {})
+        is_paired = (
+            user_obj.get("is_paired", False)
+            if isinstance(user_obj, dict)
+            else getattr(user_obj, "is_paired", False)
+        )
 
         if not is_paired:
-            return False, 'user_not_paired', context
+            return False, "user_not_paired", context
 
         # 4. Rate limit check
         try:
             from tools.security import ratelimit
 
             rate_result = ratelimit.check_rate_limit(
-                entity_type='user',
-                entity_id=message.user_id,
-                tokens=1,
-                cost=0.0
+                entity_type="user", entity_id=message.user_id, tokens=1, cost=0.0
             )
-            context['rate_limit'] = rate_result
+            context["rate_limit"] = rate_result
 
-            if not rate_result.get('allowed', True):
-                return False, 'rate_limited', context
+            if not rate_result.get("allowed", True):
+                return False, "rate_limited", context
 
         except ImportError:
-            context['rate_limit'] = {'skipped': True}
+            context["rate_limit"] = {"skipped": True}
         except Exception as e:
-            context['rate_limit'] = {'error': str(e)}
+            context["rate_limit"] = {"error": str(e)}
 
         # 5. Permission check
         try:
             from tools.security import permissions
 
             perm_result = permissions.check_permission(
-                user_id=message.user_id,
-                permission='chat:send'
+                user_id=message.user_id, permission="chat:send"
             )
-            context['permissions'] = perm_result
+            context["permissions"] = perm_result
 
-            if not perm_result.get('allowed', True):
-                return False, 'permission_denied', context
+            if not perm_result.get("allowed", True):
+                return False, "permission_denied", context
 
         except ImportError:
-            context['permissions'] = {'skipped': True}
+            context["permissions"] = {"skipped": True}
         except Exception as e:
-            context['permissions'] = {'error': str(e)}
+            context["permissions"] = {"error": str(e)}
 
-        return True, 'ok', context
+        return True, "ok", context
 
-    async def route_inbound(self, message: UnifiedMessage) -> Dict[str, Any]:
+    async def route_inbound(self, message: UnifiedMessage) -> dict[str, Any]:
         """
         Process inbound message through security pipeline and dispatch to handlers.
 
@@ -315,17 +315,18 @@ class MessageRouter:
         # Log to audit
         try:
             from tools.security import audit
+
             audit.log_event(
-                event_type='command',
-                action='message_inbound',
+                event_type="command",
+                action="message_inbound",
                 user_id=message.user_id,
                 channel=message.channel,
-                status='success' if allowed else 'blocked',
+                status="success" if allowed else "blocked",
                 details={
-                    'reason': reason,
-                    'message_id': message.id,
-                    'content_type': message.content_type
-                }
+                    "reason": reason,
+                    "message_id": message.id,
+                    "content_type": message.content_type,
+                },
             )
         except ImportError:
             pass
@@ -333,58 +334,48 @@ class MessageRouter:
             pass
 
         if not allowed:
-            return {
-                'success': False,
-                'reason': reason,
-                'context': context
-            }
+            return {"success": False, "reason": reason, "context": context}
 
         # Store message
         try:
             from tools.channels import inbox
+
             inbox.store_message(message)
         except Exception as e:
-            context['storage_error'] = str(e)
+            context["storage_error"] = str(e)
 
         # Dispatch to handlers
         handler_results = []
         for handler in self.message_handlers:
             try:
                 result = await handler(message, context)
-                handler_results.append({
-                    'handler': handler.__name__,
-                    'success': True,
-                    'result': result
-                })
+                handler_results.append(
+                    {"handler": handler.__name__, "success": True, "result": result}
+                )
             except Exception as e:
-                handler_results.append({
-                    'handler': handler.__name__,
-                    'success': False,
-                    'error': str(e)
-                })
+                handler_results.append(
+                    {"handler": handler.__name__, "success": False, "error": str(e)}
+                )
                 # Log handler error
                 try:
                     from tools.security import audit
+
                     audit.log_event(
-                        event_type='error',
-                        action='handler_error',
+                        event_type="error",
+                        action="handler_error",
                         user_id=message.user_id,
                         details={
-                            'error': str(e),
-                            'handler': handler.__name__,
-                            'message_id': message.id
-                        }
+                            "error": str(e),
+                            "handler": handler.__name__,
+                            "message_id": message.id,
+                        },
                     )
                 except Exception:
                     pass
 
-        return {
-            'success': True,
-            'message_id': message.id,
-            'handlers': handler_results
-        }
+        return {"success": True, "message_id": message.id, "handlers": handler_results}
 
-    async def route_outbound(self, message: UnifiedMessage) -> Dict[str, Any]:
+    async def route_outbound(self, message: UnifiedMessage) -> dict[str, Any]:
         """
         Send message to appropriate channel.
 
@@ -400,16 +391,17 @@ class MessageRouter:
         if not channel and message.user_id:
             try:
                 from tools.channels import inbox
+
                 channel = inbox.get_preferred_channel(message.user_id)
             except Exception:
                 pass
 
         if not channel:
-            return {'success': False, 'error': 'no_channel_specified'}
+            return {"success": False, "error": "no_channel_specified"}
 
         adapter = self.adapters.get(channel)
         if not adapter:
-            return {'success': False, 'error': f'adapter_not_found:{channel}'}
+            return {"success": False, "error": f"adapter_not_found:{channel}"}
 
         try:
             # Ensure message has an ID
@@ -419,9 +411,10 @@ class MessageRouter:
             result = await adapter.send_message(message)
 
             # Store outbound message
-            message.direction = 'outbound'
+            message.direction = "outbound"
             try:
                 from tools.channels import inbox
+
                 inbox.store_message(message)
             except Exception:
                 pass
@@ -429,16 +422,14 @@ class MessageRouter:
             # Log to audit
             try:
                 from tools.security import audit
+
                 audit.log_event(
-                    event_type='command',
-                    action='message_outbound',
+                    event_type="command",
+                    action="message_outbound",
                     user_id=message.user_id,
                     channel=channel,
-                    status='success' if result.get('success') else 'failure',
-                    details={
-                        'message_id': message.id,
-                        'result': result
-                    }
+                    status="success" if result.get("success") else "failure",
+                    details={"message_id": message.id, "result": result},
                 )
             except Exception:
                 pass
@@ -449,22 +440,20 @@ class MessageRouter:
             # Log error
             try:
                 from tools.security import audit
+
                 audit.log_event(
-                    event_type='error',
-                    action='send_failed',
+                    event_type="error",
+                    action="send_failed",
                     channel=channel,
-                    details={'error': str(e), 'message_id': message.id}
+                    details={"error": str(e), "message_id": message.id},
                 )
             except Exception:
                 pass
-            return {'success': False, 'error': str(e)}
+            return {"success": False, "error": str(e)}
 
     async def broadcast(
-        self,
-        user_id: str,
-        content: str,
-        priority: str = 'normal'
-    ) -> Dict[str, Any]:
+        self, user_id: str, content: str, priority: str = "normal"
+    ) -> dict[str, Any]:
         """
         Send notification to user via their preferred channel.
 
@@ -488,22 +477,23 @@ class MessageRouter:
                 # Get any linked channel
                 links = inbox.get_linked_channels(user_id)
                 if links:
-                    channel = links[0]['channel']
+                    channel = links[0]["channel"]
 
         except Exception:
             pass
 
         if not channel:
-            return {'success': False, 'error': 'no_channel_for_user'}
+            return {"success": False, "error": "no_channel_for_user"}
 
         # Look up channel_user_id for the target channel
-        channel_user_id = ''
+        channel_user_id = ""
         try:
             from tools.channels import inbox
+
             links = inbox.get_linked_channels(user_id)
             for link in links:
-                if link['channel'] == channel:
-                    channel_user_id = link['channel_user_id']
+                if link["channel"] == channel:
+                    channel_user_id = link["channel_user_id"]
                     break
         except Exception:
             pass
@@ -511,17 +501,17 @@ class MessageRouter:
         message = UnifiedMessage(
             id=str(uuid.uuid4()),
             channel=channel,
-            channel_message_id='',
+            channel_message_id="",
             user_id=user_id,
             channel_user_id=channel_user_id,
-            direction='outbound',
+            direction="outbound",
             content=content,
-            metadata={'priority': priority}
+            metadata={"priority": priority},
         )
 
         return await self.route_outbound(message)
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get router status and statistics.
 
@@ -529,13 +519,10 @@ class MessageRouter:
             Dict with adapter status and metrics
         """
         return {
-            'started': self._started,
-            'start_time': self._start_time.isoformat() if self._start_time else None,
-            'adapters': {
-                name: {'connected': True}
-                for name in self.adapters.keys()
-            },
-            'handler_count': len(self.message_handlers)
+            "started": self._started,
+            "start_time": self._start_time.isoformat() if self._start_time else None,
+            "adapters": {name: {"connected": True} for name in self.adapters.keys()},
+            "handler_count": len(self.message_handlers),
         }
 
     async def start(self) -> None:
@@ -549,11 +536,12 @@ class MessageRouter:
             except Exception as e:
                 try:
                     from tools.security import audit
+
                     audit.log_event(
-                        event_type='error',
-                        action='adapter_connect_failed',
+                        event_type="error",
+                        action="adapter_connect_failed",
                         channel=name,
-                        details={'error': str(e)}
+                        details={"error": str(e)},
                     )
                 except Exception:
                     pass
@@ -573,7 +561,7 @@ class MessageRouter:
 # Singleton router instance
 # =============================================================================
 
-_router_instance: Optional[MessageRouter] = None
+_router_instance: MessageRouter | None = None
 
 
 def get_router() -> MessageRouter:
@@ -588,7 +576,8 @@ def get_router() -> MessageRouter:
 # CLI Interface
 # =============================================================================
 
-def test_security_pipeline(user_id: str, content: str) -> Dict[str, Any]:
+
+def test_security_pipeline(user_id: str, content: str) -> dict[str, Any]:
     """
     Test the security pipeline with a mock message.
 
@@ -603,51 +592,43 @@ def test_security_pipeline(user_id: str, content: str) -> Dict[str, Any]:
 
     message = UnifiedMessage(
         id=str(uuid.uuid4()),
-        channel='cli',
-        channel_message_id='test',
+        channel="cli",
+        channel_message_id="test",
         channel_user_id=user_id,
-        direction='inbound',
-        content=content
+        direction="inbound",
+        content=content,
     )
 
     # Run security pipeline synchronously
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        allowed, reason, context = loop.run_until_complete(
-            router.security_pipeline(message)
-        )
-        return {
-            'allowed': allowed,
-            'reason': reason,
-            'context': context
-        }
+        allowed, reason, context = loop.run_until_complete(router.security_pipeline(message))
+        return {"allowed": allowed, "reason": reason, "context": context}
     finally:
         loop.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Gateway Router')
-    parser.add_argument('--action', required=True,
-                        choices=['status', 'list-adapters', 'test-security'])
-    parser.add_argument('--user-id', help='User ID for testing')
-    parser.add_argument('--content', help='Content for testing')
+    parser = argparse.ArgumentParser(description="Gateway Router")
+    parser.add_argument(
+        "--action", required=True, choices=["status", "list-adapters", "test-security"]
+    )
+    parser.add_argument("--user-id", help="User ID for testing")
+    parser.add_argument("--content", help="Content for testing")
 
     args = parser.parse_args()
 
     try:
-        if args.action == 'status':
+        if args.action == "status":
             router = get_router()
             result = router.get_status()
 
-        elif args.action == 'list-adapters':
+        elif args.action == "list-adapters":
             router = get_router()
-            result = {
-                'adapters': list(router.adapters.keys()),
-                'count': len(router.adapters)
-            }
+            result = {"adapters": list(router.adapters.keys()), "count": len(router.adapters)}
 
-        elif args.action == 'test-security':
+        elif args.action == "test-security":
             if not args.user_id or not args.content:
                 print("ERROR: --user-id and --content required for test-security")
                 sys.exit(1)
@@ -665,5 +646,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -19,24 +19,24 @@ Dependencies:
 
 import argparse
 import json
-import os
 import sys
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-import asyncio
+from typing import Any, Optional
+
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.setup import SETUP_STATE_PATH, SETUP_COMPLETE_FLAG, CONFIG_PATH, DATA_PATH
+from tools.setup import CONFIG_PATH, DATA_PATH, SETUP_COMPLETE_FLAG, SETUP_STATE_PATH
 
 
 class SetupStep(Enum):
     """Wizard steps in order."""
+
     WELCOME = "welcome"
     CHANNEL = "channel"
     PREFERENCES = "preferences"
@@ -46,7 +46,7 @@ class SetupStep(Enum):
     COMPLETE = "complete"
 
     @classmethod
-    def order(cls) -> List['SetupStep']:
+    def order(cls) -> list["SetupStep"]:
         """Return steps in display order."""
         return [
             cls.WELCOME,
@@ -55,10 +55,10 @@ class SetupStep(Enum):
             cls.SECURITY,
             cls.API_KEY,
             cls.TEST,
-            cls.COMPLETE
+            cls.COMPLETE,
         ]
 
-    def next(self) -> Optional['SetupStep']:
+    def next(self) -> Optional["SetupStep"]:
         """Get next step in sequence."""
         order = self.order()
         try:
@@ -69,7 +69,7 @@ class SetupStep(Enum):
             pass
         return None
 
-    def previous(self) -> Optional['SetupStep']:
+    def previous(self) -> Optional["SetupStep"]:
         """Get previous step in sequence."""
         order = self.order()
         try:
@@ -92,17 +92,17 @@ class SetupState:
 
     # Progress tracking
     current_step: SetupStep = SetupStep.WELCOME
-    completed_steps: List[SetupStep] = field(default_factory=list)
-    started_at: Optional[str] = None
-    last_updated: Optional[str] = None
+    completed_steps: list[SetupStep] = field(default_factory=list)
+    started_at: str | None = None
+    last_updated: str | None = None
 
     # Channel configuration
-    primary_channel: Optional[str] = None  # telegram, discord, slack, or None
-    channel_config: Dict[str, Any] = field(default_factory=dict)
+    primary_channel: str | None = None  # telegram, discord, slack, or None
+    channel_config: dict[str, Any] = field(default_factory=dict)
     channel_verified: bool = False
 
     # User preferences
-    user_name: Optional[str] = None
+    user_name: str | None = None
     timezone: str = "UTC"
     active_hours_start: str = "09:00"
     active_hours_end: str = "22:00"
@@ -164,25 +164,25 @@ class SetupState:
         completed = len(self.completed_steps)
         return min(100, int((completed / total_steps) * 100))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
         # Convert enums to strings
-        data['current_step'] = self.current_step.value
-        data['completed_steps'] = [s.value for s in self.completed_steps]
+        data["current_step"] = self.current_step.value
+        data["completed_steps"] = [s.value for s in self.completed_steps]
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SetupState':
+    def from_dict(cls, data: dict[str, Any]) -> "SetupState":
         """Create from dictionary."""
         # Handle enum conversion
-        if 'current_step' in data:
-            data['current_step'] = SetupStep(data['current_step'])
-        if 'completed_steps' in data:
-            data['completed_steps'] = [SetupStep(s) for s in data['completed_steps']]
+        if "current_step" in data:
+            data["current_step"] = SetupStep(data["current_step"])
+        if "completed_steps" in data:
+            data["completed_steps"] = [SetupStep(s) for s in data["completed_steps"]]
         return cls(**data)
 
-    def save(self, path: Optional[Path] = None) -> Dict[str, Any]:
+    def save(self, path: Path | None = None) -> dict[str, Any]:
         """
         Save setup state to disk.
 
@@ -196,14 +196,14 @@ class SetupState:
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            with open(save_path, 'w') as f:
+            with open(save_path, "w") as f:
                 json.dump(self.to_dict(), f, indent=2)
             return {"success": True, "path": str(save_path)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     @classmethod
-    def load(cls, path: Optional[Path] = None) -> 'SetupState':
+    def load(cls, path: Path | None = None) -> "SetupState":
         """
         Load setup state from disk.
 
@@ -233,7 +233,8 @@ class SetupState:
 # Channel Validation
 # =============================================================================
 
-async def validate_telegram_token(token: str) -> Dict[str, Any]:
+
+async def validate_telegram_token(token: str) -> dict[str, Any]:
     """
     Validate a Telegram bot token.
 
@@ -245,18 +246,19 @@ async def validate_telegram_token(token: str) -> Dict[str, Any]:
     """
     try:
         from telegram import Bot
+
         bot = Bot(token)
         me = await bot.get_me()
         return {
             "success": True,
             "bot_id": me.id,
             "bot_username": me.username,
-            "bot_name": me.first_name
+            "bot_name": me.first_name,
         }
     except ImportError:
         return {
             "success": False,
-            "error": "python-telegram-bot not installed. Run: pip install python-telegram-bot"
+            "error": "python-telegram-bot not installed. Run: pip install python-telegram-bot",
         }
     except Exception as e:
         error_msg = str(e)
@@ -265,7 +267,7 @@ async def validate_telegram_token(token: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Connection failed: {error_msg}"}
 
 
-async def validate_discord_token(token: str) -> Dict[str, Any]:
+async def validate_discord_token(token: str) -> dict[str, Any]:
     """
     Validate a Discord bot token.
 
@@ -277,11 +279,11 @@ async def validate_discord_token(token: str) -> Dict[str, Any]:
     """
     try:
         import aiohttp
+
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bot {token}"}
             async with session.get(
-                "https://discord.com/api/v10/users/@me",
-                headers=headers
+                "https://discord.com/api/v10/users/@me", headers=headers
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -289,22 +291,19 @@ async def validate_discord_token(token: str) -> Dict[str, Any]:
                         "success": True,
                         "bot_id": data.get("id"),
                         "bot_username": data.get("username"),
-                        "bot_name": data.get("username")
+                        "bot_name": data.get("username"),
                     }
                 elif resp.status == 401:
                     return {"success": False, "error": "Invalid token. Please check and try again."}
                 else:
                     return {"success": False, "error": f"Discord API error: {resp.status}"}
     except ImportError:
-        return {
-            "success": False,
-            "error": "aiohttp not installed. Run: pip install aiohttp"
-        }
+        return {"success": False, "error": "aiohttp not installed. Run: pip install aiohttp"}
     except Exception as e:
-        return {"success": False, "error": f"Connection failed: {str(e)}"}
+        return {"success": False, "error": f"Connection failed: {e!s}"}
 
 
-async def validate_slack_tokens(bot_token: str, app_token: str) -> Dict[str, Any]:
+async def validate_slack_tokens(bot_token: str, app_token: str) -> dict[str, Any]:
     """
     Validate Slack tokens.
 
@@ -317,6 +316,7 @@ async def validate_slack_tokens(bot_token: str, app_token: str) -> Dict[str, Any
     """
     try:
         from slack_sdk.web.async_client import AsyncWebClient
+
         client = AsyncWebClient(token=bot_token)
         response = await client.auth_test()
 
@@ -325,15 +325,12 @@ async def validate_slack_tokens(bot_token: str, app_token: str) -> Dict[str, Any
                 "success": True,
                 "bot_id": response.get("bot_id"),
                 "bot_username": response.get("user"),
-                "team_name": response.get("team")
+                "team_name": response.get("team"),
             }
         else:
             return {"success": False, "error": response.get("error", "Unknown error")}
     except ImportError:
-        return {
-            "success": False,
-            "error": "slack-sdk not installed. Run: pip install slack-sdk"
-        }
+        return {"success": False, "error": "slack-sdk not installed. Run: pip install slack-sdk"}
     except Exception as e:
         error_msg = str(e)
         if "invalid_auth" in error_msg.lower():
@@ -341,10 +338,7 @@ async def validate_slack_tokens(bot_token: str, app_token: str) -> Dict[str, Any
         return {"success": False, "error": f"Connection failed: {error_msg}"}
 
 
-async def validate_channel(
-    channel: str,
-    config: Dict[str, str]
-) -> Dict[str, Any]:
+async def validate_channel(channel: str, config: dict[str, str]) -> dict[str, Any]:
     """
     Validate channel connection.
 
@@ -382,7 +376,8 @@ async def validate_channel(
 # API Key Validation
 # =============================================================================
 
-async def validate_anthropic_key(api_key: str) -> Dict[str, Any]:
+
+async def validate_anthropic_key(api_key: str) -> dict[str, Any]:
     """
     Validate an Anthropic API key.
 
@@ -394,30 +389,31 @@ async def validate_anthropic_key(api_key: str) -> Dict[str, Any]:
     """
     try:
         import anthropic
+
         client = anthropic.Anthropic(api_key=api_key)
 
         # Make a minimal API call to validate
         response = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=10,
-            messages=[{"role": "user", "content": "Hi"}]
+            messages=[{"role": "user", "content": "Hi"}],
         )
 
-        return {
-            "success": True,
-            "message": "API key is valid"
-        }
+        return {"success": True, "message": "API key is valid"}
     except ImportError:
         return {
             "success": False,
-            "error": "anthropic package not installed. Run: pip install anthropic"
+            "error": "anthropic package not installed. Run: pip install anthropic",
         }
     except Exception as e:
         error_msg = str(e)
         if "invalid_api_key" in error_msg.lower() or "401" in error_msg:
             return {"success": False, "error": "Invalid API key. Please check and try again."}
         if "credit" in error_msg.lower() or "billing" in error_msg.lower():
-            return {"success": False, "error": "API key valid but no credits. Set up billing at console.anthropic.com"}
+            return {
+                "success": False,
+                "error": "API key valid but no credits. Set up billing at console.anthropic.com",
+            }
         return {"success": False, "error": f"Validation failed: {error_msg}"}
 
 
@@ -425,7 +421,8 @@ async def validate_anthropic_key(api_key: str) -> Dict[str, Any]:
 # Configuration Generation
 # =============================================================================
 
-def apply_configuration(state: SetupState) -> Dict[str, Any]:
+
+def apply_configuration(state: SetupState) -> dict[str, Any]:
     """
     Apply setup configuration to the system.
 
@@ -451,24 +448,19 @@ def apply_configuration(state: SetupState) -> Dict[str, Any]:
     # 1. Create args/user.yaml
     try:
         user_config = {
-            "user": {
-                "name": state.user_name or "User",
-                "timezone": state.timezone
-            },
+            "user": {"name": state.user_name or "User", "timezone": state.timezone},
             "active_hours": {
                 "start": state.active_hours_start,
                 "end": state.active_hours_end,
-                "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
             },
-            "preferences": {
-                "notification_style": "gentle",
-                "brevity_default": True
-            }
+            "preferences": {"notification_style": "gentle", "brevity_default": True},
         }
 
         import yaml
+
         user_path = CONFIG_PATH / "user.yaml"
-        with open(user_path, 'w') as f:
+        with open(user_path, "w") as f:
             yaml.dump(user_config, f, default_flow_style=False, sort_keys=False)
         created_files.append(str(user_path))
     except Exception as e:
@@ -493,10 +485,10 @@ def apply_configuration(state: SetupState) -> Dict[str, Any]:
             # Set primary channel
             for ch in ["telegram", "discord", "slack"]:
                 if ch in channels_config["channels"]:
-                    channels_config["channels"][ch]["enabled"] = (ch == state.primary_channel)
-                    channels_config["channels"][ch]["primary"] = (ch == state.primary_channel)
+                    channels_config["channels"][ch]["enabled"] = ch == state.primary_channel
+                    channels_config["channels"][ch]["primary"] = ch == state.primary_channel
 
-            with open(channels_path, 'w') as f:
+            with open(channels_path, "w") as f:
                 yaml.dump(channels_config, f, default_flow_style=False, sort_keys=False)
             created_files.append(str(channels_path))
         except Exception as e:
@@ -531,10 +523,11 @@ def apply_configuration(state: SetupState) -> Dict[str, Any]:
     if state.api_key_set and state.channel_config.get("anthropic_api_key"):
         try:
             from tools.security import vault
+
             vault.set_secret(
                 "ANTHROPIC_API_KEY",
                 state.channel_config.get("anthropic_api_key"),
-                namespace="default"
+                namespace="default",
             )
         except Exception as e:
             errors.append(f"Failed to store API key: {e}")
@@ -546,11 +539,7 @@ def apply_configuration(state: SetupState) -> Dict[str, Any]:
     except Exception as e:
         errors.append(f"Failed to create completion flag: {e}")
 
-    return {
-        "success": len(errors) == 0,
-        "created_files": created_files,
-        "errors": errors
-    }
+    return {"success": len(errors) == 0, "created_files": created_files, "errors": errors}
 
 
 def is_setup_complete() -> bool:
@@ -558,7 +547,7 @@ def is_setup_complete() -> bool:
     return SETUP_COMPLETE_FLAG.exists()
 
 
-def reset_setup() -> Dict[str, Any]:
+def reset_setup() -> dict[str, Any]:
     """
     Reset setup state (start fresh).
 
@@ -583,13 +572,10 @@ def reset_setup() -> Dict[str, Any]:
         SETUP_COMPLETE_FLAG.unlink()
         removed.append(str(SETUP_COMPLETE_FLAG))
 
-    return {
-        "success": True,
-        "removed": removed
-    }
+    return {"success": True, "removed": removed}
 
 
-def get_setup_status() -> Dict[str, Any]:
+def get_setup_status() -> dict[str, Any]:
     """
     Get current setup status.
 
@@ -606,13 +592,14 @@ def get_setup_status() -> Dict[str, Any]:
         "primary_channel": state.primary_channel,
         "user_name": state.user_name,
         "started_at": state.started_at,
-        "last_updated": state.last_updated
+        "last_updated": state.last_updated,
     }
 
 
 # =============================================================================
 # Timezone Detection
 # =============================================================================
+
 
 def detect_timezone() -> str:
     """
@@ -624,7 +611,8 @@ def detect_timezone() -> str:
     try:
         # Try to get from system
         import time
-        if hasattr(time, 'tzname') and time.tzname[0]:
+
+        if hasattr(time, "tzname") and time.tzname[0]:
             # This gives abbreviation like "EST", not full name
             # Try to map common ones
             tz_map = {
@@ -661,11 +649,12 @@ def detect_timezone() -> str:
     try:
         # Try timedatectl (systemd)
         import subprocess
+
         result = subprocess.run(
             ["timedatectl", "show", "--property=Timezone", "--value"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -679,12 +668,13 @@ def detect_timezone() -> str:
 # CLI Interface
 # =============================================================================
 
+
 def main():
-    parser = argparse.ArgumentParser(description='DexAI Setup Wizard')
-    parser.add_argument('--status', action='store_true', help='Show setup status')
-    parser.add_argument('--reset', action='store_true', help='Reset setup state')
-    parser.add_argument('--complete', action='store_true', help='Mark setup as complete')
-    parser.add_argument('--detect-tz', action='store_true', help='Detect timezone')
+    parser = argparse.ArgumentParser(description="DexAI Setup Wizard")
+    parser.add_argument("--status", action="store_true", help="Show setup status")
+    parser.add_argument("--reset", action="store_true", help="Reset setup state")
+    parser.add_argument("--complete", action="store_true", help="Mark setup as complete")
+    parser.add_argument("--detect-tz", action="store_true", help="Detect timezone")
 
     args = parser.parse_args()
 

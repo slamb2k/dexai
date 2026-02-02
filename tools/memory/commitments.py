@@ -41,18 +41,18 @@ Output:
     JSON result with success status and commitment data
 """
 
-import os
-import sys
-import json
-import sqlite3
 import argparse
-import uuid
+import json
 import re
+import sqlite3
+import sys
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 import yaml
+
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -61,13 +61,13 @@ CONFIG_PATH = PROJECT_ROOT / "args" / "working_memory.yaml"
 HARDPROMPT_PATH = PROJECT_ROOT / "hardprompts" / "memory" / "commitment_detection.md"
 
 # Valid statuses
-VALID_STATUSES = ['active', 'completed', 'cancelled']
+VALID_STATUSES = ["active", "completed", "cancelled"]
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load working memory configuration."""
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, 'r') as f:
+        with open(CONFIG_PATH) as f:
             return yaml.safe_load(f) or {}
     return {}
 
@@ -81,7 +81,7 @@ def get_connection() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # Commitments table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS commitments (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -96,20 +96,24 @@ def get_connection() -> sqlite3.Connection:
             reminder_sent INTEGER DEFAULT 0,
             notes TEXT
         )
-    ''')
+    """)
 
     # Indexes for common queries
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_commitments_user ON commitments(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_commitments_status ON commitments(status)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_commitments_user_status ON commitments(user_id, status)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_commitments_due ON commitments(due_date)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_commitments_target ON commitments(target_person)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_commitments_user ON commitments(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_commitments_status ON commitments(status)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_commitments_user_status ON commitments(user_id, status)"
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_commitments_due ON commitments(due_date)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_commitments_target ON commitments(target_person)"
+    )
 
     conn.commit()
     return conn
 
 
-def row_to_dict(row) -> Optional[Dict]:
+def row_to_dict(row) -> dict | None:
     """Convert sqlite3.Row to dictionary."""
     if row is None:
         return None
@@ -124,7 +128,7 @@ def generate_commitment_id(user_id: str) -> str:
     return f"comm_{timestamp}_{user_id}_{short_uuid}"
 
 
-def parse_due_date(due_date_str: str) -> Optional[str]:
+def parse_due_date(due_date_str: str) -> str | None:
     """Parse various date formats into ISO format."""
     if not due_date_str:
         return None
@@ -138,12 +142,12 @@ def parse_due_date(due_date_str: str) -> Optional[str]:
 
     # Try common formats
     formats = [
-        '%Y-%m-%d',
-        '%Y/%m/%d',
-        '%d-%m-%Y',
-        '%d/%m/%Y',
-        '%m-%d-%Y',
-        '%m/%d/%Y',
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%m-%d-%Y",
+        "%m/%d/%Y",
     ]
 
     for fmt in formats:
@@ -157,23 +161,23 @@ def parse_due_date(due_date_str: str) -> Optional[str]:
     due_date_lower = due_date_str.lower().strip()
     now = datetime.now()
 
-    if due_date_lower == 'today':
+    if due_date_lower == "today":
         return now.replace(hour=23, minute=59, second=59).isoformat()
-    elif due_date_lower == 'tomorrow':
+    elif due_date_lower == "tomorrow":
         return (now + timedelta(days=1)).replace(hour=23, minute=59, second=59).isoformat()
-    elif due_date_lower in ('next week', 'nextweek'):
+    elif due_date_lower in ("next week", "nextweek"):
         return (now + timedelta(weeks=1)).isoformat()
 
     # Try "in X days/hours" format
-    match = re.match(r'in\s+(\d+)\s+(day|days|hour|hours|week|weeks)', due_date_lower)
+    match = re.match(r"in\s+(\d+)\s+(day|days|hour|hours|week|weeks)", due_date_lower)
     if match:
         value = int(match.group(1))
         unit = match.group(2)
-        if 'day' in unit:
+        if "day" in unit:
             return (now + timedelta(days=value)).isoformat()
-        elif 'hour' in unit:
+        elif "hour" in unit:
             return (now + timedelta(hours=value)).isoformat()
-        elif 'week' in unit:
+        elif "week" in unit:
             return (now + timedelta(weeks=value)).isoformat()
 
     return None
@@ -182,12 +186,12 @@ def parse_due_date(due_date_str: str) -> Optional[str]:
 def add_commitment(
     user_id: str,
     content: str,
-    target_person: Optional[str] = None,
-    due_date: Optional[str] = None,
-    source_message_id: Optional[str] = None,
-    source_channel: Optional[str] = None,
-    notes: Optional[str] = None
-) -> Dict[str, Any]:
+    target_person: str | None = None,
+    due_date: str | None = None,
+    source_message_id: str | None = None,
+    source_channel: str | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
     """
     Add a new commitment.
 
@@ -217,21 +221,24 @@ def add_commitment(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO commitments
         (id, user_id, content, source_message_id, source_channel, target_person, due_date, status, created_at, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-    ''', (
-        commitment_id,
-        user_id,
-        content,
-        source_message_id,
-        source_channel,
-        target_person,
-        parsed_due_date,
-        created_at,
-        notes
-    ))
+    """,
+        (
+            commitment_id,
+            user_id,
+            content,
+            source_message_id,
+            source_channel,
+            target_person,
+            parsed_due_date,
+            created_at,
+            notes,
+        ),
+    )
 
     conn.commit()
     conn.close()
@@ -246,19 +253,19 @@ def add_commitment(
             "target_person": target_person,
             "due_date": parsed_due_date,
             "status": "active",
-            "created_at": created_at
-        }
+            "created_at": created_at,
+        },
     }
 
 
 def list_commitments(
     user_id: str,
-    status: Optional[str] = None,
-    target_person: Optional[str] = None,
+    status: str | None = None,
+    target_person: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    group_by_person: bool = False
-) -> Dict[str, Any]:
+    group_by_person: bool = False,
+) -> dict[str, Any]:
     """
     List commitments for a user.
 
@@ -276,24 +283,25 @@ def list_commitments(
     conn = get_connection()
     cursor = conn.cursor()
 
-    conditions = ['user_id = ?']
-    params: List[Any] = [user_id]
+    conditions = ["user_id = ?"]
+    params: list[Any] = [user_id]
 
     if status:
         if status not in VALID_STATUSES:
             conn.close()
             return {"success": False, "error": f"Invalid status. Must be one of: {VALID_STATUSES}"}
-        conditions.append('status = ?')
+        conditions.append("status = ?")
         params.append(status)
 
     if target_person:
-        conditions.append('target_person = ?')
+        conditions.append("target_person = ?")
         params.append(target_person)
 
-    where_clause = ' AND '.join(conditions)
+    where_clause = " AND ".join(conditions)
 
     # Order by due date (NULL last), then created_at
-    cursor.execute(f'''
+    cursor.execute(
+        f"""
         SELECT * FROM commitments
         WHERE {where_clause}
         ORDER BY
@@ -301,26 +309,28 @@ def list_commitments(
             due_date ASC,
             created_at DESC
         LIMIT ? OFFSET ?
-    ''', params + [limit, offset])
+    """,
+        params + [limit, offset],
+    )
 
     commitments = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Add age information
     for comm in commitments:
-        created_at = datetime.fromisoformat(comm['created_at'])
+        created_at = datetime.fromisoformat(comm["created_at"])
         age = datetime.now() - created_at
-        comm['age_days'] = round(age.total_seconds() / 86400, 1)
+        comm["age_days"] = round(age.total_seconds() / 86400, 1)
 
         # Check if overdue
-        if comm['due_date'] and comm['status'] == 'active':
-            due = datetime.fromisoformat(comm['due_date'])
-            comm['is_overdue'] = datetime.now() > due
-            if comm['is_overdue']:
-                comm['overdue_days'] = round((datetime.now() - due).total_seconds() / 86400, 1)
+        if comm["due_date"] and comm["status"] == "active":
+            due = datetime.fromisoformat(comm["due_date"])
+            comm["is_overdue"] = datetime.now() > due
+            if comm["is_overdue"]:
+                comm["overdue_days"] = round((datetime.now() - due).total_seconds() / 86400, 1)
 
     # Get total count
-    cursor.execute(f'SELECT COUNT(*) as count FROM commitments WHERE {where_clause}', params)
-    total = cursor.fetchone()['count']
+    cursor.execute(f"SELECT COUNT(*) as count FROM commitments WHERE {where_clause}", params)
+    total = cursor.fetchone()["count"]
 
     conn.close()
 
@@ -328,7 +338,7 @@ def list_commitments(
     if group_by_person and commitments:
         grouped = {}
         for comm in commitments:
-            person = comm.get('target_person') or 'Unspecified'
+            person = comm.get("target_person") or "Unspecified"
             if person not in grouped:
                 grouped[person] = []
             grouped[person].append(comm)
@@ -339,27 +349,22 @@ def list_commitments(
                 "commitments_by_person": grouped,
                 "total": total,
                 "limit": limit,
-                "offset": offset
-            }
+                "offset": offset,
+            },
         }
 
     return {
         "success": True,
-        "data": {
-            "commitments": commitments,
-            "total": total,
-            "limit": limit,
-            "offset": offset
-        }
+        "data": {"commitments": commitments, "total": total, "limit": limit, "offset": offset},
     }
 
 
-def get_commitment(commitment_id: str) -> Dict[str, Any]:
+def get_commitment(commitment_id: str) -> dict[str, Any]:
     """Get a specific commitment."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM commitments WHERE id = ?', (commitment_id,))
+    cursor.execute("SELECT * FROM commitments WHERE id = ?", (commitment_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -369,17 +374,14 @@ def get_commitment(commitment_id: str) -> Dict[str, Any]:
     commitment = row_to_dict(row)
 
     # Add age info
-    created_at = datetime.fromisoformat(commitment['created_at'])
+    created_at = datetime.fromisoformat(commitment["created_at"])
     age = datetime.now() - created_at
-    commitment['age_days'] = round(age.total_seconds() / 86400, 1)
+    commitment["age_days"] = round(age.total_seconds() / 86400, 1)
 
-    return {
-        "success": True,
-        "data": commitment
-    }
+    return {"success": True, "data": commitment}
 
 
-def complete_commitment(commitment_id: str, notes: Optional[str] = None) -> Dict[str, Any]:
+def complete_commitment(commitment_id: str, notes: str | None = None) -> dict[str, Any]:
     """
     Mark a commitment as completed.
 
@@ -396,17 +398,23 @@ def complete_commitment(commitment_id: str, notes: Optional[str] = None) -> Dict
     completed_at = datetime.now().isoformat()
 
     if notes:
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE commitments
             SET status = 'completed', completed_at = ?, notes = COALESCE(notes || ' | ', '') || ?
             WHERE id = ? AND status = 'active'
-        ''', (completed_at, notes, commitment_id))
+        """,
+            (completed_at, notes, commitment_id),
+        )
     else:
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE commitments
             SET status = 'completed', completed_at = ?
             WHERE id = ? AND status = 'active'
-        ''', (completed_at, commitment_id))
+        """,
+            (completed_at, commitment_id),
+        )
 
     updated = cursor.rowcount
     conn.commit()
@@ -415,13 +423,10 @@ def complete_commitment(commitment_id: str, notes: Optional[str] = None) -> Dict
     if updated == 0:
         return {"success": False, "error": f"Commitment not found or not active: {commitment_id}"}
 
-    return {
-        "success": True,
-        "message": f"Commitment {commitment_id} marked as completed"
-    }
+    return {"success": True, "message": f"Commitment {commitment_id} marked as completed"}
 
 
-def cancel_commitment(commitment_id: str, notes: Optional[str] = None) -> Dict[str, Any]:
+def cancel_commitment(commitment_id: str, notes: str | None = None) -> dict[str, Any]:
     """
     Mark a commitment as cancelled.
 
@@ -436,17 +441,23 @@ def cancel_commitment(commitment_id: str, notes: Optional[str] = None) -> Dict[s
     cursor = conn.cursor()
 
     if notes:
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE commitments
             SET status = 'cancelled', notes = COALESCE(notes || ' | ', '') || ?
             WHERE id = ? AND status = 'active'
-        ''', (notes, commitment_id))
+        """,
+            (notes, commitment_id),
+        )
     else:
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE commitments
             SET status = 'cancelled'
             WHERE id = ? AND status = 'active'
-        ''', (commitment_id,))
+        """,
+            (commitment_id,),
+        )
 
     updated = cursor.rowcount
     conn.commit()
@@ -455,13 +466,10 @@ def cancel_commitment(commitment_id: str, notes: Optional[str] = None) -> Dict[s
     if updated == 0:
         return {"success": False, "error": f"Commitment not found or not active: {commitment_id}"}
 
-    return {
-        "success": True,
-        "message": f"Commitment {commitment_id} cancelled"
-    }
+    return {"success": True, "message": f"Commitment {commitment_id} cancelled"}
 
 
-def get_due_soon(user_id: str, hours: int = 24) -> Dict[str, Any]:
+def get_due_soon(user_id: str, hours: int = 24) -> dict[str, Any]:
     """
     Get commitments due within the specified hours.
 
@@ -477,82 +485,81 @@ def get_due_soon(user_id: str, hours: int = 24) -> Dict[str, Any]:
 
     cutoff = (datetime.now() + timedelta(hours=hours)).isoformat()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM commitments
         WHERE user_id = ?
           AND status = 'active'
           AND due_date IS NOT NULL
           AND due_date <= ?
         ORDER BY due_date ASC
-    ''', (user_id, cutoff))
+    """,
+        (user_id, cutoff),
+    )
 
     commitments = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Add time until due
     for comm in commitments:
-        due = datetime.fromisoformat(comm['due_date'])
+        due = datetime.fromisoformat(comm["due_date"])
         time_left = due - datetime.now()
-        comm['hours_until_due'] = round(time_left.total_seconds() / 3600, 1)
-        comm['is_overdue'] = time_left.total_seconds() < 0
+        comm["hours_until_due"] = round(time_left.total_seconds() / 3600, 1)
+        comm["is_overdue"] = time_left.total_seconds() < 0
 
     conn.close()
 
     return {
         "success": True,
-        "data": {
-            "commitments": commitments,
-            "count": len(commitments),
-            "hours_ahead": hours
-        }
+        "data": {"commitments": commitments, "count": len(commitments), "hours_ahead": hours},
     }
 
 
-def get_overdue(user_id: str) -> Dict[str, Any]:
+def get_overdue(user_id: str) -> dict[str, Any]:
     """Get all overdue commitments for a user."""
     conn = get_connection()
     cursor = conn.cursor()
 
     now = datetime.now().isoformat()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM commitments
         WHERE user_id = ?
           AND status = 'active'
           AND due_date IS NOT NULL
           AND due_date < ?
         ORDER BY due_date ASC
-    ''', (user_id, now))
+    """,
+        (user_id, now),
+    )
 
     commitments = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Add overdue duration
     for comm in commitments:
-        due = datetime.fromisoformat(comm['due_date'])
+        due = datetime.fromisoformat(comm["due_date"])
         overdue_time = datetime.now() - due
-        comm['overdue_hours'] = round(overdue_time.total_seconds() / 3600, 1)
-        comm['overdue_days'] = round(overdue_time.total_seconds() / 86400, 1)
+        comm["overdue_hours"] = round(overdue_time.total_seconds() / 3600, 1)
+        comm["overdue_days"] = round(overdue_time.total_seconds() / 86400, 1)
 
     conn.close()
 
-    return {
-        "success": True,
-        "data": {
-            "commitments": commitments,
-            "count": len(commitments)
-        }
-    }
+    return {"success": True, "data": {"commitments": commitments, "count": len(commitments)}}
 
 
-def mark_reminder_sent(commitment_id: str) -> Dict[str, Any]:
+def mark_reminder_sent(commitment_id: str) -> dict[str, Any]:
     """Mark that a reminder was sent for this commitment."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE commitments
         SET reminder_sent = reminder_sent + 1
         WHERE id = ?
-    ''', (commitment_id,))
+    """,
+        (commitment_id,),
+    )
 
     updated = cursor.rowcount
     conn.commit()
@@ -561,13 +568,10 @@ def mark_reminder_sent(commitment_id: str) -> Dict[str, Any]:
     if updated == 0:
         return {"success": False, "error": f"Commitment not found: {commitment_id}"}
 
-    return {
-        "success": True,
-        "message": f"Reminder count incremented for {commitment_id}"
-    }
+    return {"success": True, "message": f"Reminder count incremented for {commitment_id}"}
 
 
-def extract_commitments_simple(text: str) -> List[Dict[str, Any]]:
+def extract_commitments_simple(text: str) -> list[dict[str, Any]]:
     """
     Simple pattern-based commitment extraction.
 
@@ -591,16 +595,20 @@ def extract_commitments_simple(text: str) -> List[Dict[str, Any]]:
             # Clean up the match
             content = match.strip()
             if len(content) > 5:  # Skip very short matches
-                commitments.append({
-                    "content": content,
-                    "confidence": "low",  # Pattern-based extraction is low confidence
-                    "pattern_matched": pattern
-                })
+                commitments.append(
+                    {
+                        "content": content,
+                        "confidence": "low",  # Pattern-based extraction is low confidence
+                        "pattern_matched": pattern,
+                    }
+                )
 
     return commitments
 
 
-def extract_commitments(user_id: str, text: str, source_channel: Optional[str] = None) -> Dict[str, Any]:
+def extract_commitments(
+    user_id: str, text: str, source_channel: str | None = None
+) -> dict[str, Any]:
     """
     Extract and optionally store commitments from text.
 
@@ -622,12 +630,12 @@ def extract_commitments(user_id: str, text: str, source_channel: Optional[str] =
         "data": {
             "extracted_commitments": extracted,
             "count": len(extracted),
-            "note": "These are pattern-based extractions with low confidence. Use hardprompts/memory/commitment_detection.md with an LLM for better results."
-        }
+            "note": "These are pattern-based extractions with low confidence. Use hardprompts/memory/commitment_detection.md with an LLM for better results.",
+        },
     }
 
 
-def get_hardprompt_template(text: str) -> Dict[str, Any]:
+def get_hardprompt_template(text: str) -> dict[str, Any]:
     """
     Get the commitment detection hardprompt filled with text.
 
@@ -638,7 +646,7 @@ def get_hardprompt_template(text: str) -> Dict[str, Any]:
         dict with filled template ready for LLM
     """
     if HARDPROMPT_PATH.exists():
-        with open(HARDPROMPT_PATH, 'r') as f:
+        with open(HARDPROMPT_PATH) as f:
             template = f.read()
     else:
         template = """Extract commitments from the following text.
@@ -664,62 +672,69 @@ Text to analyze:
 {{text}}
 """
 
-    filled_template = template.replace('{{text}}', text)
+    filled_template = template.replace("{{text}}", text)
 
-    return {
-        "success": True,
-        "data": {
-            "template": filled_template
-        }
-    }
+    return {"success": True, "data": {"template": filled_template}}
 
 
-def get_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
+def get_stats(user_id: str | None = None) -> dict[str, Any]:
     """Get commitment statistics."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    base_condition = 'user_id = ?' if user_id else '1=1'
+    base_condition = "user_id = ?" if user_id else "1=1"
     params = [user_id] if user_id else []
 
     # Total by status
-    cursor.execute(f'''
+    cursor.execute(
+        f"""
         SELECT status, COUNT(*) as count
         FROM commitments
         WHERE {base_condition}
         GROUP BY status
-    ''', params)
-    by_status = {row['status']: row['count'] for row in cursor.fetchall()}
+    """,
+        params,
+    )
+    by_status = {row["status"]: row["count"] for row in cursor.fetchall()}
 
     # Active count
-    active = by_status.get('active', 0)
+    active = by_status.get("active", 0)
 
     # Overdue count
     if user_id:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT COUNT(*) as count
             FROM commitments
             WHERE user_id = ? AND status = 'active' AND due_date IS NOT NULL AND due_date < ?
-        ''', (user_id, datetime.now().isoformat()))
+        """,
+            (user_id, datetime.now().isoformat()),
+        )
     else:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT COUNT(*) as count
             FROM commitments
             WHERE status = 'active' AND due_date IS NOT NULL AND due_date < ?
-        ''', (datetime.now().isoformat(),))
-    overdue = cursor.fetchone()['count']
+        """,
+            (datetime.now().isoformat(),),
+        )
+    overdue = cursor.fetchone()["count"]
 
     # Completion rate (last 30 days)
     thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
-    cursor.execute(f'''
+    cursor.execute(
+        f"""
         SELECT status, COUNT(*) as count
         FROM commitments
         WHERE {base_condition} AND created_at >= ?
         GROUP BY status
-    ''', params + [thirty_days_ago])
-    recent_by_status = {row['status']: row['count'] for row in cursor.fetchall()}
+    """,
+        params + [thirty_days_ago],
+    )
+    recent_by_status = {row["status"]: row["count"] for row in cursor.fetchall()}
 
-    recent_completed = recent_by_status.get('completed', 0)
+    recent_completed = recent_by_status.get("completed", 0)
     recent_total = sum(recent_by_status.values())
     completion_rate = round(recent_completed / recent_total * 100, 1) if recent_total > 0 else 0
 
@@ -731,16 +746,14 @@ def get_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
             "by_status": by_status,
             "active_commitments": active,
             "overdue_commitments": overdue,
-            "completion_rate_30d": completion_rate
-        }
+            "completion_rate_30d": completion_rate,
+        },
     }
 
 
 def cleanup_old_commitments(
-    max_age_days: int = 30,
-    status: str = 'active',
-    dry_run: bool = False
-) -> Dict[str, Any]:
+    max_age_days: int = 30, status: str = "active", dry_run: bool = False
+) -> dict[str, Any]:
     """
     Archive old unfulfilled commitments.
 
@@ -757,12 +770,15 @@ def cleanup_old_commitments(
 
     cutoff = (datetime.now() - timedelta(days=max_age_days)).isoformat()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT COUNT(*) as count
         FROM commitments
         WHERE status = ? AND created_at < ?
-    ''', (status, cutoff))
-    count = cursor.fetchone()['count']
+    """,
+        (status, cutoff),
+    )
+    count = cursor.fetchone()["count"]
 
     if dry_run:
         conn.close()
@@ -770,15 +786,18 @@ def cleanup_old_commitments(
             "success": True,
             "message": f"Would archive {count} {status} commitments older than {max_age_days} days",
             "count": count,
-            "dry_run": True
+            "dry_run": True,
         }
 
     # Mark as cancelled with note
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE commitments
         SET status = 'cancelled', notes = COALESCE(notes || ' | ', '') || 'Auto-archived after ' || ? || ' days'
         WHERE status = ? AND created_at < ?
-    ''', (max_age_days, status, cutoff))
+    """,
+        (max_age_days, status, cutoff),
+    )
 
     conn.commit()
     conn.close()
@@ -786,15 +805,15 @@ def cleanup_old_commitments(
     return {
         "success": True,
         "message": f"Archived {count} {status} commitments older than {max_age_days} days",
-        "count": count
+        "count": count,
     }
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Commitments Tracker - Track promises so nothing falls through the cracks',
+        description="Commitments Tracker - Track promises so nothing falls through the cracks",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
     # Add a commitment
     %(prog)s --action add --user alice \\
@@ -814,50 +833,67 @@ Examples:
     # Extract commitments from text
     %(prog)s --action extract --user alice \\
         --text "I'll send you the docs tomorrow"
-        '''
+        """,
     )
 
-    parser.add_argument('--action', required=True,
-                       choices=['add', 'list', 'get', 'complete', 'cancel',
-                               'due-soon', 'overdue', 'extract', 'template',
-                               'stats', 'cleanup', 'mark-reminded'],
-                       help='Action to perform')
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=[
+            "add",
+            "list",
+            "get",
+            "complete",
+            "cancel",
+            "due-soon",
+            "overdue",
+            "extract",
+            "template",
+            "stats",
+            "cleanup",
+            "mark-reminded",
+        ],
+        help="Action to perform",
+    )
 
     # Common args
-    parser.add_argument('--user', help='User ID')
-    parser.add_argument('--id', help='Commitment ID')
+    parser.add_argument("--user", help="User ID")
+    parser.add_argument("--id", help="Commitment ID")
 
     # Add action args
-    parser.add_argument('--content', help='Commitment content')
-    parser.add_argument('--target-person', help='Who the commitment is to')
-    parser.add_argument('--due-date', help='Due date (various formats)')
-    parser.add_argument('--source-channel', help='Source channel')
-    parser.add_argument('--source-message-id', help='Source message ID')
-    parser.add_argument('--notes', help='Additional notes')
+    parser.add_argument("--content", help="Commitment content")
+    parser.add_argument("--target-person", help="Who the commitment is to")
+    parser.add_argument("--due-date", help="Due date (various formats)")
+    parser.add_argument("--source-channel", help="Source channel")
+    parser.add_argument("--source-message-id", help="Source message ID")
+    parser.add_argument("--notes", help="Additional notes")
 
     # List args
-    parser.add_argument('--status', choices=VALID_STATUSES, help='Filter by status')
-    parser.add_argument('--limit', type=int, default=50, help='Max results')
-    parser.add_argument('--offset', type=int, default=0, help='Pagination offset')
-    parser.add_argument('--group-by-person', action='store_true',
-                       help='Group results by target person')
+    parser.add_argument("--status", choices=VALID_STATUSES, help="Filter by status")
+    parser.add_argument("--limit", type=int, default=50, help="Max results")
+    parser.add_argument("--offset", type=int, default=0, help="Pagination offset")
+    parser.add_argument(
+        "--group-by-person", action="store_true", help="Group results by target person"
+    )
 
     # Due soon args
-    parser.add_argument('--hours', type=int, default=24, help='Hours to look ahead')
+    parser.add_argument("--hours", type=int, default=24, help="Hours to look ahead")
 
     # Extract args
-    parser.add_argument('--text', help='Text to extract commitments from')
+    parser.add_argument("--text", help="Text to extract commitments from")
 
     # Cleanup args
-    parser.add_argument('--max-age-days', type=int, default=30,
-                       help='Archive commitments older than this')
-    parser.add_argument('--dry-run', action='store_true',
-                       help='Show what would be done without doing it')
+    parser.add_argument(
+        "--max-age-days", type=int, default=30, help="Archive commitments older than this"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be done without doing it"
+    )
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'add':
+    if args.action == "add":
         if not args.user:
             print("Error: --user required for add")
             sys.exit(1)
@@ -872,10 +908,10 @@ Examples:
             due_date=args.due_date,
             source_message_id=args.source_message_id,
             source_channel=args.source_channel,
-            notes=args.notes
+            notes=args.notes,
         )
 
-    elif args.action == 'list':
+    elif args.action == "list":
         if not args.user:
             print("Error: --user required for list")
             sys.exit(1)
@@ -886,45 +922,45 @@ Examples:
             target_person=args.target_person,
             limit=args.limit,
             offset=args.offset,
-            group_by_person=args.group_by_person
+            group_by_person=args.group_by_person,
         )
 
-    elif args.action == 'get':
+    elif args.action == "get":
         if not args.id:
             print("Error: --id required for get")
             sys.exit(1)
 
         result = get_commitment(args.id)
 
-    elif args.action == 'complete':
+    elif args.action == "complete":
         if not args.id:
             print("Error: --id required for complete")
             sys.exit(1)
 
         result = complete_commitment(args.id, notes=args.notes)
 
-    elif args.action == 'cancel':
+    elif args.action == "cancel":
         if not args.id:
             print("Error: --id required for cancel")
             sys.exit(1)
 
         result = cancel_commitment(args.id, notes=args.notes)
 
-    elif args.action == 'due-soon':
+    elif args.action == "due-soon":
         if not args.user:
             print("Error: --user required for due-soon")
             sys.exit(1)
 
         result = get_due_soon(args.user, hours=args.hours)
 
-    elif args.action == 'overdue':
+    elif args.action == "overdue":
         if not args.user:
             print("Error: --user required for overdue")
             sys.exit(1)
 
         result = get_overdue(args.user)
 
-    elif args.action == 'extract':
+    elif args.action == "extract":
         if not args.user:
             print("Error: --user required for extract")
             sys.exit(1)
@@ -933,29 +969,25 @@ Examples:
             sys.exit(1)
 
         result = extract_commitments(
-            user_id=args.user,
-            text=args.text,
-            source_channel=args.source_channel
+            user_id=args.user, text=args.text, source_channel=args.source_channel
         )
 
-    elif args.action == 'template':
+    elif args.action == "template":
         if not args.text:
             print("Error: --text required for template")
             sys.exit(1)
 
         result = get_hardprompt_template(args.text)
 
-    elif args.action == 'stats':
+    elif args.action == "stats":
         result = get_stats(user_id=args.user)
 
-    elif args.action == 'cleanup':
+    elif args.action == "cleanup":
         result = cleanup_old_commitments(
-            max_age_days=args.max_age_days,
-            status=args.status or 'active',
-            dry_run=args.dry_run
+            max_age_days=args.max_age_days, status=args.status or "active", dry_run=args.dry_run
         )
 
-    elif args.action == 'mark-reminded':
+    elif args.action == "mark-reminded":
         if not args.id:
             print("Error: --id required for mark-reminded")
             sys.exit(1)
@@ -963,7 +995,7 @@ Examples:
         result = mark_reminder_sent(args.id)
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")

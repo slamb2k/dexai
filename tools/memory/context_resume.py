@@ -31,16 +31,16 @@ Output:
     JSON result with success status, resumption prompt, and suggested action
 """
 
-import os
-import sys
+import argparse
 import json
 import sqlite3
-import argparse
-from datetime import datetime, timedelta
+import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 import yaml
+
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -49,10 +49,10 @@ CONFIG_PATH = PROJECT_ROOT / "args" / "working_memory.yaml"
 HARDPROMPT_PATH = PROJECT_ROOT / "hardprompts" / "memory" / "resumption_prompt.md"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load working memory configuration."""
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, 'r') as f:
+        with open(CONFIG_PATH) as f:
             return yaml.safe_load(f) or {}
     return {}
 
@@ -65,15 +65,15 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
-def row_to_dict(row) -> Optional[Dict]:
+def row_to_dict(row) -> dict | None:
     """Convert sqlite3.Row to dictionary."""
     if row is None:
         return None
     d = dict(row)
     # Parse JSON state if present
-    if 'state' in d and d['state']:
+    if d.get("state"):
         try:
-            d['state'] = json.loads(d['state'])
+            d["state"] = json.loads(d["state"])
         except json.JSONDecodeError:
             pass
     return d
@@ -82,7 +82,7 @@ def row_to_dict(row) -> Optional[Dict]:
 def load_hardprompt() -> str:
     """Load the resumption prompt template."""
     if HARDPROMPT_PATH.exists():
-        with open(HARDPROMPT_PATH, 'r') as f:
+        with open(HARDPROMPT_PATH) as f:
             return f.read()
     # Fallback template if hardprompt doesn't exist
     return """Generate a friendly, forward-facing resumption prompt.
@@ -101,18 +101,21 @@ Rules:
 """
 
 
-def get_latest_snapshot(user_id: str) -> Optional[Dict]:
+def get_latest_snapshot(user_id: str) -> dict | None:
     """Get the most recent context snapshot for a user."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM context_snapshots
         WHERE user_id = ?
           AND (expires_at IS NULL OR expires_at > ?)
         ORDER BY captured_at DESC
         LIMIT 1
-    ''', (user_id, datetime.now().isoformat()))
+    """,
+        (user_id, datetime.now().isoformat()),
+    )
 
     row = cursor.fetchone()
     conn.close()
@@ -123,21 +126,21 @@ def get_latest_snapshot(user_id: str) -> Optional[Dict]:
     snapshot = row_to_dict(row)
 
     # Calculate age
-    captured_at = datetime.fromisoformat(snapshot['captured_at'])
+    captured_at = datetime.fromisoformat(snapshot["captured_at"])
     age = datetime.now() - captured_at
-    snapshot['age_minutes'] = int(age.total_seconds() / 60)
-    snapshot['age_hours'] = round(age.total_seconds() / 3600, 1)
-    snapshot['age_days'] = round(age.total_seconds() / 86400, 1)
+    snapshot["age_minutes"] = int(age.total_seconds() / 60)
+    snapshot["age_hours"] = round(age.total_seconds() / 3600, 1)
+    snapshot["age_days"] = round(age.total_seconds() / 86400, 1)
 
     return snapshot
 
 
-def get_snapshot_by_id(snapshot_id: str) -> Optional[Dict]:
+def get_snapshot_by_id(snapshot_id: str) -> dict | None:
     """Get a specific context snapshot."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM context_snapshots WHERE id = ?', (snapshot_id,))
+    cursor.execute("SELECT * FROM context_snapshots WHERE id = ?", (snapshot_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -147,36 +150,39 @@ def get_snapshot_by_id(snapshot_id: str) -> Optional[Dict]:
     snapshot = row_to_dict(row)
 
     # Calculate age
-    captured_at = datetime.fromisoformat(snapshot['captured_at'])
+    captured_at = datetime.fromisoformat(snapshot["captured_at"])
     age = datetime.now() - captured_at
-    snapshot['age_minutes'] = int(age.total_seconds() / 60)
-    snapshot['age_hours'] = round(age.total_seconds() / 3600, 1)
-    snapshot['age_days'] = round(age.total_seconds() / 86400, 1)
+    snapshot["age_minutes"] = int(age.total_seconds() / 60)
+    snapshot["age_hours"] = round(age.total_seconds() / 3600, 1)
+    snapshot["age_days"] = round(age.total_seconds() / 86400, 1)
 
     return snapshot
 
 
-def get_recent_commitments(user_id: str, limit: int = 3) -> List[Dict]:
+def get_recent_commitments(user_id: str, limit: int = 3) -> list[dict]:
     """Get recent active commitments for context."""
     conn = get_connection()
     cursor = conn.cursor()
 
     # Check if commitments table exists
-    cursor.execute('''
+    cursor.execute("""
         SELECT name FROM sqlite_master
         WHERE type='table' AND name='commitments'
-    ''')
+    """)
     if not cursor.fetchone():
         conn.close()
         return []
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT id, content, target_person, due_date, created_at
         FROM commitments
         WHERE user_id = ? AND status = 'active'
         ORDER BY created_at DESC
         LIMIT ?
-    ''', (user_id, limit))
+    """,
+        (user_id, limit),
+    )
 
     commitments = [dict(row) for row in cursor.fetchall()]
     conn.close()
@@ -202,7 +208,7 @@ def format_age_description(age_minutes: int) -> str:
         return f"{days} days ago"
 
 
-def generate_resumption_prompt(snapshot: Dict, config: Dict) -> Dict[str, Any]:
+def generate_resumption_prompt(snapshot: dict, config: dict) -> dict[str, Any]:
     """
     Generate an ADHD-friendly resumption prompt from a context snapshot.
 
@@ -210,22 +216,25 @@ def generate_resumption_prompt(snapshot: Dict, config: Dict) -> Dict[str, Any]:
     For LLM-enhanced generation, the caller can use the hardprompt template
     with their preferred LLM.
     """
-    state = snapshot.get('state', {})
-    age_minutes = snapshot.get('age_minutes', 0)
+    state = snapshot.get("state", {})
+    age_minutes = snapshot.get("age_minutes", 0)
 
-    active_file = state.get('active_file', '')
-    last_action = state.get('last_action', '')
-    next_step = state.get('next_step', '')
-    channel = state.get('channel', '')
+    active_file = state.get("active_file", "")
+    last_action = state.get("last_action", "")
+    next_step = state.get("next_step", "")
+    channel = state.get("channel", "")
 
     age_description = format_age_description(age_minutes)
 
     # Check if context is stale
-    max_age_hours = config.get('working_memory', {}).get('resumption', {}).get('max_context_age_hours', 168)
-    is_stale = snapshot.get('age_hours', 0) > max_age_hours
-    stale_message = config.get('working_memory', {}).get('resumption', {}).get(
-        'stale_context_message',
-        "This is from a while ago - still relevant?"
+    max_age_hours = (
+        config.get("working_memory", {}).get("resumption", {}).get("max_context_age_hours", 168)
+    )
+    is_stale = snapshot.get("age_hours", 0) > max_age_hours
+    stale_message = (
+        config.get("working_memory", {})
+        .get("resumption", {})
+        .get("stale_context_message", "This is from a while ago - still relevant?")
     )
 
     # Build resumption prompt components
@@ -239,7 +248,9 @@ def generate_resumption_prompt(snapshot: Dict, config: Dict) -> Dict[str, Any]:
         else:
             prompt_parts.append(f"You were working on {file_name}.")
     elif last_action:
-        prompt_parts.append(f"You were {last_action.lower() if last_action[0].isupper() else last_action}.")
+        prompt_parts.append(
+            f"You were {last_action.lower() if last_action[0].isupper() else last_action}."
+        )
 
     # Next step suggestion
     if next_step:
@@ -266,11 +277,11 @@ def generate_resumption_prompt(snapshot: Dict, config: Dict) -> Dict[str, Any]:
         "resumption_prompt": resumption_prompt,
         "suggested_action": suggested_action,
         "is_stale": is_stale,
-        "age_description": age_description
+        "age_description": age_description,
     }
 
 
-def fetch_context(user_id: str, snapshot_id: Optional[str] = None) -> Dict[str, Any]:
+def fetch_context(user_id: str, snapshot_id: str | None = None) -> dict[str, Any]:
     """
     Fetch context snapshot without generating prompt.
 
@@ -291,20 +302,15 @@ def fetch_context(user_id: str, snapshot_id: Optional[str] = None) -> Dict[str, 
             return {
                 "success": True,
                 "data": None,
-                "message": f"No context snapshots found for user {user_id}"
+                "message": f"No context snapshots found for user {user_id}",
             }
 
-    return {
-        "success": True,
-        "data": snapshot
-    }
+    return {"success": True, "data": snapshot}
 
 
 def resume_context(
-    user_id: str,
-    snapshot_id: Optional[str] = None,
-    include_commitments: bool = True
-) -> Dict[str, Any]:
+    user_id: str, snapshot_id: str | None = None, include_commitments: bool = True
+) -> dict[str, Any]:
     """
     Generate a resumption prompt for a user.
 
@@ -332,9 +338,9 @@ def resume_context(
                     "snapshot_id": None,
                     "resumption_prompt": "No recent context found. What would you like to work on?",
                     "suggested_action": None,
-                    "context": None
+                    "context": None,
                 },
-                "message": "No context snapshots found"
+                "message": "No context snapshots found",
             }
 
     # Generate resumption prompt
@@ -343,26 +349,30 @@ def resume_context(
     # Get commitments if configured
     commitments = []
     if include_commitments:
-        include_commits_config = config.get('working_memory', {}).get('resumption', {}).get('include_recent_commits', True)
+        include_commits_config = (
+            config.get("working_memory", {})
+            .get("resumption", {})
+            .get("include_recent_commits", True)
+        )
         if include_commits_config:
             commitments = get_recent_commitments(user_id, limit=3)
 
     return {
         "success": True,
         "data": {
-            "snapshot_id": snapshot['id'],
-            "age_minutes": snapshot.get('age_minutes'),
-            "age_description": prompt_data['age_description'],
-            "is_stale": prompt_data['is_stale'],
-            "resumption_prompt": prompt_data['resumption_prompt'],
-            "suggested_action": prompt_data['suggested_action'],
-            "context": snapshot.get('state'),
-            "recent_commitments": commitments if commitments else None
-        }
+            "snapshot_id": snapshot["id"],
+            "age_minutes": snapshot.get("age_minutes"),
+            "age_description": prompt_data["age_description"],
+            "is_stale": prompt_data["is_stale"],
+            "resumption_prompt": prompt_data["resumption_prompt"],
+            "suggested_action": prompt_data["suggested_action"],
+            "context": snapshot.get("state"),
+            "recent_commitments": commitments if commitments else None,
+        },
     }
 
 
-def get_hardprompt_template(user_id: str, snapshot_id: Optional[str] = None) -> Dict[str, Any]:
+def get_hardprompt_template(user_id: str, snapshot_id: str | None = None) -> dict[str, Any]:
     """
     Get the hardprompt template filled with context data.
 
@@ -386,22 +396,26 @@ def get_hardprompt_template(user_id: str, snapshot_id: Optional[str] = None) -> 
         if not snapshot:
             return {"success": False, "error": "No context snapshots found"}
 
-    state = snapshot.get('state', {})
+    state = snapshot.get("state", {})
 
     # Load and fill template
     template = load_hardprompt()
-    filled_template = template.replace('{{active_file}}', state.get('active_file') or 'Not specified')
-    filled_template = filled_template.replace('{{last_action}}', state.get('last_action') or 'Not specified')
-    filled_template = filled_template.replace('{{next_step}}', state.get('next_step') or 'Not specified')
-    filled_template = filled_template.replace('{{age_description}}', format_age_description(snapshot.get('age_minutes', 0)))
+    filled_template = template.replace(
+        "{{active_file}}", state.get("active_file") or "Not specified"
+    )
+    filled_template = filled_template.replace(
+        "{{last_action}}", state.get("last_action") or "Not specified"
+    )
+    filled_template = filled_template.replace(
+        "{{next_step}}", state.get("next_step") or "Not specified"
+    )
+    filled_template = filled_template.replace(
+        "{{age_description}}", format_age_description(snapshot.get("age_minutes", 0))
+    )
 
     return {
         "success": True,
-        "data": {
-            "template": filled_template,
-            "snapshot_id": snapshot['id'],
-            "context": state
-        }
+        "data": {"template": filled_template, "snapshot_id": snapshot["id"], "context": state},
     }
 
 
@@ -409,7 +423,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Context Resume - Generate ADHD-friendly "you were here" prompts',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
     # Generate resumption prompt for user
     %(prog)s --action resume --user alice
@@ -422,42 +436,37 @@ Examples:
 
     # Get hardprompt template for LLM generation
     %(prog)s --action template --user alice
-        '''
+        """,
     )
 
-    parser.add_argument('--action', required=True,
-                       choices=['resume', 'fetch', 'template'],
-                       help='Action to perform')
+    parser.add_argument(
+        "--action", required=True, choices=["resume", "fetch", "template"], help="Action to perform"
+    )
 
-    parser.add_argument('--user', required=True, help='User ID')
-    parser.add_argument('--snapshot-id', help='Specific snapshot ID to use')
-    parser.add_argument('--no-commitments', action='store_true',
-                       help='Do not include recent commitments')
+    parser.add_argument("--user", required=True, help="User ID")
+    parser.add_argument("--snapshot-id", help="Specific snapshot ID to use")
+    parser.add_argument(
+        "--no-commitments", action="store_true", help="Do not include recent commitments"
+    )
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'resume':
+    if args.action == "resume":
         result = resume_context(
             user_id=args.user,
             snapshot_id=args.snapshot_id,
-            include_commitments=not args.no_commitments
+            include_commitments=not args.no_commitments,
         )
 
-    elif args.action == 'fetch':
-        result = fetch_context(
-            user_id=args.user,
-            snapshot_id=args.snapshot_id
-        )
+    elif args.action == "fetch":
+        result = fetch_context(user_id=args.user, snapshot_id=args.snapshot_id)
 
-    elif args.action == 'template':
-        result = get_hardprompt_template(
-            user_id=args.user,
-            snapshot_id=args.snapshot_id
-        )
+    elif args.action == "template":
+        result = get_hardprompt_template(user_id=args.user, snapshot_id=args.snapshot_id)
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")

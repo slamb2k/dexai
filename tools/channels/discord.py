@@ -23,15 +23,15 @@ import json
 import secrets
 import sys
 import uuid
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.channels.models import UnifiedMessage, Attachment, ChannelUser
+from tools.channels.models import Attachment, ChannelUser, UnifiedMessage
 from tools.channels.router import ChannelAdapter, get_router
 
 
@@ -49,7 +49,7 @@ class DiscordAdapter(ChannelAdapter):
 
     @property
     def name(self) -> str:
-        return 'discord'
+        return "discord"
 
     def __init__(self, token: str):
         """
@@ -74,9 +74,7 @@ class DiscordAdapter(ChannelAdapter):
             import discord
             from discord import app_commands
         except ImportError:
-            raise ImportError(
-                "discord.py required. Install with: pip install discord.py"
-            )
+            raise ImportError("discord.py required. Install with: pip install discord.py")
 
         # Setup intents
         intents = discord.Intents.default()
@@ -97,15 +95,13 @@ class DiscordAdapter(ChannelAdapter):
             # Log startup
             try:
                 from tools.security import audit
+
                 audit.log_event(
-                    event_type='system',
-                    action='discord_connected',
-                    channel='discord',
-                    status='success',
-                    details={
-                        'bot_id': self.client.user.id,
-                        'bot_name': self.client.user.name
-                    }
+                    event_type="system",
+                    action="discord_connected",
+                    channel="discord",
+                    status="success",
+                    details={"bot_id": self.client.user.id, "bot_name": self.client.user.name},
                 )
             except Exception:
                 pass
@@ -156,16 +152,17 @@ class DiscordAdapter(ChannelAdapter):
         # Log shutdown
         try:
             from tools.security import audit
+
             audit.log_event(
-                event_type='system',
-                action='discord_disconnected',
-                channel='discord',
-                status='success'
+                event_type="system",
+                action="discord_disconnected",
+                channel="discord",
+                status="success",
             )
         except Exception:
             pass
 
-    async def send_message(self, message: UnifiedMessage) -> Dict[str, Any]:
+    async def send_message(self, message: UnifiedMessage) -> dict[str, Any]:
         """
         Send message to Discord.
 
@@ -176,10 +173,8 @@ class DiscordAdapter(ChannelAdapter):
             Dict with success status and message ID
         """
         try:
-            import discord
-
             # Get channel or user to send to
-            channel_id = message.metadata.get('discord_channel_id')
+            channel_id = message.metadata.get("discord_channel_id")
             user_id = message.channel_user_id
 
             target = None
@@ -195,18 +190,18 @@ class DiscordAdapter(ChannelAdapter):
                     pass
 
             if not target:
-                return {'success': False, 'error': 'no_target_channel'}
+                return {"success": False, "error": "no_target_channel"}
 
             result = await target.send(message.content)
 
             return {
-                'success': True,
-                'message_id': str(result.id),
-                'channel_id': str(result.channel.id)
+                "success": True,
+                "message_id": str(result.id),
+                "channel_id": str(result.channel.id),
             }
 
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {"success": False, "error": str(e)}
 
     def to_unified(self, message) -> UnifiedMessage:
         """
@@ -223,62 +218,64 @@ class DiscordAdapter(ChannelAdapter):
         except ImportError:
             raise ImportError("discord.py required")
 
-        content_type = 'text'
+        content_type = "text"
         attachments = []
 
         # Handle attachments
         for attach in message.attachments:
-            if attach.content_type and attach.content_type.startswith('image'):
-                att_type = 'image'
-                if content_type == 'text':
-                    content_type = 'image'
-            elif attach.content_type and attach.content_type.startswith('audio'):
-                att_type = 'audio'
-            elif attach.content_type and attach.content_type.startswith('video'):
-                att_type = 'video'
+            if attach.content_type and attach.content_type.startswith("image"):
+                att_type = "image"
+                if content_type == "text":
+                    content_type = "image"
+            elif attach.content_type and attach.content_type.startswith("audio"):
+                att_type = "audio"
+            elif attach.content_type and attach.content_type.startswith("video"):
+                att_type = "video"
             else:
-                att_type = 'document'
+                att_type = "document"
 
-            attachments.append(Attachment(
-                id=str(attach.id),
-                type=att_type,
-                filename=attach.filename,
-                mime_type=attach.content_type or 'application/octet-stream',
-                size_bytes=attach.size,
-                url=attach.url
-            ))
+            attachments.append(
+                Attachment(
+                    id=str(attach.id),
+                    type=att_type,
+                    filename=attach.filename,
+                    mime_type=attach.content_type or "application/octet-stream",
+                    size_bytes=attach.size,
+                    url=attach.url,
+                )
+            )
 
         # Clean content (remove bot mention)
         content = message.content
         if self.client and self.client.user:
-            content = content.replace(f'<@{self.client.user.id}>', '').strip()
-            content = content.replace(f'<@!{self.client.user.id}>', '').strip()
+            content = content.replace(f"<@{self.client.user.id}>", "").strip()
+            content = content.replace(f"<@!{self.client.user.id}>", "").strip()
 
         # Determine conversation type
-        conv_type = 'dm' if isinstance(message.channel, discord.DMChannel) else 'channel'
+        conv_type = "dm" if isinstance(message.channel, discord.DMChannel) else "channel"
 
         return UnifiedMessage(
             id=str(uuid.uuid4()),
-            channel='discord',
+            channel="discord",
             channel_message_id=str(message.id),
             user_id=None,  # Resolved by router
             channel_user_id=str(message.author.id),
-            direction='inbound',
+            direction="inbound",
             content=content,
             content_type=content_type,
             attachments=attachments,
             reply_to=str(message.reference.message_id) if message.reference else None,
             timestamp=message.created_at,
             metadata={
-                'discord_channel_id': message.channel.id,
-                'discord_guild_id': message.guild.id if message.guild else None,
-                'discord_channel_type': conv_type,
-                'display_name': message.author.display_name,
-                'username': message.author.name
-            }
+                "discord_channel_id": message.channel.id,
+                "discord_guild_id": message.guild.id if message.guild else None,
+                "discord_channel_type": conv_type,
+                "display_name": message.author.display_name,
+                "username": message.author.name,
+            },
         )
 
-    def from_unified(self, message: UnifiedMessage) -> Dict[str, Any]:
+    def from_unified(self, message: UnifiedMessage) -> dict[str, Any]:
         """
         Convert UnifiedMessage to Discord send parameters.
 
@@ -289,8 +286,8 @@ class DiscordAdapter(ChannelAdapter):
             Dict with Discord API parameters
         """
         return {
-            'content': message.content,
-            'channel_id': message.metadata.get('discord_channel_id')
+            "content": message.content,
+            "channel_id": message.metadata.get("discord_channel_id"),
         }
 
     # =========================================================================
@@ -306,21 +303,15 @@ class DiscordAdapter(ChannelAdapter):
         unified = self.to_unified(message)
         result = await self.router.route_inbound(unified)
 
-        if not result.get('success'):
-            reason = result.get('reason', 'unknown')
+        if not result.get("success"):
+            reason = result.get("reason", "unknown")
 
-            if reason == 'user_not_paired':
-                await message.reply(
-                    "Please pair your account first using `/pair`"
-                )
-            elif reason == 'rate_limited':
-                await message.reply(
-                    "You're sending messages too quickly. Please wait."
-                )
-            elif reason == 'content_blocked':
-                await message.reply(
-                    "Your message could not be processed."
-                )
+            if reason == "user_not_paired":
+                await message.reply("Please pair your account first using `/pair`")
+            elif reason == "rate_limited":
+                await message.reply("You're sending messages too quickly. Please wait.")
+            elif reason == "content_blocked":
+                await message.reply("Your message could not be processed.")
 
     async def _handle_mention(self, message) -> None:
         """Handle @mentions."""
@@ -331,17 +322,13 @@ class DiscordAdapter(ChannelAdapter):
         unified = self.to_unified(message)
         result = await self.router.route_inbound(unified)
 
-        if not result.get('success'):
-            reason = result.get('reason', 'unknown')
+        if not result.get("success"):
+            reason = result.get("reason", "unknown")
 
-            if reason == 'user_not_paired':
-                await message.reply(
-                    "Please pair your account first using `/pair`"
-                )
-            elif reason == 'rate_limited':
-                await message.reply(
-                    "You're sending messages too quickly. Please wait."
-                )
+            if reason == "user_not_paired":
+                await message.reply("Please pair your account first using `/pair`")
+            elif reason == "rate_limited":
+                await message.reply("You're sending messages too quickly. Please wait.")
 
     # =========================================================================
     # Slash Command Handlers
@@ -353,47 +340,39 @@ class DiscordAdapter(ChannelAdapter):
         await interaction.response.defer()
 
         if not self.router:
-            await interaction.followup.send(
-                "System not ready. Please try again later."
-            )
+            await interaction.followup.send("System not ready. Please try again later.")
             return
 
         # Create message from question
         unified = UnifiedMessage(
             id=str(uuid.uuid4()),
-            channel='discord',
+            channel="discord",
             channel_message_id=str(interaction.id),
             user_id=None,
             channel_user_id=str(interaction.user.id),
-            direction='inbound',
+            direction="inbound",
             content=question,
-            content_type='text',
+            content_type="text",
             metadata={
-                'discord_channel_id': interaction.channel_id,
-                'discord_guild_id': interaction.guild_id,
-                'display_name': interaction.user.display_name,
-                'username': interaction.user.name,
-                'is_slash_command': True
-            }
+                "discord_channel_id": interaction.channel_id,
+                "discord_guild_id": interaction.guild_id,
+                "display_name": interaction.user.display_name,
+                "username": interaction.user.name,
+                "is_slash_command": True,
+            },
         )
 
         result = await self.router.route_inbound(unified)
 
-        if not result.get('success'):
-            reason = result.get('reason', 'unknown')
+        if not result.get("success"):
+            reason = result.get("reason", "unknown")
 
-            if reason == 'user_not_paired':
-                await interaction.followup.send(
-                    "Please pair your account first using `/pair`"
-                )
-            elif reason == 'rate_limited':
-                await interaction.followup.send(
-                    "You're sending messages too quickly. Please wait."
-                )
+            if reason == "user_not_paired":
+                await interaction.followup.send("Please pair your account first using `/pair`")
+            elif reason == "rate_limited":
+                await interaction.followup.send("You're sending messages too quickly. Please wait.")
             else:
-                await interaction.followup.send(
-                    "Your question has been received."
-                )
+                await interaction.followup.send("Your question has been received.")
         else:
             await interaction.followup.send(
                 "Your question has been received and is being processed."
@@ -409,15 +388,15 @@ class DiscordAdapter(ChannelAdapter):
             from tools.channels import inbox
 
             # Get existing user or create new one
-            user = inbox.get_user_by_channel('discord', channel_user_id)
+            user = inbox.get_user_by_channel("discord", channel_user_id)
 
             if not user:
                 user = ChannelUser(
                     id=ChannelUser.generate_id(),
-                    channel='discord',
+                    channel="discord",
                     channel_user_id=channel_user_id,
                     display_name=interaction.user.display_name,
-                    username=interaction.user.name
+                    username=interaction.user.name,
                 )
                 inbox.create_or_update_user(user)
             else:
@@ -427,30 +406,28 @@ class DiscordAdapter(ChannelAdapter):
             # Create pairing code (10 min TTL)
             result = inbox.create_pairing_code(
                 user_id=user.id,
-                channel='discord',
+                channel="discord",
                 channel_user_id=channel_user_id,
                 code=code,
-                ttl_seconds=600
+                ttl_seconds=600,
             )
 
-            if result.get('success'):
+            if result.get("success"):
                 await interaction.response.send_message(
                     f"Your pairing code:\n\n"
                     f"**`{code}`**\n\n"
                     f"Enter this code in your main interface to link accounts.\n"
                     f"Expires in 10 minutes.",
-                    ephemeral=True
+                    ephemeral=True,
                 )
             else:
                 await interaction.response.send_message(
-                    "Could not generate pairing code. Please try again.",
-                    ephemeral=True
+                    "Could not generate pairing code. Please try again.", ephemeral=True
                 )
 
-        except Exception as e:
+        except Exception:
             await interaction.response.send_message(
-                "Error generating pairing code. Please try again.",
-                ephemeral=True
+                "Error generating pairing code. Please try again.", ephemeral=True
             )
 
     async def _handle_help(self, interaction) -> None:
@@ -458,9 +435,7 @@ class DiscordAdapter(ChannelAdapter):
         import discord
 
         embed = discord.Embed(
-            title="DexAI Help",
-            description="Your AI assistant for adulting tasks",
-            color=0x5865F2
+            title="DexAI Help", description="Your AI assistant for adulting tasks", color=0x5865F2
         )
 
         embed.add_field(
@@ -471,7 +446,7 @@ class DiscordAdapter(ChannelAdapter):
                 "`/help` - Show this help\n"
                 "`/status` - Check connection"
             ),
-            inline=False
+            inline=False,
         )
 
         embed.add_field(
@@ -481,7 +456,7 @@ class DiscordAdapter(ChannelAdapter):
                 "@mention me in a channel to ask questions\n"
                 "Attach files for context"
             ),
-            inline=False
+            inline=False,
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -492,10 +467,13 @@ class DiscordAdapter(ChannelAdapter):
 
         try:
             from tools.channels import inbox
-            user = inbox.get_user_by_channel('discord', channel_user_id)
+
+            user = inbox.get_user_by_channel("discord", channel_user_id)
 
             if user:
-                is_paired = user.is_paired if hasattr(user, 'is_paired') else user.get('is_paired', False)
+                is_paired = (
+                    user.is_paired if hasattr(user, "is_paired") else user.get("is_paired", False)
+                )
                 status = "Paired and ready" if is_paired else "Not paired"
             else:
                 status = "New user"
@@ -505,13 +483,11 @@ class DiscordAdapter(ChannelAdapter):
                 f"**Account Status:** {status}\n"
                 f"**Platform:** Discord\n\n"
                 f"Use `/pair` to link your account.",
-                ephemeral=True
+                ephemeral=True,
             )
         except Exception:
             await interaction.response.send_message(
-                "**Connection Status:** Connected\n"
-                "**Platform:** Discord",
-                ephemeral=True
+                "**Connection Status:** Connected\n**Platform:** Discord", ephemeral=True
             )
 
 
@@ -519,7 +495,8 @@ class DiscordAdapter(ChannelAdapter):
 # Token Management
 # =============================================================================
 
-def get_discord_token() -> Optional[str]:
+
+def get_discord_token() -> str | None:
     """
     Get Discord bot token from vault.
 
@@ -528,18 +505,20 @@ def get_discord_token() -> Optional[str]:
     """
     try:
         from tools.security import vault
-        result = vault.get_secret('DISCORD_BOT_TOKEN', namespace='channels')
-        if result.get('success'):
-            return result.get('value')
+
+        result = vault.get_secret("DISCORD_BOT_TOKEN", namespace="channels")
+        if result.get("success"):
+            return result.get("value")
     except Exception:
         pass
 
     # Fallback to environment variable
     import os
-    return os.environ.get('DISCORD_BOT_TOKEN')
+
+    return os.environ.get("DISCORD_BOT_TOKEN")
 
 
-def set_discord_token(token: str) -> Dict[str, Any]:
+def set_discord_token(token: str) -> dict[str, Any]:
     """
     Store Discord bot token in vault.
 
@@ -551,14 +530,16 @@ def set_discord_token(token: str) -> Dict[str, Any]:
     """
     try:
         from tools.security import vault
-        return vault.set_secret('DISCORD_BOT_TOKEN', token, namespace='channels')
+
+        return vault.set_secret("DISCORD_BOT_TOKEN", token, namespace="channels")
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
 
 
 # =============================================================================
 # CLI Interface
 # =============================================================================
+
 
 async def run_adapter() -> None:
     """Run the Discord adapter."""
@@ -577,27 +558,27 @@ async def run_adapter() -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Discord Channel Adapter')
-    parser.add_argument('--start', action='store_true', help='Start the adapter')
-    parser.add_argument('--status', action='store_true', help='Check adapter status')
-    parser.add_argument('--set-token', metavar='TOKEN', help='Set bot token in vault')
-    parser.add_argument('--test', action='store_true', help='Test token validity')
+    parser = argparse.ArgumentParser(description="Discord Channel Adapter")
+    parser.add_argument("--start", action="store_true", help="Start the adapter")
+    parser.add_argument("--status", action="store_true", help="Check adapter status")
+    parser.add_argument("--set-token", metavar="TOKEN", help="Set bot token in vault")
+    parser.add_argument("--test", action="store_true", help="Test token validity")
 
     args = parser.parse_args()
 
     if args.set_token:
         result = set_discord_token(args.set_token)
-        if result.get('success'):
+        if result.get("success"):
             print("OK: Token stored in vault")
         else:
             print(f"ERROR: {result.get('error')}")
-        sys.exit(0 if result.get('success') else 1)
+        sys.exit(0 if result.get("success") else 1)
 
     elif args.status:
         token = get_discord_token()
         status = {
-            'token_configured': bool(token),
-            'token_preview': f"{token[:10]}..." if token else None
+            "token_configured": bool(token),
+            "token_preview": f"{token[:10]}..." if token else None,
         }
         print("OK" if token else "NOT CONFIGURED")
         print(json.dumps(status, indent=2))
@@ -619,9 +600,9 @@ def main():
                     @client.event
                     async def on_ready():
                         result = {
-                            'success': True,
-                            'bot_id': client.user.id,
-                            'bot_name': client.user.name
+                            "success": True,
+                            "bot_id": client.user.id,
+                            "bot_name": client.user.name,
                         }
                         print("OK")
                         print(json.dumps(result, indent=2))
@@ -631,7 +612,7 @@ def main():
 
                 except Exception as e:
                     print("ERROR")
-                    print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+                    print(json.dumps({"success": False, "error": str(e)}, indent=2))
 
             asyncio.run(test_token())
 
@@ -649,5 +630,5 @@ def main():
         parser.print_help()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -16,9 +16,9 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Set, Any, Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,9 @@ class ConnectionManager:
     """
 
     def __init__(self):
-        self.active_connections: Set[WebSocket] = set()
-        self._broadcast_queue: List[Dict] = []
-        self._broadcast_task: Optional[asyncio.Task] = None
+        self.active_connections: set[WebSocket] = set()
+        self._broadcast_queue: list[dict] = []
+        self._broadcast_task: asyncio.Task | None = None
         self._batch_interval_ms: int = 100
 
     async def connect(self, websocket: WebSocket):
@@ -63,35 +63,35 @@ class ConnectionManager:
 
             # Send current Dex state
             state = get_dex_state()
-            await websocket.send_json({
-                "event": "dex:state",
-                "data": {
-                    "state": state.get('state', 'idle'),
-                    "task": state.get('current_task'),
-                    "previous_state": None
-                },
-                "timestamp": datetime.now().isoformat()
-            })
+            await websocket.send_json(
+                {
+                    "event": "dex:state",
+                    "data": {
+                        "state": state.get("state", "idle"),
+                        "task": state.get("current_task"),
+                        "previous_state": None,
+                    },
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
             # Send current metrics summary
             stats = get_quick_stats()
-            await websocket.send_json({
-                "event": "metrics:update",
-                "data": stats,
-                "timestamp": datetime.now().isoformat()
-            })
+            await websocket.send_json(
+                {"event": "metrics:update", "data": stats, "timestamp": datetime.now().isoformat()}
+            )
 
         except Exception as e:
             logger.error(f"Error sending initial state: {e}")
 
-    async def broadcast(self, message: Dict):
+    async def broadcast(self, message: dict):
         """Broadcast a message to all connected clients."""
         if not self.active_connections:
             return
 
         # Ensure message has required fields
-        if 'timestamp' not in message:
-            message['timestamp'] = datetime.now().isoformat()
+        if "timestamp" not in message:
+            message["timestamp"] = datetime.now().isoformat()
 
         message_json = json.dumps(message, default=str)
 
@@ -108,7 +108,7 @@ class ConnectionManager:
         for conn in dead_connections:
             self.active_connections.discard(conn)
 
-    async def broadcast_batched(self, message: Dict):
+    async def broadcast_batched(self, message: dict):
         """
         Queue a message for batched broadcast.
 
@@ -133,11 +133,9 @@ class ConnectionManager:
         self._broadcast_queue.clear()
 
         # Send as batch
-        await self.broadcast({
-            "event": "batch",
-            "data": messages,
-            "timestamp": datetime.now().isoformat()
-        })
+        await self.broadcast(
+            {"event": "batch", "data": messages, "timestamp": datetime.now().isoformat()}
+        )
 
 
 # Global connection manager
@@ -145,10 +143,7 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    token: Optional[str] = Query(None)
-):
+async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(None)):
     """
     WebSocket endpoint for real-time updates.
 
@@ -173,27 +168,25 @@ async def websocket_endpoint(
             try:
                 data = await asyncio.wait_for(
                     websocket.receive_text(),
-                    timeout=30.0  # Ping interval
+                    timeout=30.0,  # Ping interval
                 )
 
                 # Handle client messages (e.g., ping)
                 try:
                     message = json.loads(data)
-                    if message.get('event') == 'ping':
-                        await websocket.send_json({
-                            "event": "pong",
-                            "timestamp": datetime.now().isoformat()
-                        })
+                    if message.get("event") == "ping":
+                        await websocket.send_json(
+                            {"event": "pong", "timestamp": datetime.now().isoformat()}
+                        )
                 except json.JSONDecodeError:
                     pass
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Send ping to keep connection alive
                 try:
-                    await websocket.send_json({
-                        "event": "ping",
-                        "timestamp": datetime.now().isoformat()
-                    })
+                    await websocket.send_json(
+                        {"event": "ping", "timestamp": datetime.now().isoformat()}
+                    )
                 except Exception:
                     break
 
@@ -208,10 +201,9 @@ async def websocket_endpoint(
 # Broadcast Functions (called by other parts of the application)
 # =============================================================================
 
+
 async def broadcast_state_change(
-    state: str,
-    task: Optional[str] = None,
-    previous_state: Optional[str] = None
+    state: str, task: str | None = None, previous_state: str | None = None
 ):
     """
     Broadcast Dex state change to all connected clients.
@@ -221,43 +213,35 @@ async def broadcast_state_change(
         task: Current task description (optional)
         previous_state: Previous state (optional)
     """
-    await manager.broadcast({
-        "event": "dex:state",
-        "data": {
-            "state": state,
-            "task": task,
-            "previous_state": previous_state
+    await manager.broadcast(
+        {
+            "event": "dex:state",
+            "data": {"state": state, "task": task, "previous_state": previous_state},
         }
-    })
+    )
 
 
-async def broadcast_activity(event_data: Dict):
+async def broadcast_activity(event_data: dict):
     """
     Broadcast new activity event to all connected clients.
 
     Args:
         event_data: Activity event dictionary
     """
-    await manager.broadcast({
-        "event": "activity:new",
-        "data": event_data
-    })
+    await manager.broadcast({"event": "activity:new", "data": event_data})
 
 
-async def broadcast_task_update(task_data: Dict):
+async def broadcast_task_update(task_data: dict):
     """
     Broadcast task status update to all connected clients.
 
     Args:
         task_data: Task data dictionary with id, status, etc.
     """
-    await manager.broadcast({
-        "event": "task:update",
-        "data": task_data
-    })
+    await manager.broadcast({"event": "task:update", "data": task_data})
 
 
-async def broadcast_metrics_update(metrics_data: Optional[Dict] = None):
+async def broadcast_metrics_update(metrics_data: dict | None = None):
     """
     Broadcast metrics update to all connected clients.
 
@@ -266,24 +250,21 @@ async def broadcast_metrics_update(metrics_data: Optional[Dict] = None):
     if metrics_data is None:
         try:
             from tools.dashboard.backend.database import get_quick_stats
+
             metrics_data = get_quick_stats()
         except Exception:
             metrics_data = {}
 
-    await manager.broadcast({
-        "event": "metrics:update",
-        "data": metrics_data
-    })
+    await manager.broadcast({"event": "metrics:update", "data": metrics_data})
 
 
 # =============================================================================
 # Sync Broadcast Functions (for non-async contexts)
 # =============================================================================
 
+
 def sync_broadcast_state_change(
-    state: str,
-    task: Optional[str] = None,
-    previous_state: Optional[str] = None
+    state: str, task: str | None = None, previous_state: str | None = None
 ):
     """
     Synchronous wrapper for broadcasting state changes.
@@ -300,7 +281,7 @@ def sync_broadcast_state_change(
         logger.debug(f"Could not broadcast state change: {e}")
 
 
-def sync_broadcast_activity(event_data: Dict):
+def sync_broadcast_activity(event_data: dict):
     """Synchronous wrapper for broadcasting activity events."""
     try:
         loop = asyncio.get_event_loop()
@@ -315,12 +296,12 @@ def sync_broadcast_activity(event_data: Dict):
 # Export router and manager
 ws_router = router
 __all__ = [
-    'ws_router',
-    'manager',
-    'broadcast_state_change',
-    'broadcast_activity',
-    'broadcast_task_update',
-    'broadcast_metrics_update',
-    'sync_broadcast_state_change',
-    'sync_broadcast_activity'
+    "broadcast_activity",
+    "broadcast_metrics_update",
+    "broadcast_state_change",
+    "broadcast_task_update",
+    "manager",
+    "sync_broadcast_activity",
+    "sync_broadcast_state_change",
+    "ws_router",
 ]

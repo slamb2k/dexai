@@ -26,24 +26,33 @@ Output:
     JSON result with success status and data
 """
 
-import os
-import sys
-import json
-import sqlite3
 import argparse
+import json
+import re
+import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-import re
+from typing import Any
+
 
 # Database path
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "audit.db"
 
 # Valid event types
-VALID_TYPES = ['auth', 'command', 'permission', 'secret', 'rate_limit', 'error', 'system', 'security']
+VALID_TYPES = [
+    "auth",
+    "command",
+    "permission",
+    "secret",
+    "rate_limit",
+    "error",
+    "system",
+    "security",
+]
 
 # Valid statuses
-VALID_STATUSES = ['success', 'failure', 'blocked']
+VALID_STATUSES = ["success", "failure", "blocked"]
 
 
 def get_connection():
@@ -55,7 +64,7 @@ def get_connection():
     cursor = conn.cursor()
 
     # Audit log table - append only, no updates or deletes
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -70,28 +79,28 @@ def get_connection():
             ip_address TEXT,
             user_agent TEXT
         )
-    ''')
+    """)
 
     # Indexes for common queries
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_type ON audit_log(event_type)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_status ON audit_log(status)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_session ON audit_log(session_id)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_type ON audit_log(event_type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_status ON audit_log(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_session ON audit_log(session_id)")
 
     conn.commit()
     return conn
 
 
-def row_to_dict(row) -> Optional[Dict]:
+def row_to_dict(row) -> dict | None:
     """Convert sqlite3.Row to dictionary."""
     if row is None:
         return None
     d = dict(row)
     # Parse JSON details if present
-    if 'details' in d and d['details']:
+    if d.get("details"):
         try:
-            d['details'] = json.loads(d['details'])
+            d["details"] = json.loads(d["details"])
         except json.JSONDecodeError:
             pass
     return d
@@ -100,15 +109,15 @@ def row_to_dict(row) -> Optional[Dict]:
 def log_event(
     event_type: str,
     action: str,
-    user_id: Optional[str] = None,
-    session_id: Optional[str] = None,
-    channel: Optional[str] = None,
-    resource: Optional[str] = None,
-    status: str = 'success',
-    details: Optional[Dict] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None
-) -> Dict[str, Any]:
+    user_id: str | None = None,
+    session_id: str | None = None,
+    channel: str | None = None,
+    resource: str | None = None,
+    status: str = "success",
+    details: dict | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> dict[str, Any]:
     """
     Log a security event. Append-only - events cannot be modified or deleted.
 
@@ -138,11 +147,25 @@ def log_event(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO audit_log
         (event_type, user_id, session_id, channel, action, resource, status, details, ip_address, user_agent)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (event_type, user_id, session_id, channel, action, resource, status, details_json, ip_address, user_agent))
+    """,
+        (
+            event_type,
+            user_id,
+            session_id,
+            channel,
+            action,
+            resource,
+            status,
+            details_json,
+            ip_address,
+            user_agent,
+        ),
+    )
 
     event_id = cursor.lastrowid
     conn.commit()
@@ -151,42 +174,42 @@ def log_event(
     return {
         "success": True,
         "event_id": event_id,
-        "message": f"Audit event logged with ID {event_id}"
+        "message": f"Audit event logged with ID {event_id}",
     }
 
 
-def parse_duration(duration_str: str) -> Optional[timedelta]:
+def parse_duration(duration_str: str) -> timedelta | None:
     """Parse duration string like '24h', '7d', '30m' into timedelta."""
-    match = re.match(r'^(\d+)([mhdw])$', duration_str.lower())
+    match = re.match(r"^(\d+)([mhdw])$", duration_str.lower())
     if not match:
         return None
 
     value = int(match.group(1))
     unit = match.group(2)
 
-    if unit == 'm':
+    if unit == "m":
         return timedelta(minutes=value)
-    elif unit == 'h':
+    elif unit == "h":
         return timedelta(hours=value)
-    elif unit == 'd':
+    elif unit == "d":
         return timedelta(days=value)
-    elif unit == 'w':
+    elif unit == "w":
         return timedelta(weeks=value)
 
     return None
 
 
 def query_events(
-    event_type: Optional[str] = None,
-    user_id: Optional[str] = None,
-    session_id: Optional[str] = None,
-    channel: Optional[str] = None,
-    status: Optional[str] = None,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    event_type: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    channel: str | None = None,
+    status: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
     limit: int = 100,
-    offset: int = 0
-) -> Dict[str, Any]:
+    offset: int = 0,
+) -> dict[str, Any]:
     """
     Query audit log with filters.
 
@@ -214,26 +237,26 @@ def query_events(
         if event_type not in VALID_TYPES:
             conn.close()
             return {"success": False, "error": f"Invalid event type. Must be one of: {VALID_TYPES}"}
-        conditions.append('event_type = ?')
+        conditions.append("event_type = ?")
         params.append(event_type)
 
     if user_id:
-        conditions.append('user_id = ?')
+        conditions.append("user_id = ?")
         params.append(user_id)
 
     if session_id:
-        conditions.append('session_id = ?')
+        conditions.append("session_id = ?")
         params.append(session_id)
 
     if channel:
-        conditions.append('channel = ?')
+        conditions.append("channel = ?")
         params.append(channel)
 
     if status:
         if status not in VALID_STATUSES:
             conn.close()
             return {"success": False, "error": f"Invalid status. Must be one of: {VALID_STATUSES}"}
-        conditions.append('status = ?')
+        conditions.append("status = ?")
         params.append(status)
 
     if since:
@@ -241,95 +264,94 @@ def query_events(
         duration = parse_duration(since)
         if duration:
             cutoff = datetime.now() - duration
-            conditions.append('timestamp >= ?')
+            conditions.append("timestamp >= ?")
             params.append(cutoff.isoformat())
         else:
             # Try as ISO datetime
-            conditions.append('timestamp >= ?')
+            conditions.append("timestamp >= ?")
             params.append(since)
 
     if until:
-        conditions.append('timestamp <= ?')
+        conditions.append("timestamp <= ?")
         params.append(until)
 
-    where_clause = ' AND '.join(conditions) if conditions else '1=1'
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-    cursor.execute(f'''
+    cursor.execute(
+        f"""
         SELECT * FROM audit_log
         WHERE {where_clause}
         ORDER BY timestamp DESC
         LIMIT ? OFFSET ?
-    ''', params + [limit, offset])
+    """,
+        params + [limit, offset],
+    )
 
     events = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Get total count
-    cursor.execute(f'SELECT COUNT(*) as count FROM audit_log WHERE {where_clause}', params)
-    total = cursor.fetchone()['count']
+    cursor.execute(f"SELECT COUNT(*) as count FROM audit_log WHERE {where_clause}", params)
+    total = cursor.fetchone()["count"]
 
     conn.close()
 
-    return {
-        "success": True,
-        "events": events,
-        "total": total,
-        "limit": limit,
-        "offset": offset
-    }
+    return {"success": True, "events": events, "total": total, "limit": limit, "offset": offset}
 
 
-def get_stats() -> Dict[str, Any]:
+def get_stats() -> dict[str, Any]:
     """Get audit log statistics."""
     conn = get_connection()
     cursor = conn.cursor()
 
     # Total events
-    cursor.execute('SELECT COUNT(*) as total FROM audit_log')
-    total = cursor.fetchone()['total']
+    cursor.execute("SELECT COUNT(*) as total FROM audit_log")
+    total = cursor.fetchone()["total"]
 
     # By type
-    cursor.execute('SELECT event_type, COUNT(*) as count FROM audit_log GROUP BY event_type')
-    by_type = {row['event_type']: row['count'] for row in cursor.fetchall()}
+    cursor.execute("SELECT event_type, COUNT(*) as count FROM audit_log GROUP BY event_type")
+    by_type = {row["event_type"]: row["count"] for row in cursor.fetchall()}
 
     # By status
-    cursor.execute('SELECT status, COUNT(*) as count FROM audit_log GROUP BY status')
-    by_status = {row['status']: row['count'] for row in cursor.fetchall()}
+    cursor.execute("SELECT status, COUNT(*) as count FROM audit_log GROUP BY status")
+    by_status = {row["status"]: row["count"] for row in cursor.fetchall()}
 
     # Last 24 hours
     yesterday = (datetime.now() - timedelta(hours=24)).isoformat()
-    cursor.execute('SELECT COUNT(*) as count FROM audit_log WHERE timestamp >= ?', (yesterday,))
-    last_24h = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(*) as count FROM audit_log WHERE timestamp >= ?", (yesterday,))
+    last_24h = cursor.fetchone()["count"]
 
     # Failures in last 24h
     cursor.execute(
-        'SELECT COUNT(*) as count FROM audit_log WHERE timestamp >= ? AND status = ?',
-        (yesterday, 'failure')
+        "SELECT COUNT(*) as count FROM audit_log WHERE timestamp >= ? AND status = ?",
+        (yesterday, "failure"),
     )
-    failures_24h = cursor.fetchone()['count']
+    failures_24h = cursor.fetchone()["count"]
 
     # Most active users
-    cursor.execute('''
+    cursor.execute("""
         SELECT user_id, COUNT(*) as count
         FROM audit_log
         WHERE user_id IS NOT NULL
         GROUP BY user_id
         ORDER BY count DESC
         LIMIT 10
-    ''')
-    top_users = [{row['user_id']: row['count']} for row in cursor.fetchall()]
+    """)
+    top_users = [{row["user_id"]: row["count"]} for row in cursor.fetchall()]
 
     # Recent failures
-    cursor.execute('''
+    cursor.execute("""
         SELECT * FROM audit_log
         WHERE status = 'failure'
         ORDER BY timestamp DESC
         LIMIT 10
-    ''')
+    """)
     recent_failures = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Database size
-    cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
-    db_size = cursor.fetchone()['size']
+    cursor.execute(
+        "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()"
+    )
+    db_size = cursor.fetchone()["size"]
 
     conn.close()
 
@@ -343,15 +365,12 @@ def get_stats() -> Dict[str, Any]:
             "by_status": by_status,
             "top_users": top_users,
             "recent_failures": recent_failures,
-            "db_size_bytes": db_size
-        }
+            "db_size_bytes": db_size,
+        },
     }
 
 
-def export_events(
-    since: Optional[str] = None,
-    format: str = 'json'
-) -> Dict[str, Any]:
+def export_events(since: str | None = None, format: str = "json") -> dict[str, Any]:
     """
     Export audit events for archival or analysis.
 
@@ -363,42 +382,42 @@ def export_events(
         dict with export data or path
     """
     result = query_events(since=since, limit=100000)  # Large limit for export
-    if not result['success']:
+    if not result["success"]:
         return result
 
-    events = result['events']
+    events = result["events"]
 
-    if format == 'json':
-        return {
-            "success": True,
-            "format": "json",
-            "count": len(events),
-            "data": events
-        }
-    elif format == 'csv':
+    if format == "json":
+        return {"success": True, "format": "json", "count": len(events), "data": events}
+    elif format == "csv":
         # Convert to CSV format
         if not events:
             return {"success": True, "format": "csv", "count": 0, "data": ""}
 
-        headers = ['id', 'timestamp', 'event_type', 'user_id', 'session_id',
-                   'channel', 'action', 'resource', 'status', 'ip_address']
-        lines = [','.join(headers)]
+        headers = [
+            "id",
+            "timestamp",
+            "event_type",
+            "user_id",
+            "session_id",
+            "channel",
+            "action",
+            "resource",
+            "status",
+            "ip_address",
+        ]
+        lines = [",".join(headers)]
 
         for event in events:
-            row = [str(event.get(h, '')) for h in headers]
-            lines.append(','.join(f'"{v}"' for v in row))
+            row = [str(event.get(h, "")) for h in headers]
+            lines.append(",".join(f'"{v}"' for v in row))
 
-        return {
-            "success": True,
-            "format": "csv",
-            "count": len(events),
-            "data": '\n'.join(lines)
-        }
+        return {"success": True, "format": "csv", "count": len(events), "data": "\n".join(lines)}
     else:
         return {"success": False, "error": f"Unknown format: {format}"}
 
 
-def cleanup_old_events(retention_days: int = 90, dry_run: bool = False) -> Dict[str, Any]:
+def cleanup_old_events(retention_days: int = 90, dry_run: bool = False) -> dict[str, Any]:
     """
     Remove events older than retention period.
     NOTE: Use with caution - this is the only way to delete audit logs.
@@ -415,8 +434,8 @@ def cleanup_old_events(retention_days: int = 90, dry_run: bool = False) -> Dict[
 
     cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
 
-    cursor.execute('SELECT COUNT(*) as count FROM audit_log WHERE timestamp < ?', (cutoff,))
-    count = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(*) as count FROM audit_log WHERE timestamp < ?", (cutoff,))
+    count = cursor.fetchone()["count"]
 
     if dry_run:
         conn.close()
@@ -424,65 +443,65 @@ def cleanup_old_events(retention_days: int = 90, dry_run: bool = False) -> Dict[
             "success": True,
             "message": f"Would delete {count} events older than {retention_days} days",
             "count": count,
-            "dry_run": True
+            "dry_run": True,
         }
 
-    cursor.execute('DELETE FROM audit_log WHERE timestamp < ?', (cutoff,))
+    cursor.execute("DELETE FROM audit_log WHERE timestamp < ?", (cutoff,))
     conn.commit()
 
     # Vacuum to reclaim space
-    cursor.execute('VACUUM')
+    cursor.execute("VACUUM")
     conn.close()
 
     return {
         "success": True,
         "message": f"Deleted {count} events older than {retention_days} days",
-        "count": count
+        "count": count,
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Security Audit Logger')
-    parser.add_argument('--action', required=True,
-                       choices=['log', 'query', 'stats', 'export', 'cleanup'],
-                       help='Action to perform')
+    parser = argparse.ArgumentParser(description="Security Audit Logger")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=["log", "query", "stats", "export", "cleanup"],
+        help="Action to perform",
+    )
 
     # Log action args
-    parser.add_argument('--type', dest='event_type',
-                       choices=VALID_TYPES,
-                       help='Event type')
-    parser.add_argument('--event-action', dest='event_action',
-                       help='Action being logged')
-    parser.add_argument('--user', help='User ID')
-    parser.add_argument('--session', help='Session ID')
-    parser.add_argument('--channel', help='Channel (discord, api, cli)')
-    parser.add_argument('--resource', help='Resource being accessed')
-    parser.add_argument('--status', choices=VALID_STATUSES, default='success',
-                       help='Event status')
-    parser.add_argument('--details', help='JSON details')
-    parser.add_argument('--ip', help='IP address')
-    parser.add_argument('--ua', dest='user_agent', help='User agent')
+    parser.add_argument("--type", dest="event_type", choices=VALID_TYPES, help="Event type")
+    parser.add_argument("--event-action", dest="event_action", help="Action being logged")
+    parser.add_argument("--user", help="User ID")
+    parser.add_argument("--session", help="Session ID")
+    parser.add_argument("--channel", help="Channel (discord, api, cli)")
+    parser.add_argument("--resource", help="Resource being accessed")
+    parser.add_argument("--status", choices=VALID_STATUSES, default="success", help="Event status")
+    parser.add_argument("--details", help="JSON details")
+    parser.add_argument("--ip", help="IP address")
+    parser.add_argument("--ua", dest="user_agent", help="User agent")
 
     # Query args
-    parser.add_argument('--since', help='Time range start (e.g., "24h", "7d")')
-    parser.add_argument('--until', help='Time range end (ISO datetime)')
-    parser.add_argument('--limit', type=int, default=100, help='Max results')
-    parser.add_argument('--offset', type=int, default=0, help='Pagination offset')
+    parser.add_argument("--since", help='Time range start (e.g., "24h", "7d")')
+    parser.add_argument("--until", help="Time range end (ISO datetime)")
+    parser.add_argument("--limit", type=int, default=100, help="Max results")
+    parser.add_argument("--offset", type=int, default=0, help="Pagination offset")
 
     # Export args
-    parser.add_argument('--format', choices=['json', 'csv'], default='json',
-                       help='Export format')
+    parser.add_argument("--format", choices=["json", "csv"], default="json", help="Export format")
 
     # Cleanup args
-    parser.add_argument('--retention-days', type=int, default=90,
-                       help='Keep events newer than this')
-    parser.add_argument('--dry-run', action='store_true',
-                       help='Show what would be deleted without deleting')
+    parser.add_argument(
+        "--retention-days", type=int, default=90, help="Keep events newer than this"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be deleted without deleting"
+    )
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'log':
+    if args.action == "log":
         if not args.event_type or not args.event_action:
             print("Error: --type and --event-action required for log")
             sys.exit(1)
@@ -505,10 +524,10 @@ def main():
             status=args.status,
             details=details,
             ip_address=args.ip,
-            user_agent=args.user_agent
+            user_agent=args.user_agent,
         )
 
-    elif args.action == 'query':
+    elif args.action == "query":
         result = query_events(
             event_type=args.event_type,
             user_id=args.user,
@@ -518,23 +537,20 @@ def main():
             since=args.since,
             until=args.until,
             limit=args.limit,
-            offset=args.offset
+            offset=args.offset,
         )
 
-    elif args.action == 'stats':
+    elif args.action == "stats":
         result = get_stats()
 
-    elif args.action == 'export':
+    elif args.action == "export":
         result = export_events(since=args.since, format=args.format)
 
-    elif args.action == 'cleanup':
-        result = cleanup_old_events(
-            retention_days=args.retention_days,
-            dry_run=args.dry_run
-        )
+    elif args.action == "cleanup":
+        result = cleanup_old_events(retention_days=args.retention_days, dry_run=args.dry_run)
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")

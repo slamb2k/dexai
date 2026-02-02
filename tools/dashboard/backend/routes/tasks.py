@@ -6,24 +6,25 @@ Provides endpoints for viewing task execution history:
 - Get detailed task information
 """
 
-from datetime import datetime
-from typing import Optional
-from pathlib import Path
 import sqlite3
-import json
+from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from tools.dashboard.backend.models import (
-    TaskStatus, TaskSummary, TaskDetail,
-    TaskListResponse, TaskFilters
+    TaskDetail,
+    TaskListResponse,
+    TaskStatus,
+    TaskSummary,
 )
+
 
 router = APIRouter()
 
 # Task database path (from existing activity.db)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
-ACTIVITY_DB = PROJECT_ROOT / 'data' / 'activity.db'
+ACTIVITY_DB = PROJECT_ROOT / "data" / "activity.db"
 
 
 def get_task_connection() -> sqlite3.Connection:
@@ -36,28 +37,28 @@ def get_task_connection() -> sqlite3.Connection:
 def parse_task_status(status_str: str) -> TaskStatus:
     """Convert database status string to TaskStatus enum."""
     status_map = {
-        'pending': TaskStatus.PENDING,
-        'running': TaskStatus.RUNNING,
-        'in_progress': TaskStatus.RUNNING,
-        'completed': TaskStatus.COMPLETED,
-        'done': TaskStatus.COMPLETED,
-        'failed': TaskStatus.FAILED,
-        'error': TaskStatus.FAILED,
-        'cancelled': TaskStatus.CANCELLED,
-        'canceled': TaskStatus.CANCELLED
+        "pending": TaskStatus.PENDING,
+        "running": TaskStatus.RUNNING,
+        "in_progress": TaskStatus.RUNNING,
+        "completed": TaskStatus.COMPLETED,
+        "done": TaskStatus.COMPLETED,
+        "failed": TaskStatus.FAILED,
+        "error": TaskStatus.FAILED,
+        "cancelled": TaskStatus.CANCELLED,
+        "canceled": TaskStatus.CANCELLED,
     }
     return status_map.get(status_str.lower(), TaskStatus.PENDING)
 
 
 @router.get("", response_model=TaskListResponse)
 async def list_tasks(
-    status: Optional[str] = Query(None, description="Filter by status"),
-    channel: Optional[str] = Query(None, description="Filter by channel"),
-    start_date: Optional[str] = Query(None, description="Start date (ISO format)"),
-    end_date: Optional[str] = Query(None, description="End date (ISO format)"),
-    search: Optional[str] = Query(None, description="Search in request text"),
+    status: str | None = Query(None, description="Filter by status"),
+    channel: str | None = Query(None, description="Filter by channel"),
+    start_date: str | None = Query(None, description="Start date (ISO format)"),
+    end_date: str | None = Query(None, description="End date (ISO format)"),
+    search: str | None = Query(None, description="Search in request text"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(20, ge=1, le=100, description="Items per page")
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
 ):
     """
     List tasks with optional filters.
@@ -76,16 +77,16 @@ async def list_tasks(
         if status:
             # Map input status to possible DB values
             status_values = []
-            if status.lower() == 'running':
-                status_values = ['running', 'in_progress']
-            elif status.lower() == 'completed':
-                status_values = ['completed', 'done']
-            elif status.lower() == 'failed':
-                status_values = ['failed', 'error']
+            if status.lower() == "running":
+                status_values = ["running", "in_progress"]
+            elif status.lower() == "completed":
+                status_values = ["completed", "done"]
+            elif status.lower() == "failed":
+                status_values = ["failed", "error"]
             else:
                 status_values = [status]
 
-            placeholders = ','.join(['?' for _ in status_values])
+            placeholders = ",".join(["?" for _ in status_values])
             query += f" AND status IN ({placeholders})"
             count_query += f" AND status IN ({placeholders})"
             params.extend(status_values)
@@ -112,7 +113,7 @@ async def list_tasks(
 
         # Get total count
         cursor.execute(count_query, params)
-        total = cursor.fetchone()['count']
+        total = cursor.fetchone()["count"]
 
         # Add pagination
         offset = (page - 1) * page_size
@@ -128,42 +129,42 @@ async def list_tasks(
         for row in rows:
             # Calculate duration if completed
             duration = None
-            if row['completed_at'] and row['created_at']:
+            if row["completed_at"] and row["created_at"]:
                 try:
-                    created = datetime.fromisoformat(row['created_at'])
-                    completed = datetime.fromisoformat(row['completed_at'])
+                    created = datetime.fromisoformat(row["created_at"])
+                    completed = datetime.fromisoformat(row["completed_at"])
                     duration = (completed - created).total_seconds()
                 except (ValueError, TypeError):
                     pass
 
-            tasks.append(TaskSummary(
-                id=row['id'],
-                request=row['request'] or "No request",
-                status=parse_task_status(row['status']),
-                channel=row['source'],
-                created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else datetime.now(),
-                completed_at=datetime.fromisoformat(row['completed_at']) if row['completed_at'] else None,
-                duration_seconds=duration,
-                cost_usd=None  # Would need cost tracking
-            ))
+            tasks.append(
+                TaskSummary(
+                    id=row["id"],
+                    request=row["request"] or "No request",
+                    status=parse_task_status(row["status"]),
+                    channel=row["source"],
+                    created_at=datetime.fromisoformat(row["created_at"])
+                    if row["created_at"]
+                    else datetime.now(),
+                    completed_at=datetime.fromisoformat(row["completed_at"])
+                    if row["completed_at"]
+                    else None,
+                    duration_seconds=duration,
+                    cost_usd=None,  # Would need cost tracking
+                )
+            )
 
         return TaskListResponse(
             tasks=tasks,
             total=total,
             page=page,
             page_size=page_size,
-            has_more=(offset + len(tasks)) < total
+            has_more=(offset + len(tasks)) < total,
         )
 
     except sqlite3.OperationalError:
         # Database doesn't exist yet
-        return TaskListResponse(
-            tasks=[],
-            total=0,
-            page=page,
-            page_size=page_size,
-            has_more=False
-        )
+        return TaskListResponse(tasks=[], total=0, page=page, page_size=page_size, has_more=False)
 
 
 @router.get("/{task_id}", response_model=TaskDetail)
@@ -187,29 +188,33 @@ async def get_task(task_id: str):
 
         # Calculate duration
         duration = None
-        if row['completed_at'] and row['created_at']:
+        if row["completed_at"] and row["created_at"]:
             try:
-                created = datetime.fromisoformat(row['created_at'])
-                completed = datetime.fromisoformat(row['completed_at'])
+                created = datetime.fromisoformat(row["created_at"])
+                completed = datetime.fromisoformat(row["completed_at"])
                 duration = (completed - created).total_seconds()
             except (ValueError, TypeError):
                 pass
 
         return TaskDetail(
-            id=row['id'],
-            request=row['request'] or "No request",
-            status=parse_task_status(row['status']),
-            channel=row['source'],
-            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else datetime.now(),
-            completed_at=datetime.fromisoformat(row['completed_at']) if row['completed_at'] else None,
+            id=row["id"],
+            request=row["request"] or "No request",
+            status=parse_task_status(row["status"]),
+            channel=row["source"],
+            created_at=datetime.fromisoformat(row["created_at"])
+            if row["created_at"]
+            else datetime.now(),
+            completed_at=datetime.fromisoformat(row["completed_at"])
+            if row["completed_at"]
+            else None,
             duration_seconds=duration,
             cost_usd=None,
-            response=row['summary'] if row['summary'] else None,
+            response=row["summary"] if row["summary"] else None,
             tools_used=[],  # Would need to track this
             tokens_in=None,
             tokens_out=None,
             error_message=None,
-            metadata={}
+            metadata={},
         )
 
     except sqlite3.OperationalError:

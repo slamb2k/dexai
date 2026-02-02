@@ -28,21 +28,20 @@ Security Notes:
     - All access is audit logged
 """
 
-import os
-import sys
-import json
-import sqlite3
 import argparse
-import base64
-import hashlib
-from datetime import datetime
+import json
+import os
+import sqlite3
+import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
+
 
 try:
+    from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    from cryptography.hazmat.primitives import hashes
+
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
@@ -67,6 +66,7 @@ def get_or_create_salt() -> bytes:
         return SALT_PATH.read_bytes()
     else:
         import secrets
+
         salt = secrets.token_bytes(32)
         SALT_PATH.parent.mkdir(parents=True, exist_ok=True)
         SALT_PATH.write_bytes(salt)
@@ -91,6 +91,7 @@ def derive_key(master_password: str) -> bytes:
 def encrypt_value(plaintext: str, key: bytes) -> bytes:
     """Encrypt a value using AES-256-GCM."""
     import secrets
+
     aesgcm = AESGCM(key)
     nonce = secrets.token_bytes(12)  # 96-bit nonce for GCM
     ciphertext = aesgcm.encrypt(nonce, plaintext.encode(), None)
@@ -107,7 +108,7 @@ def decrypt_value(encrypted: bytes, key: bytes) -> str:
     return plaintext.decode()
 
 
-def get_master_key() -> Optional[bytes]:
+def get_master_key() -> bytes | None:
     """Get the derived encryption key from master password."""
     master_password = os.environ.get(MASTER_KEY_ENV)
     if not master_password:
@@ -123,7 +124,7 @@ def get_connection():
 
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS secrets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             namespace TEXT DEFAULT 'default',
@@ -136,26 +137,27 @@ def get_connection():
             last_accessed DATETIME,
             UNIQUE(namespace, key)
         )
-    ''')
+    """)
 
     # Index for lookups
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_secrets_ns_key ON secrets(namespace, key)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_secrets_ns_key ON secrets(namespace, key)")
 
     conn.commit()
     return conn
 
 
-def log_access(action: str, key: str, namespace: str, status: str, user: Optional[str] = None):
+def log_access(action: str, key: str, namespace: str, status: str, user: str | None = None):
     """Log vault access to audit log."""
     try:
         # Import audit module
         from . import audit
+
         audit.log_event(
-            event_type='secret',
+            event_type="secret",
             action=action,
             user_id=user,
             resource=f"{namespace}/{key}",
-            status=status
+            status=status,
         )
     except Exception:
         # Don't fail if audit logging fails
@@ -165,10 +167,10 @@ def log_access(action: str, key: str, namespace: str, status: str, user: Optiona
 def set_secret(
     key: str,
     value: str,
-    namespace: str = 'default',
-    expires_at: Optional[str] = None,
-    user: Optional[str] = None
-) -> Dict[str, Any]:
+    namespace: str = "default",
+    expires_at: str | None = None,
+    user: str | None = None,
+) -> dict[str, Any]:
     """
     Store an encrypted secret.
 
@@ -184,49 +186,48 @@ def set_secret(
     """
     encryption_key = get_master_key()
     if not encryption_key:
-        log_access('set', key, namespace, 'failure', user)
+        log_access("set", key, namespace, "failure", user)
         return {
             "success": False,
-            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable."
+            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable.",
         }
 
     try:
         encrypted = encrypt_value(value, encryption_key)
     except Exception as e:
-        log_access('set', key, namespace, 'failure', user)
-        return {"success": False, "error": f"Encryption failed: {str(e)}"}
+        log_access("set", key, namespace, "failure", user)
+        return {"success": False, "error": f"Encryption failed: {e!s}"}
 
     conn = get_connection()
     cursor = conn.cursor()
 
     # Upsert
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO secrets (namespace, key, encrypted_value, expires_at, updated_at)
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(namespace, key) DO UPDATE SET
             encrypted_value = excluded.encrypted_value,
             expires_at = excluded.expires_at,
             updated_at = CURRENT_TIMESTAMP
-    ''', (namespace, key, encrypted, expires_at))
+    """,
+        (namespace, key, encrypted, expires_at),
+    )
 
     conn.commit()
     conn.close()
 
-    log_access('set', key, namespace, 'success', user)
+    log_access("set", key, namespace, "success", user)
 
     return {
         "success": True,
         "message": f"Secret '{key}' stored in namespace '{namespace}'",
         "namespace": namespace,
-        "key": key
+        "key": key,
     }
 
 
-def get_secret(
-    key: str,
-    namespace: str = 'default',
-    user: Optional[str] = None
-) -> Dict[str, Any]:
+def get_secret(key: str, namespace: str = "default", user: str | None = None) -> dict[str, Any]:
     """
     Retrieve and decrypt a secret.
 
@@ -240,62 +241,62 @@ def get_secret(
     """
     encryption_key = get_master_key()
     if not encryption_key:
-        log_access('get', key, namespace, 'failure', user)
+        log_access("get", key, namespace, "failure", user)
         return {
             "success": False,
-            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable."
+            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable.",
         }
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM secrets
         WHERE namespace = ? AND key = ?
         AND (expires_at IS NULL OR expires_at > datetime('now'))
-    ''', (namespace, key))
+    """,
+        (namespace, key),
+    )
 
     row = cursor.fetchone()
     if not row:
         conn.close()
-        log_access('get', key, namespace, 'failure', user)
-        return {
-            "success": False,
-            "error": f"Secret '{key}' not found in namespace '{namespace}'"
-        }
+        log_access("get", key, namespace, "failure", user)
+        return {"success": False, "error": f"Secret '{key}' not found in namespace '{namespace}'"}
 
     # Update access tracking
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE secrets
         SET accessed_count = accessed_count + 1, last_accessed = CURRENT_TIMESTAMP
         WHERE namespace = ? AND key = ?
-    ''', (namespace, key))
+    """,
+        (namespace, key),
+    )
     conn.commit()
 
-    encrypted = row['encrypted_value']
+    encrypted = row["encrypted_value"]
     conn.close()
 
     try:
         value = decrypt_value(encrypted, encryption_key)
     except Exception as e:
-        log_access('get', key, namespace, 'failure', user)
-        return {"success": False, "error": f"Decryption failed: {str(e)}"}
+        log_access("get", key, namespace, "failure", user)
+        return {"success": False, "error": f"Decryption failed: {e!s}"}
 
-    log_access('get', key, namespace, 'success', user)
+    log_access("get", key, namespace, "success", user)
 
     return {
         "success": True,
         "namespace": namespace,
         "key": key,
         "value": value,
-        "accessed_count": row['accessed_count'] + 1
+        "accessed_count": row["accessed_count"] + 1,
     }
 
 
-def list_secrets(
-    namespace: Optional[str] = None,
-    include_expired: bool = False
-) -> Dict[str, Any]:
+def list_secrets(namespace: str | None = None, include_expired: bool = False) -> dict[str, Any]:
     """
     List secrets (keys only, not values).
 
@@ -311,56 +312,56 @@ def list_secrets(
 
     if namespace:
         if include_expired:
-            cursor.execute('''
+            cursor.execute(
+                """
                 SELECT namespace, key, created_at, updated_at, expires_at, accessed_count, last_accessed
                 FROM secrets WHERE namespace = ?
-            ''', (namespace,))
+            """,
+                (namespace,),
+            )
         else:
-            cursor.execute('''
+            cursor.execute(
+                """
                 SELECT namespace, key, created_at, updated_at, expires_at, accessed_count, last_accessed
                 FROM secrets
                 WHERE namespace = ?
                 AND (expires_at IS NULL OR expires_at > datetime('now'))
-            ''', (namespace,))
+            """,
+                (namespace,),
+            )
     else:
         if include_expired:
-            cursor.execute('''
+            cursor.execute("""
                 SELECT namespace, key, created_at, updated_at, expires_at, accessed_count, last_accessed
                 FROM secrets
-            ''')
+            """)
         else:
-            cursor.execute('''
+            cursor.execute("""
                 SELECT namespace, key, created_at, updated_at, expires_at, accessed_count, last_accessed
                 FROM secrets
                 WHERE expires_at IS NULL OR expires_at > datetime('now')
-            ''')
+            """)
 
     secrets = []
     for row in cursor.fetchall():
-        secrets.append({
-            "namespace": row['namespace'],
-            "key": row['key'],
-            "created_at": row['created_at'],
-            "updated_at": row['updated_at'],
-            "expires_at": row['expires_at'],
-            "accessed_count": row['accessed_count'],
-            "last_accessed": row['last_accessed']
-        })
+        secrets.append(
+            {
+                "namespace": row["namespace"],
+                "key": row["key"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "expires_at": row["expires_at"],
+                "accessed_count": row["accessed_count"],
+                "last_accessed": row["last_accessed"],
+            }
+        )
 
     conn.close()
 
-    return {
-        "success": True,
-        "secrets": secrets,
-        "count": len(secrets)
-    }
+    return {"success": True, "secrets": secrets, "count": len(secrets)}
 
 
-def delete_secret(
-    key: str,
-    namespace: str = 'default',
-    user: Optional[str] = None
-) -> Dict[str, Any]:
+def delete_secret(key: str, namespace: str = "default", user: str | None = None) -> dict[str, Any]:
     """
     Delete a secret.
 
@@ -375,33 +376,21 @@ def delete_secret(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        'SELECT id FROM secrets WHERE namespace = ? AND key = ?',
-        (namespace, key)
-    )
+    cursor.execute("SELECT id FROM secrets WHERE namespace = ? AND key = ?", (namespace, key))
     if not cursor.fetchone():
         conn.close()
-        return {
-            "success": False,
-            "error": f"Secret '{key}' not found in namespace '{namespace}'"
-        }
+        return {"success": False, "error": f"Secret '{key}' not found in namespace '{namespace}'"}
 
-    cursor.execute(
-        'DELETE FROM secrets WHERE namespace = ? AND key = ?',
-        (namespace, key)
-    )
+    cursor.execute("DELETE FROM secrets WHERE namespace = ? AND key = ?", (namespace, key))
     conn.commit()
     conn.close()
 
-    log_access('delete', key, namespace, 'success', user)
+    log_access("delete", key, namespace, "success", user)
 
-    return {
-        "success": True,
-        "message": f"Secret '{key}' deleted from namespace '{namespace}'"
-    }
+    return {"success": True, "message": f"Secret '{key}' deleted from namespace '{namespace}'"}
 
 
-def inject_env(namespace: str = 'default') -> Dict[str, Any]:
+def inject_env(namespace: str = "default") -> dict[str, Any]:
     """
     Load all secrets from a namespace into environment variables.
 
@@ -415,28 +404,31 @@ def inject_env(namespace: str = 'default') -> Dict[str, Any]:
     if not encryption_key:
         return {
             "success": False,
-            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable."
+            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable.",
         }
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT key, encrypted_value FROM secrets
         WHERE namespace = ?
         AND (expires_at IS NULL OR expires_at > datetime('now'))
-    ''', (namespace,))
+    """,
+        (namespace,),
+    )
 
     injected = []
     errors = []
 
     for row in cursor.fetchall():
         try:
-            value = decrypt_value(row['encrypted_value'], encryption_key)
-            os.environ[row['key']] = value
-            injected.append(row['key'])
+            value = decrypt_value(row["encrypted_value"], encryption_key)
+            os.environ[row["key"]] = value
+            injected.append(row["key"])
         except Exception as e:
-            errors.append({"key": row['key'], "error": str(e)})
+            errors.append({"key": row["key"], "error": str(e)})
 
     conn.close()
 
@@ -444,58 +436,57 @@ def inject_env(namespace: str = 'default') -> Dict[str, Any]:
         "success": len(errors) == 0,
         "injected": injected,
         "errors": errors,
-        "count": len(injected)
+        "count": len(injected),
     }
 
 
-def check_status() -> Dict[str, Any]:
+def check_status() -> dict[str, Any]:
     """Check vault status and configuration."""
     status = {
         "crypto_available": CRYPTO_AVAILABLE,
         "master_key_set": MASTER_KEY_ENV in os.environ,
         "salt_exists": SALT_PATH.exists(),
-        "database_exists": DB_PATH.exists()
+        "database_exists": DB_PATH.exists(),
     }
 
     if DB_PATH.exists():
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) as count FROM secrets')
-        status["secret_count"] = cursor.fetchone()['count']
+        cursor.execute("SELECT COUNT(*) as count FROM secrets")
+        status["secret_count"] = cursor.fetchone()["count"]
 
-        cursor.execute('SELECT COUNT(DISTINCT namespace) as count FROM secrets')
-        status["namespace_count"] = cursor.fetchone()['count']
+        cursor.execute("SELECT COUNT(DISTINCT namespace) as count FROM secrets")
+        status["namespace_count"] = cursor.fetchone()["count"]
         conn.close()
 
     status["ready"] = (
-        status["crypto_available"] and
-        status["master_key_set"] and
-        status["database_exists"]
+        status["crypto_available"] and status["master_key_set"] and status["database_exists"]
     )
 
-    return {
-        "success": True,
-        "status": status
-    }
+    return {"success": True, "status": status}
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Secrets Vault')
-    parser.add_argument('--action', required=True,
-                       choices=['set', 'get', 'list', 'delete', 'inject-env', 'status'],
-                       help='Action to perform')
-    parser.add_argument('--key', help='Secret key')
-    parser.add_argument('--value', help='Secret value (for set)')
-    parser.add_argument('--namespace', default='default', help='Namespace')
-    parser.add_argument('--expires', help='Expiration datetime (ISO format)')
-    parser.add_argument('--user', help='User performing action (for audit)')
-    parser.add_argument('--include-expired', action='store_true',
-                       help='Include expired secrets in list')
+    parser = argparse.ArgumentParser(description="Secrets Vault")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=["set", "get", "list", "delete", "inject-env", "status"],
+        help="Action to perform",
+    )
+    parser.add_argument("--key", help="Secret key")
+    parser.add_argument("--value", help="Secret value (for set)")
+    parser.add_argument("--namespace", default="default", help="Namespace")
+    parser.add_argument("--expires", help="Expiration datetime (ISO format)")
+    parser.add_argument("--user", help="User performing action (for audit)")
+    parser.add_argument(
+        "--include-expired", action="store_true", help="Include expired secrets in list"
+    )
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'set':
+    if args.action == "set":
         if not args.key or not args.value:
             print("Error: --key and --value required for set")
             sys.exit(1)
@@ -504,43 +495,35 @@ def main():
             value=args.value,
             namespace=args.namespace,
             expires_at=args.expires,
-            user=args.user
+            user=args.user,
         )
 
-    elif args.action == 'get':
+    elif args.action == "get":
         if not args.key:
             print("Error: --key required for get")
             sys.exit(1)
-        result = get_secret(
-            key=args.key,
-            namespace=args.namespace,
-            user=args.user
-        )
+        result = get_secret(key=args.key, namespace=args.namespace, user=args.user)
 
-    elif args.action == 'list':
+    elif args.action == "list":
         result = list_secrets(
-            namespace=args.namespace if args.namespace != 'default' else None,
-            include_expired=args.include_expired
+            namespace=args.namespace if args.namespace != "default" else None,
+            include_expired=args.include_expired,
         )
 
-    elif args.action == 'delete':
+    elif args.action == "delete":
         if not args.key:
             print("Error: --key required for delete")
             sys.exit(1)
-        result = delete_secret(
-            key=args.key,
-            namespace=args.namespace,
-            user=args.user
-        )
+        result = delete_secret(key=args.key, namespace=args.namespace, user=args.user)
 
-    elif args.action == 'inject-env':
+    elif args.action == "inject-env":
         result = inject_env(namespace=args.namespace)
 
-    elif args.action == 'status':
+    elif args.action == "status":
         result = check_status()
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")
@@ -548,8 +531,8 @@ def main():
 
         # Don't print value in normal output (security)
         output = result.copy()
-        if 'value' in output:
-            output['value'] = '***REDACTED***'
+        if "value" in output:
+            output["value"] = "***REDACTED***"
             print(f"Value: {result['value']}")  # Print separately for CLI use
 
         print(json.dumps(output, indent=2, default=str))

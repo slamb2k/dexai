@@ -26,16 +26,15 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
-from . import ACTION_VERBS, CONFIG_PATH, DB_PATH, PROJECT_ROOT
+from . import CONFIG_PATH, PROJECT_ROOT
 from .manager import add_step, create_task, get_task, update_task
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load task engine configuration."""
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
@@ -73,7 +72,7 @@ Output JSON format:
 """
 
 
-def decompose_with_llm(raw_input: str, depth: str = "shallow") -> Dict[str, Any]:
+def decompose_with_llm(raw_input: str, depth: str = "shallow") -> dict[str, Any]:
     """
     Use LLM to decompose a task into steps.
 
@@ -97,7 +96,11 @@ def decompose_with_llm(raw_input: str, depth: str = "shallow") -> Dict[str, Any]
         return {"success": False, "error": "ANTHROPIC_API_KEY not set"}
 
     config = load_config()
-    model = config.get("task_engine", {}).get("decomposition", {}).get("llm_model", "claude-3-haiku-20240307")
+    model = (
+        config.get("task_engine", {})
+        .get("decomposition", {})
+        .get("llm_model", "claude-3-haiku-20240307")
+    )
     max_steps = config.get("task_engine", {}).get("decomposition", {}).get("max_steps", 7)
 
     prompt = load_decomposition_prompt()
@@ -146,7 +149,7 @@ def decompose_with_llm(raw_input: str, depth: str = "shallow") -> Dict[str, Any]
         return {"success": False, "error": f"LLM decomposition failed: {e}"}
 
 
-def decompose_simple(raw_input: str) -> Dict[str, Any]:
+def decompose_simple(raw_input: str) -> dict[str, Any]:
     """
     Simple rule-based decomposition fallback.
 
@@ -161,9 +164,27 @@ def decompose_simple(raw_input: str) -> Dict[str, Any]:
             "data": {
                 "title": "File tax return",
                 "steps": [
-                    {"step_number": 1, "description": "Find your income statement or group certificate in your email", "action_verb": "find", "friction_notes": "Search for 'payment summary' or 'income statement' from your employer around July", "estimated_minutes": 10},
-                    {"step_number": 2, "description": "Gather receipts for deductions you want to claim", "action_verb": "gather", "friction_notes": "Check your downloads folder, email, and bank statements", "estimated_minutes": 15},
-                    {"step_number": 3, "description": "Open the tax portal and log in", "action_verb": "open", "friction_notes": "May need to retrieve password", "estimated_minutes": 5},
+                    {
+                        "step_number": 1,
+                        "description": "Find your income statement or group certificate in your email",
+                        "action_verb": "find",
+                        "friction_notes": "Search for 'payment summary' or 'income statement' from your employer around July",
+                        "estimated_minutes": 10,
+                    },
+                    {
+                        "step_number": 2,
+                        "description": "Gather receipts for deductions you want to claim",
+                        "action_verb": "gather",
+                        "friction_notes": "Check your downloads folder, email, and bank statements",
+                        "estimated_minutes": 15,
+                    },
+                    {
+                        "step_number": 3,
+                        "description": "Open the tax portal and log in",
+                        "action_verb": "open",
+                        "friction_notes": "May need to retrieve password",
+                        "estimated_minutes": 5,
+                    },
                 ],
             },
         }
@@ -174,9 +195,24 @@ def decompose_simple(raw_input: str) -> Dict[str, Any]:
             "data": {
                 "title": "Send email",
                 "steps": [
-                    {"step_number": 1, "description": "Open your email client", "action_verb": "open", "estimated_minutes": 1},
-                    {"step_number": 2, "description": "Write the email", "action_verb": "write", "estimated_minutes": 10},
-                    {"step_number": 3, "description": "Review and send", "action_verb": "send", "estimated_minutes": 2},
+                    {
+                        "step_number": 1,
+                        "description": "Open your email client",
+                        "action_verb": "open",
+                        "estimated_minutes": 1,
+                    },
+                    {
+                        "step_number": 2,
+                        "description": "Write the email",
+                        "action_verb": "write",
+                        "estimated_minutes": 10,
+                    },
+                    {
+                        "step_number": 3,
+                        "description": "Review and send",
+                        "action_verb": "send",
+                        "estimated_minutes": 2,
+                    },
                 ],
             },
         }
@@ -187,9 +223,27 @@ def decompose_simple(raw_input: str) -> Dict[str, Any]:
             "data": {
                 "title": "Make phone call",
                 "steps": [
-                    {"step_number": 1, "description": "Find the phone number you need", "action_verb": "find", "friction_notes": "Check your contacts, previous emails, or the website", "estimated_minutes": 5},
-                    {"step_number": 2, "description": "Write down what you want to say", "action_verb": "write", "friction_notes": "Just bullet points - you don't need a script", "estimated_minutes": 5},
-                    {"step_number": 3, "description": "Make the call", "action_verb": "call", "friction_notes": "Best times are usually 10-11am or 2-3pm", "estimated_minutes": 10},
+                    {
+                        "step_number": 1,
+                        "description": "Find the phone number you need",
+                        "action_verb": "find",
+                        "friction_notes": "Check your contacts, previous emails, or the website",
+                        "estimated_minutes": 5,
+                    },
+                    {
+                        "step_number": 2,
+                        "description": "Write down what you want to say",
+                        "action_verb": "write",
+                        "friction_notes": "Just bullet points - you don't need a script",
+                        "estimated_minutes": 5,
+                    },
+                    {
+                        "step_number": 3,
+                        "description": "Make the call",
+                        "action_verb": "call",
+                        "friction_notes": "Best times are usually 10-11am or 2-3pm",
+                        "estimated_minutes": 10,
+                    },
                 ],
             },
         }
@@ -200,7 +254,12 @@ def decompose_simple(raw_input: str) -> Dict[str, Any]:
         "data": {
             "title": raw_input.strip().capitalize(),
             "steps": [
-                {"step_number": 1, "description": f"Start working on: {raw_input}", "action_verb": "open", "estimated_minutes": 15},
+                {
+                    "step_number": 1,
+                    "description": f"Start working on: {raw_input}",
+                    "action_verb": "open",
+                    "estimated_minutes": 15,
+                },
             ],
         },
     }
@@ -211,8 +270,8 @@ def decompose_task(
     raw_input: str,
     depth: str = "shallow",
     use_llm: bool = True,
-    task_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    task_id: str | None = None,
+) -> dict[str, Any]:
     """
     Decompose a task into concrete steps.
 
@@ -286,7 +345,7 @@ def decompose_task(
     }
 
 
-def redecompose_task(task_id: str, depth: str = "shallow") -> Dict[str, Any]:
+def redecompose_task(task_id: str, depth: str = "shallow") -> dict[str, Any]:
     """
     Re-decompose an existing task with fresh steps.
 
@@ -356,7 +415,9 @@ def main():
 
     if args.action == "decompose":
         if not args.user or not args.task:
-            print(json.dumps({"success": False, "error": "--user and --task required for decompose"}))
+            print(
+                json.dumps({"success": False, "error": "--user and --task required for decompose"})
+            )
             sys.exit(1)
         result = decompose_task(
             user_id=args.user,

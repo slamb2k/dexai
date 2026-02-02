@@ -26,24 +26,24 @@ Output:
     JSON result with success status and data
 """
 
-import os
-import sys
-import json
-import sqlite3
 import argparse
 import hashlib
+import json
+import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
+
 
 # Database path
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "memory.db"
 
 # Valid memory types
-VALID_TYPES = ['fact', 'preference', 'event', 'insight', 'task', 'relationship']
+VALID_TYPES = ["fact", "preference", "event", "insight", "task", "relationship"]
 
 # Valid sources
-VALID_SOURCES = ['user', 'inferred', 'session', 'external', 'system']
+VALID_SOURCES = ["user", "inferred", "session", "external", "system"]
 
 
 def get_connection():
@@ -55,7 +55,7 @@ def get_connection():
     cursor = conn.cursor()
 
     # Main memory entries table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS memory_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             type TEXT NOT NULL CHECK(type IN ('fact', 'preference', 'event', 'insight', 'task', 'relationship')),
@@ -75,10 +75,10 @@ def get_connection():
             expires_at DATETIME,
             is_active INTEGER DEFAULT 1
         )
-    ''')
+    """)
 
     # Daily logs table (syncs with memory/logs/*.md files)
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date DATE NOT NULL UNIQUE,
@@ -89,10 +89,10 @@ def get_connection():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
 
     # Memory access history for analytics
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS memory_access_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             memory_id INTEGER,
@@ -102,29 +102,29 @@ def get_connection():
             session_id TEXT,
             FOREIGN KEY (memory_id) REFERENCES memory_entries(id)
         )
-    ''')
+    """)
 
     # Indexes for performance
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_entries(type)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_source ON memory_entries(source)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_created ON memory_entries(created_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_active ON memory_entries(is_active)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_entries(importance)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(date)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_entries(type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_source ON memory_entries(source)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_created ON memory_entries(created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_active ON memory_entries(is_active)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_entries(importance)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(date)")
 
     conn.commit()
     return conn
 
 
-def row_to_dict(row) -> Optional[Dict]:
+def row_to_dict(row) -> dict | None:
     """Convert sqlite3.Row to dictionary."""
     if row is None:
         return None
     d = dict(row)
     # Don't include raw embedding blob in output
-    if 'embedding' in d and d['embedding']:
-        d['has_embedding'] = True
-        del d['embedding']
+    if d.get("embedding"):
+        d["has_embedding"] = True
+        del d["embedding"]
     return d
 
 
@@ -135,14 +135,14 @@ def compute_content_hash(content: str) -> str:
 
 def add_entry(
     content: str,
-    entry_type: str = 'fact',
-    source: str = 'session',
+    entry_type: str = "fact",
+    source: str = "session",
     confidence: float = 1.0,
     importance: int = 5,
-    tags: Optional[List[str]] = None,
-    context: Optional[str] = None,
-    expires_at: Optional[str] = None
-) -> Dict[str, Any]:
+    tags: list[str] | None = None,
+    context: str | None = None,
+    expires_at: str | None = None,
+) -> dict[str, Any]:
     """
     Add a new memory entry.
 
@@ -171,30 +171,43 @@ def add_entry(
     cursor = conn.cursor()
 
     # Check for duplicate
-    cursor.execute('SELECT id, content FROM memory_entries WHERE content_hash = ?', (content_hash,))
+    cursor.execute("SELECT id, content FROM memory_entries WHERE content_hash = ?", (content_hash,))
     existing = cursor.fetchone()
     if existing:
         conn.close()
         return {
             "success": False,
             "error": "Duplicate content already exists",
-            "existing_id": existing['id'],
-            "existing_content": existing['content']
+            "existing_id": existing["id"],
+            "existing_content": existing["content"],
         }
 
     tags_json = json.dumps(tags) if tags else None
 
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO memory_entries
         (type, content, content_hash, source, confidence, importance, tags, context, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (entry_type, content, content_hash, source, confidence, importance, tags_json, context, expires_at))
+    """,
+        (
+            entry_type,
+            content,
+            content_hash,
+            source,
+            confidence,
+            importance,
+            tags_json,
+            context,
+            expires_at,
+        ),
+    )
 
     entry_id = cursor.lastrowid
     conn.commit()
 
     # Fetch the created entry
-    cursor.execute('SELECT * FROM memory_entries WHERE id = ?', (entry_id,))
+    cursor.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,))
     entry = row_to_dict(cursor.fetchone())
 
     conn.close()
@@ -202,12 +215,12 @@ def add_entry(
     return {"success": True, "entry": entry, "message": f"Memory entry created with ID {entry_id}"}
 
 
-def get_entry(entry_id: int) -> Dict[str, Any]:
+def get_entry(entry_id: int) -> dict[str, Any]:
     """Get a single memory entry by ID and record access."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM memory_entries WHERE id = ?', (entry_id,))
+    cursor.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,))
     entry = row_to_dict(cursor.fetchone())
 
     if not entry:
@@ -215,16 +228,18 @@ def get_entry(entry_id: int) -> Dict[str, Any]:
         return {"success": False, "error": f"Memory entry {entry_id} not found"}
 
     # Update access tracking
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE memory_entries
         SET last_accessed = CURRENT_TIMESTAMP, access_count = access_count + 1
         WHERE id = ?
-    ''', (entry_id,))
+    """,
+        (entry_id,),
+    )
 
     # Log access
     cursor.execute(
-        'INSERT INTO memory_access_log (memory_id, access_type) VALUES (?, ?)',
-        (entry_id, 'read')
+        "INSERT INTO memory_access_log (memory_id, access_type) VALUES (?, ?)", (entry_id, "read")
     )
 
     conn.commit()
@@ -234,13 +249,13 @@ def get_entry(entry_id: int) -> Dict[str, Any]:
 
 
 def list_entries(
-    entry_type: Optional[str] = None,
-    source: Optional[str] = None,
+    entry_type: str | None = None,
+    source: str | None = None,
     active_only: bool = True,
     limit: int = 100,
     offset: int = 0,
-    min_importance: int = 1
-) -> Dict[str, Any]:
+    min_importance: int = 1,
+) -> dict[str, Any]:
     """
     List memory entries with optional filters.
 
@@ -265,48 +280,47 @@ def list_entries(
         if entry_type not in VALID_TYPES:
             conn.close()
             return {"success": False, "error": f"Invalid type. Must be one of: {VALID_TYPES}"}
-        conditions.append('type = ?')
+        conditions.append("type = ?")
         params.append(entry_type)
 
     if source:
         if source not in VALID_SOURCES:
             conn.close()
             return {"success": False, "error": f"Invalid source. Must be one of: {VALID_SOURCES}"}
-        conditions.append('source = ?')
+        conditions.append("source = ?")
         params.append(source)
 
     if active_only:
-        conditions.append('is_active = 1')
+        conditions.append("is_active = 1")
         conditions.append('(expires_at IS NULL OR expires_at > datetime("now"))')
 
-    conditions.append('importance >= ?')
+    conditions.append("importance >= ?")
     params.append(min_importance)
 
-    where_clause = ' AND '.join(conditions) if conditions else '1=1'
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-    cursor.execute(f'''
+    cursor.execute(
+        f"""
         SELECT * FROM memory_entries
         WHERE {where_clause}
         ORDER BY importance DESC, created_at DESC
         LIMIT ? OFFSET ?
-    ''', params + [limit, offset])
+    """,
+        params + [limit, offset],
+    )
 
     entries = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Get total count
-    cursor.execute(f'SELECT COUNT(*) as count FROM memory_entries WHERE {where_clause}', params)
-    total = cursor.fetchone()['count']
+    cursor.execute(f"SELECT COUNT(*) as count FROM memory_entries WHERE {where_clause}", params)
+    total = cursor.fetchone()["count"]
 
     conn.close()
 
     return {"success": True, "entries": entries, "total": total, "limit": limit, "offset": offset}
 
 
-def search_entries(
-    query: str,
-    entry_type: Optional[str] = None,
-    limit: int = 20
-) -> Dict[str, Any]:
+def search_entries(query: str, entry_type: str | None = None, limit: int = 20) -> dict[str, Any]:
     """
     Search memory entries by text (basic full-text search).
     For semantic search, use semantic_search.py which uses embeddings.
@@ -323,33 +337,39 @@ def search_entries(
     cursor = conn.cursor()
 
     # Simple LIKE search (for basic text matching)
-    search_pattern = f'%{query}%'
+    search_pattern = f"%{query}%"
 
     if entry_type:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT * FROM memory_entries
             WHERE is_active = 1
             AND type = ?
             AND (content LIKE ? OR tags LIKE ? OR context LIKE ?)
             ORDER BY importance DESC, created_at DESC
             LIMIT ?
-        ''', (entry_type, search_pattern, search_pattern, search_pattern, limit))
+        """,
+            (entry_type, search_pattern, search_pattern, search_pattern, limit),
+        )
     else:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT * FROM memory_entries
             WHERE is_active = 1
             AND (content LIKE ? OR tags LIKE ? OR context LIKE ?)
             ORDER BY importance DESC, created_at DESC
             LIMIT ?
-        ''', (search_pattern, search_pattern, search_pattern, limit))
+        """,
+            (search_pattern, search_pattern, search_pattern, limit),
+        )
 
     entries = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Log search
     for entry in entries:
         cursor.execute(
-            'INSERT INTO memory_access_log (memory_id, access_type, query) VALUES (?, ?, ?)',
-            (entry['id'], 'search', query)
+            "INSERT INTO memory_access_log (memory_id, access_type, query) VALUES (?, ?, ?)",
+            (entry["id"], "search", query),
         )
 
     conn.commit()
@@ -358,7 +378,7 @@ def search_entries(
     return {"success": True, "entries": entries, "query": query, "count": len(entries)}
 
 
-def update_entry(entry_id: int, **kwargs) -> Dict[str, Any]:
+def update_entry(entry_id: int, **kwargs) -> dict[str, Any]:
     """
     Update a memory entry.
 
@@ -369,12 +389,22 @@ def update_entry(entry_id: int, **kwargs) -> Dict[str, Any]:
     Returns:
         dict with updated entry
     """
-    allowed_fields = ['content', 'type', 'source', 'confidence', 'importance', 'tags', 'context', 'expires_at', 'is_active']
+    allowed_fields = [
+        "content",
+        "type",
+        "source",
+        "confidence",
+        "importance",
+        "tags",
+        "context",
+        "expires_at",
+        "is_active",
+    ]
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM memory_entries WHERE id = ?', (entry_id,))
+    cursor.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,))
     if not cursor.fetchone():
         conn.close()
         return {"success": False, "error": f"Memory entry {entry_id} not found"}
@@ -384,40 +414,42 @@ def update_entry(entry_id: int, **kwargs) -> Dict[str, Any]:
 
     for field, value in kwargs.items():
         if field in allowed_fields:
-            if field == 'type' and value not in VALID_TYPES:
+            if field == "type" and value not in VALID_TYPES:
                 conn.close()
                 return {"success": False, "error": f"Invalid type. Must be one of: {VALID_TYPES}"}
-            if field == 'source' and value not in VALID_SOURCES:
+            if field == "source" and value not in VALID_SOURCES:
                 conn.close()
-                return {"success": False, "error": f"Invalid source. Must be one of: {VALID_SOURCES}"}
-            if field == 'tags' and isinstance(value, list):
+                return {
+                    "success": False,
+                    "error": f"Invalid source. Must be one of: {VALID_SOURCES}",
+                }
+            if field == "tags" and isinstance(value, list):
                 value = json.dumps(value)
-            if field == 'content':
+            if field == "content":
                 # Update content hash too
-                updates.append('content_hash = ?')
+                updates.append("content_hash = ?")
                 values.append(compute_content_hash(value))
-            updates.append(f'{field} = ?')
+            updates.append(f"{field} = ?")
             values.append(value)
 
     if not updates:
         conn.close()
         return {"success": False, "error": "No valid fields to update"}
 
-    updates.append('updated_at = CURRENT_TIMESTAMP')
+    updates.append("updated_at = CURRENT_TIMESTAMP")
     values.append(entry_id)
 
-    cursor.execute(f'UPDATE memory_entries SET {", ".join(updates)} WHERE id = ?', values)
+    cursor.execute(f"UPDATE memory_entries SET {', '.join(updates)} WHERE id = ?", values)
     conn.commit()
 
     # Log update
     cursor.execute(
-        'INSERT INTO memory_access_log (memory_id, access_type) VALUES (?, ?)',
-        (entry_id, 'update')
+        "INSERT INTO memory_access_log (memory_id, access_type) VALUES (?, ?)", (entry_id, "update")
     )
     conn.commit()
 
     # Fetch updated entry
-    cursor.execute('SELECT * FROM memory_entries WHERE id = ?', (entry_id,))
+    cursor.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,))
     entry = row_to_dict(cursor.fetchone())
 
     conn.close()
@@ -425,7 +457,7 @@ def update_entry(entry_id: int, **kwargs) -> Dict[str, Any]:
     return {"success": True, "entry": entry, "message": f"Memory entry {entry_id} updated"}
 
 
-def delete_entry(entry_id: int, soft_delete: bool = True) -> Dict[str, Any]:
+def delete_entry(entry_id: int, soft_delete: bool = True) -> dict[str, Any]:
     """
     Delete a memory entry.
 
@@ -439,17 +471,20 @@ def delete_entry(entry_id: int, soft_delete: bool = True) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM memory_entries WHERE id = ?', (entry_id,))
+    cursor.execute("SELECT * FROM memory_entries WHERE id = ?", (entry_id,))
     if not cursor.fetchone():
         conn.close()
         return {"success": False, "error": f"Memory entry {entry_id} not found"}
 
     if soft_delete:
-        cursor.execute('UPDATE memory_entries SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (entry_id,))
+        cursor.execute(
+            "UPDATE memory_entries SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (entry_id,),
+        )
         message = f"Memory entry {entry_id} marked as inactive"
     else:
-        cursor.execute('DELETE FROM memory_access_log WHERE memory_id = ?', (entry_id,))
-        cursor.execute('DELETE FROM memory_entries WHERE id = ?', (entry_id,))
+        cursor.execute("DELETE FROM memory_access_log WHERE memory_id = ?", (entry_id,))
+        cursor.execute("DELETE FROM memory_entries WHERE id = ?", (entry_id,))
         message = f"Memory entry {entry_id} permanently deleted"
 
     conn.commit()
@@ -458,7 +493,7 @@ def delete_entry(entry_id: int, soft_delete: bool = True) -> Dict[str, Any]:
     return {"success": True, "message": message}
 
 
-def get_recent(hours: int = 24, entry_type: Optional[str] = None) -> Dict[str, Any]:
+def get_recent(hours: int = 24, entry_type: str | None = None) -> dict[str, Any]:
     """Get memory entries from the last N hours."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -466,17 +501,23 @@ def get_recent(hours: int = 24, entry_type: Optional[str] = None) -> Dict[str, A
     cutoff = datetime.now() - timedelta(hours=hours)
 
     if entry_type:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT * FROM memory_entries
             WHERE is_active = 1 AND type = ? AND created_at >= ?
             ORDER BY created_at DESC
-        ''', (entry_type, cutoff.isoformat()))
+        """,
+            (entry_type, cutoff.isoformat()),
+        )
     else:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT * FROM memory_entries
             WHERE is_active = 1 AND created_at >= ?
             ORDER BY created_at DESC
-        ''', (cutoff.isoformat(),))
+        """,
+            (cutoff.isoformat(),),
+        )
 
     entries = [row_to_dict(row) for row in cursor.fetchall()]
 
@@ -485,53 +526,55 @@ def get_recent(hours: int = 24, entry_type: Optional[str] = None) -> Dict[str, A
     return {"success": True, "entries": entries, "count": len(entries), "hours": hours}
 
 
-def get_stats() -> Dict[str, Any]:
+def get_stats() -> dict[str, Any]:
     """Get memory statistics."""
     conn = get_connection()
     cursor = conn.cursor()
 
     # Count by type
-    cursor.execute('''
+    cursor.execute("""
         SELECT type, COUNT(*) as count
         FROM memory_entries
         WHERE is_active = 1
         GROUP BY type
-    ''')
-    by_type = {row['type']: row['count'] for row in cursor.fetchall()}
+    """)
+    by_type = {row["type"]: row["count"] for row in cursor.fetchall()}
 
     # Count by source
-    cursor.execute('''
+    cursor.execute("""
         SELECT source, COUNT(*) as count
         FROM memory_entries
         WHERE is_active = 1
         GROUP BY source
-    ''')
-    by_source = {row['source']: row['count'] for row in cursor.fetchall()}
+    """)
+    by_source = {row["source"]: row["count"] for row in cursor.fetchall()}
 
     # Total counts
-    cursor.execute('SELECT COUNT(*) as total FROM memory_entries WHERE is_active = 1')
-    total_active = cursor.fetchone()['total']
+    cursor.execute("SELECT COUNT(*) as total FROM memory_entries WHERE is_active = 1")
+    total_active = cursor.fetchone()["total"]
 
-    cursor.execute('SELECT COUNT(*) as total FROM memory_entries WHERE is_active = 0')
-    total_inactive = cursor.fetchone()['total']
+    cursor.execute("SELECT COUNT(*) as total FROM memory_entries WHERE is_active = 0")
+    total_inactive = cursor.fetchone()["total"]
 
     # Entries with embeddings
-    cursor.execute('SELECT COUNT(*) as count FROM memory_entries WHERE embedding IS NOT NULL AND is_active = 1')
-    with_embeddings = cursor.fetchone()['count']
+    cursor.execute(
+        "SELECT COUNT(*) as count FROM memory_entries WHERE embedding IS NOT NULL AND is_active = 1"
+    )
+    with_embeddings = cursor.fetchone()["count"]
 
     # Most accessed
-    cursor.execute('''
+    cursor.execute("""
         SELECT id, content, access_count
         FROM memory_entries
         WHERE is_active = 1
         ORDER BY access_count DESC
         LIMIT 5
-    ''')
+    """)
     most_accessed = [row_to_dict(row) for row in cursor.fetchall()]
 
     # Daily log count
-    cursor.execute('SELECT COUNT(*) as count FROM daily_logs')
-    daily_log_count = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(*) as count FROM daily_logs")
+    daily_log_count = cursor.fetchone()["count"]
 
     conn.close()
 
@@ -544,12 +587,14 @@ def get_stats() -> Dict[str, Any]:
             "by_source": by_source,
             "with_embeddings": with_embeddings,
             "daily_logs": daily_log_count,
-            "most_accessed": most_accessed
-        }
+            "most_accessed": most_accessed,
+        },
     }
 
 
-def add_daily_log(date: str, summary: str, raw_log: str, key_events: Optional[List[str]] = None) -> Dict[str, Any]:
+def add_daily_log(
+    date: str, summary: str, raw_log: str, key_events: list[str] | None = None
+) -> dict[str, Any]:
     """
     Add or update a daily log entry.
 
@@ -568,7 +613,8 @@ def add_daily_log(date: str, summary: str, raw_log: str, key_events: Optional[Li
     key_events_json = json.dumps(key_events) if key_events else None
 
     # Upsert
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO daily_logs (date, summary, raw_log, key_events, entry_count)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(date) DO UPDATE SET
@@ -577,11 +623,13 @@ def add_daily_log(date: str, summary: str, raw_log: str, key_events: Optional[Li
             key_events = excluded.key_events,
             entry_count = entry_count + 1,
             updated_at = CURRENT_TIMESTAMP
-    ''', (date, summary, raw_log, key_events_json, 1))
+    """,
+        (date, summary, raw_log, key_events_json, 1),
+    )
 
     conn.commit()
 
-    cursor.execute('SELECT * FROM daily_logs WHERE date = ?', (date,))
+    cursor.execute("SELECT * FROM daily_logs WHERE date = ?", (date,))
     log = row_to_dict(cursor.fetchone())
 
     conn.close()
@@ -589,12 +637,12 @@ def add_daily_log(date: str, summary: str, raw_log: str, key_events: Optional[Li
     return {"success": True, "log": log, "message": f"Daily log for {date} saved"}
 
 
-def get_daily_log(date: str) -> Dict[str, Any]:
+def get_daily_log(date: str) -> dict[str, Any]:
     """Get a daily log by date."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM daily_logs WHERE date = ?', (date,))
+    cursor.execute("SELECT * FROM daily_logs WHERE date = ?", (date,))
     log = row_to_dict(cursor.fetchone())
 
     conn.close()
@@ -605,7 +653,9 @@ def get_daily_log(date: str) -> Dict[str, Any]:
     return {"success": True, "log": log}
 
 
-def store_embedding(entry_id: int, embedding: bytes, model: str = 'text-embedding-3-small') -> Dict[str, Any]:
+def store_embedding(
+    entry_id: int, embedding: bytes, model: str = "text-embedding-3-small"
+) -> dict[str, Any]:
     """
     Store an embedding for a memory entry.
     Called by embed_memory.py after generating embeddings.
@@ -621,11 +671,14 @@ def store_embedding(entry_id: int, embedding: bytes, model: str = 'text-embeddin
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE memory_entries
         SET embedding = ?, embedding_model = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-    ''', (embedding, model, entry_id))
+    """,
+        (embedding, model, entry_id),
+    )
 
     conn.commit()
     conn.close()
@@ -633,18 +686,21 @@ def store_embedding(entry_id: int, embedding: bytes, model: str = 'text-embeddin
     return {"success": True, "message": f"Embedding stored for entry {entry_id}"}
 
 
-def get_entries_without_embeddings(limit: int = 50) -> Dict[str, Any]:
+def get_entries_without_embeddings(limit: int = 50) -> dict[str, Any]:
     """Get entries that don't have embeddings yet."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT id, content, type
         FROM memory_entries
         WHERE embedding IS NULL AND is_active = 1
         ORDER BY importance DESC, created_at DESC
         LIMIT ?
-    ''', (limit,))
+    """,
+        (limit,),
+    )
 
     entries = [row_to_dict(row) for row in cursor.fetchall()]
 
@@ -654,119 +710,134 @@ def get_entries_without_embeddings(limit: int = 50) -> Dict[str, Any]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Memory Database Manager')
-    parser.add_argument('--action', required=True,
-                       choices=['add', 'get', 'list', 'search', 'update', 'delete',
-                               'recent', 'stats', 'add-log', 'get-log', 'needs-embedding'],
-                       help='Action to perform')
-    parser.add_argument('--id', type=int, help='Entry ID')
-    parser.add_argument('--content', help='Memory content')
-    parser.add_argument('--type', help='Memory type (fact, preference, event, insight, task, relationship)')
-    parser.add_argument('--source', default='session', help='Source (user, inferred, session, external, system)')
-    parser.add_argument('--confidence', type=float, default=1.0, help='Confidence score 0-1')
-    parser.add_argument('--importance', type=int, default=5, help='Importance level 1-10')
-    parser.add_argument('--tags', help='Comma-separated tags')
-    parser.add_argument('--context', help='Context about when/why this was learned')
-    parser.add_argument('--query', help='Search query')
-    parser.add_argument('--hours', type=int, default=24, help='Hours for recent entries')
-    parser.add_argument('--date', help='Date for daily log (YYYY-MM-DD)')
-    parser.add_argument('--summary', help='Summary for daily log')
-    parser.add_argument('--raw-log', help='Raw log content')
-    parser.add_argument('--limit', type=int, default=100, help='Limit for list')
-    parser.add_argument('--offset', type=int, default=0, help='Offset for list')
-    parser.add_argument('--hard-delete', action='store_true', help='Permanently delete instead of soft delete')
+    parser = argparse.ArgumentParser(description="Memory Database Manager")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=[
+            "add",
+            "get",
+            "list",
+            "search",
+            "update",
+            "delete",
+            "recent",
+            "stats",
+            "add-log",
+            "get-log",
+            "needs-embedding",
+        ],
+        help="Action to perform",
+    )
+    parser.add_argument("--id", type=int, help="Entry ID")
+    parser.add_argument("--content", help="Memory content")
+    parser.add_argument(
+        "--type", help="Memory type (fact, preference, event, insight, task, relationship)"
+    )
+    parser.add_argument(
+        "--source", default="session", help="Source (user, inferred, session, external, system)"
+    )
+    parser.add_argument("--confidence", type=float, default=1.0, help="Confidence score 0-1")
+    parser.add_argument("--importance", type=int, default=5, help="Importance level 1-10")
+    parser.add_argument("--tags", help="Comma-separated tags")
+    parser.add_argument("--context", help="Context about when/why this was learned")
+    parser.add_argument("--query", help="Search query")
+    parser.add_argument("--hours", type=int, default=24, help="Hours for recent entries")
+    parser.add_argument("--date", help="Date for daily log (YYYY-MM-DD)")
+    parser.add_argument("--summary", help="Summary for daily log")
+    parser.add_argument("--raw-log", help="Raw log content")
+    parser.add_argument("--limit", type=int, default=100, help="Limit for list")
+    parser.add_argument("--offset", type=int, default=0, help="Offset for list")
+    parser.add_argument(
+        "--hard-delete", action="store_true", help="Permanently delete instead of soft delete"
+    )
 
     args = parser.parse_args()
 
     result = None
 
-    if args.action == 'add':
+    if args.action == "add":
         if not args.content:
             print("Error: --content required for add action")
             sys.exit(1)
-        tags = args.tags.split(',') if args.tags else None
+        tags = args.tags.split(",") if args.tags else None
         result = add_entry(
             content=args.content,
-            entry_type=args.type or 'fact',
+            entry_type=args.type or "fact",
             source=args.source,
             confidence=args.confidence,
             importance=args.importance,
             tags=tags,
-            context=args.context
+            context=args.context,
         )
 
-    elif args.action == 'get':
+    elif args.action == "get":
         if not args.id:
             print("Error: --id required for get action")
             sys.exit(1)
         result = get_entry(args.id)
 
-    elif args.action == 'list':
+    elif args.action == "list":
         result = list_entries(
-            entry_type=args.type,
-            source=args.source,
-            limit=args.limit,
-            offset=args.offset
+            entry_type=args.type, source=args.source, limit=args.limit, offset=args.offset
         )
 
-    elif args.action == 'search':
+    elif args.action == "search":
         if not args.query:
             print("Error: --query required for search action")
             sys.exit(1)
         result = search_entries(args.query, entry_type=args.type, limit=args.limit)
 
-    elif args.action == 'update':
+    elif args.action == "update":
         if not args.id:
             print("Error: --id required for update action")
             sys.exit(1)
         kwargs = {}
         if args.content:
-            kwargs['content'] = args.content
+            kwargs["content"] = args.content
         if args.type:
-            kwargs['type'] = args.type
+            kwargs["type"] = args.type
         if args.source:
-            kwargs['source'] = args.source
+            kwargs["source"] = args.source
         if args.tags:
-            kwargs['tags'] = args.tags.split(',')
+            kwargs["tags"] = args.tags.split(",")
         if args.context:
-            kwargs['context'] = args.context
+            kwargs["context"] = args.context
         if args.importance:
-            kwargs['importance'] = args.importance
+            kwargs["importance"] = args.importance
         result = update_entry(args.id, **kwargs)
 
-    elif args.action == 'delete':
+    elif args.action == "delete":
         if not args.id:
             print("Error: --id required for delete action")
             sys.exit(1)
         result = delete_entry(args.id, soft_delete=not args.hard_delete)
 
-    elif args.action == 'recent':
+    elif args.action == "recent":
         result = get_recent(hours=args.hours, entry_type=args.type)
 
-    elif args.action == 'stats':
+    elif args.action == "stats":
         result = get_stats()
 
-    elif args.action == 'add-log':
+    elif args.action == "add-log":
         if not args.date or not args.summary:
             print("Error: --date and --summary required for add-log action")
             sys.exit(1)
         result = add_daily_log(
-            date=args.date,
-            summary=args.summary,
-            raw_log=args.raw_log or args.summary
+            date=args.date, summary=args.summary, raw_log=args.raw_log or args.summary
         )
 
-    elif args.action == 'get-log':
+    elif args.action == "get-log":
         if not args.date:
             print("Error: --date required for get-log action")
             sys.exit(1)
         result = get_daily_log(args.date)
 
-    elif args.action == 'needs-embedding':
+    elif args.action == "needs-embedding":
         result = get_entries_without_embeddings(limit=args.limit)
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")

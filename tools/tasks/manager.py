@@ -31,14 +31,12 @@ import sqlite3
 import sys
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from . import (
     DB_PATH,
     ENERGY_LEVELS,
     FRICTION_TYPES,
-    STEP_STATUSES,
     TASK_STATUSES,
 )
 
@@ -122,7 +120,7 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
-def row_to_dict(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     """Convert sqlite3.Row to dictionary."""
     if row is None:
         return None
@@ -137,13 +135,13 @@ def generate_id() -> str:
 def create_task(
     user_id: str,
     raw_input: str,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
-    parent_task_id: Optional[str] = None,
-    energy_level: Optional[str] = None,
-    estimated_minutes: Optional[int] = None,
+    title: str | None = None,
+    description: str | None = None,
+    parent_task_id: str | None = None,
+    energy_level: str | None = None,
+    estimated_minutes: int | None = None,
     priority: int = 5,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a new task from raw input.
 
@@ -168,10 +166,23 @@ def create_task(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         INSERT INTO tasks (id, user_id, raw_input, title, description, parent_task_id, energy_level, estimated_minutes, priority)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (task_id, user_id, raw_input, title or raw_input, description, parent_task_id, energy_level, estimated_minutes, priority))
+    """,
+        (
+            task_id,
+            user_id,
+            raw_input,
+            title or raw_input,
+            description,
+            parent_task_id,
+            energy_level,
+            estimated_minutes,
+            priority,
+        ),
+    )
 
     conn.commit()
 
@@ -188,7 +199,9 @@ def create_task(
     }
 
 
-def get_task(task_id: str, include_steps: bool = True, include_friction: bool = True) -> Dict[str, Any]:
+def get_task(
+    task_id: str, include_steps: bool = True, include_friction: bool = True
+) -> dict[str, Any]:
     """
     Get task details by ID.
 
@@ -211,19 +224,25 @@ def get_task(task_id: str, include_steps: bool = True, include_friction: bool = 
         return {"success": False, "error": f"Task not found: {task_id}"}
 
     if include_steps:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM task_steps
             WHERE task_id = ?
             ORDER BY step_number
-        """, (task_id,))
+        """,
+            (task_id,),
+        )
         task["steps"] = [row_to_dict(row) for row in cursor.fetchall()]
 
     if include_friction:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM task_friction
             WHERE task_id = ?
             ORDER BY created_at
-        """, (task_id,))
+        """,
+            (task_id,),
+        )
         task["friction_points"] = [row_to_dict(row) for row in cursor.fetchall()]
 
     conn.close()
@@ -233,13 +252,13 @@ def get_task(task_id: str, include_steps: bool = True, include_friction: bool = 
 
 def list_tasks(
     user_id: str,
-    status: Optional[str] = None,
-    parent_task_id: Optional[str] = None,
-    energy_level: Optional[str] = None,
+    status: str | None = None,
+    parent_task_id: str | None = None,
+    energy_level: str | None = None,
     include_subtasks: bool = False,
     limit: int = 50,
     offset: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     List tasks for a user with optional filters.
 
@@ -262,7 +281,7 @@ def list_tasks(
     cursor = conn.cursor()
 
     conditions = ["user_id = ?"]
-    params: List[Any] = [user_id]
+    params: list[Any] = [user_id]
 
     if status:
         conditions.append("status = ?")
@@ -280,12 +299,15 @@ def list_tasks(
 
     where_clause = " AND ".join(conditions)
 
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         SELECT * FROM tasks
         WHERE {where_clause}
         ORDER BY priority DESC, created_at DESC
         LIMIT ? OFFSET ?
-    """, params + [limit, offset])
+    """,
+        params + [limit, offset],
+    )
 
     tasks = [row_to_dict(row) for row in cursor.fetchall()]
 
@@ -303,14 +325,14 @@ def list_tasks(
 
 def update_task(
     task_id: str,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
-    status: Optional[str] = None,
-    energy_level: Optional[str] = None,
-    estimated_minutes: Optional[int] = None,
-    priority: Optional[int] = None,
-    current_step_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    title: str | None = None,
+    description: str | None = None,
+    status: str | None = None,
+    energy_level: str | None = None,
+    estimated_minutes: int | None = None,
+    priority: int | None = None,
+    current_step_id: str | None = None,
+) -> dict[str, Any]:
     """
     Update task fields.
 
@@ -343,7 +365,7 @@ def update_task(
         return {"success": False, "error": f"Task not found: {task_id}"}
 
     updates = []
-    params: List[Any] = []
+    params: list[Any] = []
 
     if title is not None:
         updates.append("title = ?")
@@ -396,7 +418,7 @@ def update_task(
     return {"success": True, "data": task, "message": f"Task {task_id} updated"}
 
 
-def complete_task(task_id: str) -> Dict[str, Any]:
+def complete_task(task_id: str) -> dict[str, Any]:
     """
     Mark a task as completed.
 
@@ -409,7 +431,7 @@ def complete_task(task_id: str) -> Dict[str, Any]:
     return update_task(task_id, status="completed")
 
 
-def abandon_task(task_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
+def abandon_task(task_id: str, reason: str | None = None) -> dict[str, Any]:
     """
     Mark a task as abandoned (without guilt!).
 
@@ -425,11 +447,14 @@ def abandon_task(task_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         UPDATE tasks
         SET status = 'abandoned', completed_at = ?, abandon_reason = ?
         WHERE id = ?
-    """, (datetime.now().isoformat(), reason, task_id))
+    """,
+        (datetime.now().isoformat(), reason, task_id),
+    )
 
     if cursor.rowcount == 0:
         conn.close()
@@ -448,10 +473,10 @@ def add_step(
     task_id: str,
     step_number: int,
     description: str,
-    action_verb: Optional[str] = None,
-    friction_notes: Optional[str] = None,
-    estimated_minutes: Optional[int] = None,
-) -> Dict[str, Any]:
+    action_verb: str | None = None,
+    friction_notes: str | None = None,
+    estimated_minutes: int | None = None,
+) -> dict[str, Any]:
     """
     Add a step to a task.
 
@@ -477,10 +502,21 @@ def add_step(
         conn.close()
         return {"success": False, "error": f"Task not found: {task_id}"}
 
-    cursor.execute("""
+    cursor.execute(
+        """
         INSERT INTO task_steps (id, task_id, step_number, description, action_verb, friction_notes, estimated_minutes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (step_id, task_id, step_number, description, action_verb, friction_notes, estimated_minutes))
+    """,
+        (
+            step_id,
+            task_id,
+            step_number,
+            description,
+            action_verb,
+            friction_notes,
+            estimated_minutes,
+        ),
+    )
 
     conn.commit()
 
@@ -492,7 +528,7 @@ def add_step(
     return {"success": True, "data": step, "message": f"Step added with ID {step_id}"}
 
 
-def complete_step(step_id: str) -> Dict[str, Any]:
+def complete_step(step_id: str) -> dict[str, Any]:
     """
     Mark a step as completed and advance to next step.
 
@@ -506,12 +542,15 @@ def complete_step(step_id: str) -> Dict[str, Any]:
     cursor = conn.cursor()
 
     # Get step and its task
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT s.*, t.id as task_id
         FROM task_steps s
         JOIN tasks t ON s.task_id = t.id
         WHERE s.id = ?
-    """, (step_id,))
+    """,
+        (step_id,),
+    )
     step = row_to_dict(cursor.fetchone())
 
     if not step:
@@ -519,31 +558,43 @@ def complete_step(step_id: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Step not found: {step_id}"}
 
     # Mark step complete
-    cursor.execute("""
+    cursor.execute(
+        """
         UPDATE task_steps
         SET status = 'completed', completed_at = ?
         WHERE id = ?
-    """, (datetime.now().isoformat(), step_id))
+    """,
+        (datetime.now().isoformat(), step_id),
+    )
 
     # Find next pending step
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT * FROM task_steps
         WHERE task_id = ? AND status = 'pending'
         ORDER BY step_number
         LIMIT 1
-    """, (step["task_id"],))
+    """,
+        (step["task_id"],),
+    )
     next_step = row_to_dict(cursor.fetchone())
 
     # Update task's current step
     if next_step:
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE tasks SET current_step_id = ? WHERE id = ?
-        """, (next_step["id"], step["task_id"]))
+        """,
+            (next_step["id"], step["task_id"]),
+        )
     else:
         # No more steps - task may be complete
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE tasks SET current_step_id = NULL WHERE id = ?
-        """, (step["task_id"],))
+        """,
+            (step["task_id"],),
+        )
 
     conn.commit()
     conn.close()
@@ -561,7 +612,7 @@ def complete_step(step_id: str) -> Dict[str, Any]:
     return result
 
 
-def get_step(step_id: str) -> Dict[str, Any]:
+def get_step(step_id: str) -> dict[str, Any]:
     """
     Get step details by ID.
 
@@ -588,9 +639,9 @@ def get_step(step_id: str) -> Dict[str, Any]:
 def add_friction(
     friction_type: str,
     description: str,
-    task_id: Optional[str] = None,
-    step_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    task_id: str | None = None,
+    step_id: str | None = None,
+) -> dict[str, Any]:
     """
     Record a friction point for a task or step.
 
@@ -604,7 +655,10 @@ def add_friction(
         dict with friction data
     """
     if friction_type not in FRICTION_TYPES:
-        return {"success": False, "error": f"Invalid friction type. Must be one of: {FRICTION_TYPES}"}
+        return {
+            "success": False,
+            "error": f"Invalid friction type. Must be one of: {FRICTION_TYPES}",
+        }
 
     if not task_id and not step_id:
         return {"success": False, "error": "Must specify task_id or step_id"}
@@ -614,10 +668,13 @@ def add_friction(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         INSERT INTO task_friction (id, task_id, step_id, friction_type, description)
         VALUES (?, ?, ?, ?, ?)
-    """, (friction_id, task_id, step_id, friction_type, description))
+    """,
+        (friction_id, task_id, step_id, friction_type, description),
+    )
 
     conn.commit()
 
@@ -626,10 +683,10 @@ def add_friction(
 
     conn.close()
 
-    return {"success": True, "data": friction, "message": f"Friction point recorded"}
+    return {"success": True, "data": friction, "message": "Friction point recorded"}
 
 
-def delete_task(task_id: str) -> Dict[str, Any]:
+def delete_task(task_id: str) -> dict[str, Any]:
     """
     Delete a task and all its steps/friction.
 
@@ -662,7 +719,18 @@ def main():
     parser.add_argument(
         "--action",
         required=True,
-        choices=["create", "list", "get", "update", "complete", "abandon", "delete", "add-step", "complete-step", "get-step"],
+        choices=[
+            "create",
+            "list",
+            "get",
+            "update",
+            "complete",
+            "abandon",
+            "delete",
+            "add-step",
+            "complete-step",
+            "get-step",
+        ],
         help="Action to perform",
     )
 
@@ -765,7 +833,14 @@ def main():
 
     elif args.action == "add-step":
         if not args.task_id or not args.step_number or not args.step_desc:
-            print(json.dumps({"success": False, "error": "--task-id, --step-number, and --step-desc required"}))
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "--task-id, --step-number, and --step-desc required",
+                    }
+                )
+            )
             sys.exit(1)
         result = add_step(
             task_id=args.task_id,

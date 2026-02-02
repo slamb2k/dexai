@@ -26,16 +26,15 @@ Note:
     First-time setup: pip install playwright && playwright install chromium
 """
 
-import os
-import sys
-import json
 import argparse
 import asyncio
 import fnmatch
-from datetime import datetime
+import json
+import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 from urllib.parse import urlparse
+
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -74,22 +73,22 @@ DEFAULT_TIMEOUT = 30000  # 30 seconds
 DEFAULT_VIEWPORT = {"width": 1280, "height": 720}
 
 
-def load_config() -> Dict:
+def load_config() -> dict:
     """Load browser configuration from YAML file."""
     default_config = {
-        'enabled': True,
-        'headless': True,
-        'timeout': DEFAULT_TIMEOUT,
-        'viewport': DEFAULT_VIEWPORT,
-        'allowed_domains': DEFAULT_ALLOWED_DOMAINS,
-        'blocked_domains': DEFAULT_BLOCKED_DOMAINS,
-        'user_agent': 'AddultingBot/1.0 (Browser Automation)',
-        'permissions': {
-            'navigate': 'browser:navigate',
-            'screenshot': 'browser:screenshot',
-            'pdf': 'browser:pdf',
-            'extract': 'browser:extract',
-        }
+        "enabled": True,
+        "headless": True,
+        "timeout": DEFAULT_TIMEOUT,
+        "viewport": DEFAULT_VIEWPORT,
+        "allowed_domains": DEFAULT_ALLOWED_DOMAINS,
+        "blocked_domains": DEFAULT_BLOCKED_DOMAINS,
+        "user_agent": "AddultingBot/1.0 (Browser Automation)",
+        "permissions": {
+            "navigate": "browser:navigate",
+            "screenshot": "browser:screenshot",
+            "pdf": "browser:pdf",
+            "extract": "browser:extract",
+        },
     }
 
     if not CONFIG_PATH.exists():
@@ -97,10 +96,11 @@ def load_config() -> Dict:
 
     try:
         import yaml
+
         with open(CONFIG_PATH) as f:
             config = yaml.safe_load(f)
-        if config and 'browser' in config:
-            browser_config = config['browser']
+        if config and "browser" in config:
+            browser_config = config["browser"]
             for key, value in browser_config.items():
                 default_config[key] = value
     except ImportError:
@@ -132,16 +132,16 @@ def is_domain_allowed(url: str) -> tuple[bool, str]:
         return False, f"Invalid URL: {e}"
 
     # Check blocked domains first
-    blocked = config.get('blocked_domains', DEFAULT_BLOCKED_DOMAINS)
+    blocked = config.get("blocked_domains", DEFAULT_BLOCKED_DOMAINS)
     for pattern in blocked:
         if fnmatch.fnmatch(domain, pattern):
             return False, f"Domain blocked: {domain} matches {pattern}"
 
     # Check allowed domains
-    allowed = config.get('allowed_domains', DEFAULT_ALLOWED_DOMAINS)
+    allowed = config.get("allowed_domains", DEFAULT_ALLOWED_DOMAINS)
 
     # If allowed list is empty or contains '*', allow all (except blocked)
-    if not allowed or '*' in allowed:
+    if not allowed or "*" in allowed:
         return True, "Allowed (no restrictions)"
 
     for pattern in allowed:
@@ -164,6 +164,7 @@ def validate_output_path(path: str) -> tuple[bool, str, str]:
     try:
         # Use fileops validation if available
         from tools.system import fileops
+
         return fileops.validate_path(path, check_exists=False)
     except Exception:
         pass
@@ -172,7 +173,7 @@ def validate_output_path(path: str) -> tuple[bool, str, str]:
     try:
         resolved = Path(path).expanduser().resolve()
         # Require .tmp or /tmp in path
-        if '.tmp' not in str(resolved) and '/tmp/' not in str(resolved):
+        if ".tmp" not in str(resolved) and "/tmp/" not in str(resolved):
             return False, "", "Output path must be in .tmp or /tmp directory"
         return True, str(resolved), ""
     except Exception as e:
@@ -183,23 +184,27 @@ def check_permission(user_id: str, permission: str) -> bool:
     """Check if user has permission for operation."""
     try:
         from tools.security import permissions
-        result = permissions.check_permission(user_id or 'anonymous', permission)
-        return result.get('allowed', False)
+
+        result = permissions.check_permission(user_id or "anonymous", permission)
+        return result.get("allowed", False)
     except Exception:
         return True  # If permissions unavailable, allow
 
 
-def log_operation(action: str, url: str, user_id: Optional[str], status: str, details: Optional[Dict] = None):
+def log_operation(
+    action: str, url: str, user_id: str | None, status: str, details: dict | None = None
+):
     """Log browser operation to audit trail."""
     try:
         from tools.security import audit
+
         audit.log_event(
-            event_type='command',
-            action=f'browser:{action}',
+            event_type="command",
+            action=f"browser:{action}",
             user_id=user_id,
             resource=url,
             status=status,
-            details=details
+            details=details,
         )
     except Exception:
         pass
@@ -218,18 +223,15 @@ async def get_browser():
     playwright = await async_playwright().start()
 
     browser = await playwright.chromium.launch(
-        headless=config.get('headless', True),
+        headless=config.get("headless", True),
     )
 
     return playwright, browser
 
 
 async def navigate(
-    url: str,
-    wait_for: str = 'load',
-    timeout: int = None,
-    user_id: Optional[str] = None
-) -> Dict[str, Any]:
+    url: str, wait_for: str = "load", timeout: int = None, user_id: str | None = None
+) -> dict[str, Any]:
     """
     Navigate to URL and return page info.
 
@@ -244,22 +246,22 @@ async def navigate(
     """
     config = load_config()
 
-    if not config.get('enabled', True):
+    if not config.get("enabled", True):
         return {"success": False, "error": "Browser automation disabled"}
 
     # Check permission
-    perm = config.get('permissions', {}).get('navigate', 'browser:navigate')
+    perm = config.get("permissions", {}).get("navigate", "browser:navigate")
     if not check_permission(user_id, perm):
         return {"success": False, "error": f"Permission denied: {perm} required"}
 
     # Check domain
     is_allowed, reason = is_domain_allowed(url)
     if not is_allowed:
-        log_operation('navigate', url, user_id, 'blocked', {'reason': reason})
+        log_operation("navigate", url, user_id, "blocked", {"reason": reason})
         return {"success": False, "error": reason}
 
-    timeout = timeout or config.get('timeout', DEFAULT_TIMEOUT)
-    viewport = config.get('viewport', DEFAULT_VIEWPORT)
+    timeout = timeout or config.get("timeout", DEFAULT_TIMEOUT)
+    viewport = config.get("viewport", DEFAULT_VIEWPORT)
 
     playwright = None
     browser = None
@@ -267,8 +269,7 @@ async def navigate(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport,
-            user_agent=config.get('user_agent', 'AddultingBot/1.0')
+            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
         )
         page = await context.new_page()
 
@@ -279,10 +280,12 @@ async def navigate(
             "title": await page.title(),
             "url": page.url,
             "status": response.status if response else None,
-            "headers": dict(response.headers) if response else {}
+            "headers": dict(response.headers) if response else {},
         }
 
-        log_operation('navigate', url, user_id, 'success', {'status': response.status if response else None})
+        log_operation(
+            "navigate", url, user_id, "success", {"status": response.status if response else None}
+        )
 
         await browser.close()
         await playwright.stop()
@@ -290,7 +293,7 @@ async def navigate(
         return result
 
     except Exception as e:
-        log_operation('navigate', url, user_id, 'failure', {'error': str(e)})
+        log_operation("navigate", url, user_id, "failure", {"error": str(e)})
         if browser:
             await browser.close()
         if playwright:
@@ -299,11 +302,8 @@ async def navigate(
 
 
 async def screenshot(
-    url: str,
-    output_path: str,
-    full_page: bool = False,
-    user_id: Optional[str] = None
-) -> Dict[str, Any]:
+    url: str, output_path: str, full_page: bool = False, user_id: str | None = None
+) -> dict[str, Any]:
     """
     Take screenshot of page.
 
@@ -318,18 +318,18 @@ async def screenshot(
     """
     config = load_config()
 
-    if not config.get('enabled', True):
+    if not config.get("enabled", True):
         return {"success": False, "error": "Browser automation disabled"}
 
     # Check permission
-    perm = config.get('permissions', {}).get('screenshot', 'browser:screenshot')
+    perm = config.get("permissions", {}).get("screenshot", "browser:screenshot")
     if not check_permission(user_id, perm):
         return {"success": False, "error": f"Permission denied: {perm} required"}
 
     # Check domain
     is_allowed, reason = is_domain_allowed(url)
     if not is_allowed:
-        log_operation('screenshot', url, user_id, 'blocked', {'reason': reason})
+        log_operation("screenshot", url, user_id, "blocked", {"reason": reason})
         return {"success": False, "error": reason}
 
     # Validate output path
@@ -337,8 +337,8 @@ async def screenshot(
     if not is_valid:
         return {"success": False, "error": f"Invalid output path: {error}"}
 
-    timeout = config.get('timeout', DEFAULT_TIMEOUT)
-    viewport = config.get('viewport', DEFAULT_VIEWPORT)
+    timeout = config.get("timeout", DEFAULT_TIMEOUT)
+    viewport = config.get("viewport", DEFAULT_VIEWPORT)
 
     playwright = None
     browser = None
@@ -346,12 +346,11 @@ async def screenshot(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport,
-            user_agent=config.get('user_agent', 'AddultingBot/1.0')
+            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
         )
         page = await context.new_page()
 
-        await page.goto(url, wait_until='networkidle', timeout=timeout)
+        await page.goto(url, wait_until="networkidle", timeout=timeout)
 
         # Ensure parent directory exists
         output = Path(resolved_path)
@@ -367,10 +366,12 @@ async def screenshot(
             "url": url,
             "full_page": full_page,
             "size": file_size,
-            "message": f"Screenshot saved to {resolved_path}"
+            "message": f"Screenshot saved to {resolved_path}",
         }
 
-        log_operation('screenshot', url, user_id, 'success', {'output': resolved_path, 'size': file_size})
+        log_operation(
+            "screenshot", url, user_id, "success", {"output": resolved_path, "size": file_size}
+        )
 
         await browser.close()
         await playwright.stop()
@@ -378,7 +379,7 @@ async def screenshot(
         return result
 
     except Exception as e:
-        log_operation('screenshot', url, user_id, 'failure', {'error': str(e)})
+        log_operation("screenshot", url, user_id, "failure", {"error": str(e)})
         if browser:
             await browser.close()
         if playwright:
@@ -386,11 +387,7 @@ async def screenshot(
         return {"success": False, "error": str(e)}
 
 
-async def pdf(
-    url: str,
-    output_path: str,
-    user_id: Optional[str] = None
-) -> Dict[str, Any]:
+async def pdf(url: str, output_path: str, user_id: str | None = None) -> dict[str, Any]:
     """
     Generate PDF from page.
 
@@ -404,18 +401,18 @@ async def pdf(
     """
     config = load_config()
 
-    if not config.get('enabled', True):
+    if not config.get("enabled", True):
         return {"success": False, "error": "Browser automation disabled"}
 
     # Check permission
-    perm = config.get('permissions', {}).get('pdf', 'browser:pdf')
+    perm = config.get("permissions", {}).get("pdf", "browser:pdf")
     if not check_permission(user_id, perm):
         return {"success": False, "error": f"Permission denied: {perm} required"}
 
     # Check domain
     is_allowed, reason = is_domain_allowed(url)
     if not is_allowed:
-        log_operation('pdf', url, user_id, 'blocked', {'reason': reason})
+        log_operation("pdf", url, user_id, "blocked", {"reason": reason})
         return {"success": False, "error": reason}
 
     # Validate output path
@@ -423,7 +420,7 @@ async def pdf(
     if not is_valid:
         return {"success": False, "error": f"Invalid output path: {error}"}
 
-    timeout = config.get('timeout', DEFAULT_TIMEOUT)
+    timeout = config.get("timeout", DEFAULT_TIMEOUT)
 
     playwright = None
     browser = None
@@ -431,18 +428,16 @@ async def pdf(
     try:
         playwright, browser = await get_browser()
         # PDF requires non-headless context for some operations
-        context = await browser.new_context(
-            user_agent=config.get('user_agent', 'AddultingBot/1.0')
-        )
+        context = await browser.new_context(user_agent=config.get("user_agent", "AddultingBot/1.0"))
         page = await context.new_page()
 
-        await page.goto(url, wait_until='networkidle', timeout=timeout)
+        await page.goto(url, wait_until="networkidle", timeout=timeout)
 
         # Ensure parent directory exists
         output = Path(resolved_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        await page.pdf(path=str(output), format='A4', print_background=True)
+        await page.pdf(path=str(output), format="A4", print_background=True)
 
         file_size = output.stat().st_size
 
@@ -451,10 +446,10 @@ async def pdf(
             "path": resolved_path,
             "url": url,
             "size": file_size,
-            "message": f"PDF saved to {resolved_path}"
+            "message": f"PDF saved to {resolved_path}",
         }
 
-        log_operation('pdf', url, user_id, 'success', {'output': resolved_path, 'size': file_size})
+        log_operation("pdf", url, user_id, "success", {"output": resolved_path, "size": file_size})
 
         await browser.close()
         await playwright.stop()
@@ -462,7 +457,7 @@ async def pdf(
         return result
 
     except Exception as e:
-        log_operation('pdf', url, user_id, 'failure', {'error': str(e)})
+        log_operation("pdf", url, user_id, "failure", {"error": str(e)})
         if browser:
             await browser.close()
         if playwright:
@@ -471,10 +466,8 @@ async def pdf(
 
 
 async def extract_text(
-    url: str,
-    selector: Optional[str] = None,
-    user_id: Optional[str] = None
-) -> Dict[str, Any]:
+    url: str, selector: str | None = None, user_id: str | None = None
+) -> dict[str, Any]:
     """
     Extract text content from page.
 
@@ -488,22 +481,22 @@ async def extract_text(
     """
     config = load_config()
 
-    if not config.get('enabled', True):
+    if not config.get("enabled", True):
         return {"success": False, "error": "Browser automation disabled"}
 
     # Check permission
-    perm = config.get('permissions', {}).get('extract', 'browser:extract')
+    perm = config.get("permissions", {}).get("extract", "browser:extract")
     if not check_permission(user_id, perm):
         return {"success": False, "error": f"Permission denied: {perm} required"}
 
     # Check domain
     is_allowed, reason = is_domain_allowed(url)
     if not is_allowed:
-        log_operation('extract', url, user_id, 'blocked', {'reason': reason})
+        log_operation("extract", url, user_id, "blocked", {"reason": reason})
         return {"success": False, "error": reason}
 
-    timeout = config.get('timeout', DEFAULT_TIMEOUT)
-    viewport = config.get('viewport', DEFAULT_VIEWPORT)
+    timeout = config.get("timeout", DEFAULT_TIMEOUT)
+    viewport = config.get("viewport", DEFAULT_VIEWPORT)
 
     playwright = None
     browser = None
@@ -511,12 +504,11 @@ async def extract_text(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport,
-            user_agent=config.get('user_agent', 'AddultingBot/1.0')
+            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
         )
         page = await context.new_page()
 
-        await page.goto(url, wait_until='domcontentloaded', timeout=timeout)
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
 
         if selector:
             # Extract from specific element
@@ -525,10 +517,10 @@ async def extract_text(
             for el in elements:
                 text = await el.inner_text()
                 texts.append(text.strip())
-            content = '\n\n'.join(texts)
+            content = "\n\n".join(texts)
         else:
             # Extract all text from body
-            content = await page.inner_text('body')
+            content = await page.inner_text("body")
 
         result = {
             "success": True,
@@ -536,10 +528,12 @@ async def extract_text(
             "selector": selector,
             "content": content,
             "length": len(content),
-            "title": await page.title()
+            "title": await page.title(),
         }
 
-        log_operation('extract', url, user_id, 'success', {'selector': selector, 'length': len(content)})
+        log_operation(
+            "extract", url, user_id, "success", {"selector": selector, "length": len(content)}
+        )
 
         await browser.close()
         await playwright.stop()
@@ -547,7 +541,7 @@ async def extract_text(
         return result
 
     except Exception as e:
-        log_operation('extract', url, user_id, 'failure', {'error': str(e)})
+        log_operation("extract", url, user_id, "failure", {"error": str(e)})
         if browser:
             await browser.close()
         if playwright:
@@ -556,11 +550,8 @@ async def extract_text(
 
 
 async def fill_form(
-    url: str,
-    fields: Dict[str, str],
-    submit_selector: Optional[str] = None,
-    user_id: Optional[str] = None
-) -> Dict[str, Any]:
+    url: str, fields: dict[str, str], submit_selector: str | None = None, user_id: str | None = None
+) -> dict[str, Any]:
     """
     Fill form fields and optionally submit.
 
@@ -575,22 +566,22 @@ async def fill_form(
     """
     config = load_config()
 
-    if not config.get('enabled', True):
+    if not config.get("enabled", True):
         return {"success": False, "error": "Browser automation disabled"}
 
     # Check permission (use navigate permission for forms)
-    perm = config.get('permissions', {}).get('navigate', 'browser:navigate')
+    perm = config.get("permissions", {}).get("navigate", "browser:navigate")
     if not check_permission(user_id, perm):
         return {"success": False, "error": f"Permission denied: {perm} required"}
 
     # Check domain
     is_allowed, reason = is_domain_allowed(url)
     if not is_allowed:
-        log_operation('form', url, user_id, 'blocked', {'reason': reason})
+        log_operation("form", url, user_id, "blocked", {"reason": reason})
         return {"success": False, "error": reason}
 
-    timeout = config.get('timeout', DEFAULT_TIMEOUT)
-    viewport = config.get('viewport', DEFAULT_VIEWPORT)
+    timeout = config.get("timeout", DEFAULT_TIMEOUT)
+    viewport = config.get("viewport", DEFAULT_VIEWPORT)
 
     playwright = None
     browser = None
@@ -598,12 +589,11 @@ async def fill_form(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport,
-            user_agent=config.get('user_agent', 'AddultingBot/1.0')
+            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
         )
         page = await context.new_page()
 
-        await page.goto(url, wait_until='domcontentloaded', timeout=timeout)
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
 
         # Fill each field
         for selector, value in fields.items():
@@ -612,17 +602,23 @@ async def fill_form(
         # Submit if requested
         if submit_selector:
             await page.click(submit_selector)
-            await page.wait_for_load_state('domcontentloaded')
+            await page.wait_for_load_state("domcontentloaded")
 
         result = {
             "success": True,
             "url": page.url,
             "fields_filled": len(fields),
             "submitted": submit_selector is not None,
-            "title": await page.title()
+            "title": await page.title(),
         }
 
-        log_operation('form', url, user_id, 'success', {'fields': len(fields), 'submitted': submit_selector is not None})
+        log_operation(
+            "form",
+            url,
+            user_id,
+            "success",
+            {"fields": len(fields), "submitted": submit_selector is not None},
+        )
 
         await browser.close()
         await playwright.stop()
@@ -630,7 +626,7 @@ async def fill_form(
         return result
 
     except Exception as e:
-        log_operation('form', url, user_id, 'failure', {'error': str(e)})
+        log_operation("form", url, user_id, "failure", {"error": str(e)})
         if browser:
             await browser.close()
         if playwright:
@@ -638,77 +634,67 @@ async def fill_form(
         return {"success": False, "error": str(e)}
 
 
-def get_allowlist() -> Dict[str, Any]:
+def get_allowlist() -> dict[str, Any]:
     """Get current domain allowlist and blocklist."""
     config = load_config()
 
     return {
         "success": True,
-        "allowed_domains": config.get('allowed_domains', DEFAULT_ALLOWED_DOMAINS),
-        "blocked_domains": config.get('blocked_domains', DEFAULT_BLOCKED_DOMAINS),
-        "timeout_ms": config.get('timeout', DEFAULT_TIMEOUT),
-        "headless": config.get('headless', True)
+        "allowed_domains": config.get("allowed_domains", DEFAULT_ALLOWED_DOMAINS),
+        "blocked_domains": config.get("blocked_domains", DEFAULT_BLOCKED_DOMAINS),
+        "timeout_ms": config.get("timeout", DEFAULT_TIMEOUT),
+        "headless": config.get("headless", True),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Browser Automation')
+    parser = argparse.ArgumentParser(description="Browser Automation")
 
     # Actions
-    parser.add_argument('--navigate', help='Navigate to URL')
-    parser.add_argument('--screenshot', help='Screenshot URL')
-    parser.add_argument('--pdf', help='Generate PDF from URL')
-    parser.add_argument('--extract', help='Extract text from URL')
-    parser.add_argument('--allowlist', action='store_true', help='Show domain allowlist')
-    parser.add_argument('--check-domain', help='Check if domain is allowed')
+    parser.add_argument("--navigate", help="Navigate to URL")
+    parser.add_argument("--screenshot", help="Screenshot URL")
+    parser.add_argument("--pdf", help="Generate PDF from URL")
+    parser.add_argument("--extract", help="Extract text from URL")
+    parser.add_argument("--allowlist", action="store_true", help="Show domain allowlist")
+    parser.add_argument("--check-domain", help="Check if domain is allowed")
 
     # Options
-    parser.add_argument('--output', '-o', help='Output path for screenshot/pdf')
-    parser.add_argument('--selector', '-s', help='CSS selector for extraction')
-    parser.add_argument('--full-page', action='store_true', help='Full page screenshot')
-    parser.add_argument('--wait-for', choices=['load', 'domcontentloaded', 'networkidle'],
-                       default='load', help='Wait condition')
-    parser.add_argument('--timeout', type=int, help='Timeout in ms')
-    parser.add_argument('--user', help='User ID')
+    parser.add_argument("--output", "-o", help="Output path for screenshot/pdf")
+    parser.add_argument("--selector", "-s", help="CSS selector for extraction")
+    parser.add_argument("--full-page", action="store_true", help="Full page screenshot")
+    parser.add_argument(
+        "--wait-for",
+        choices=["load", "domcontentloaded", "networkidle"],
+        default="load",
+        help="Wait condition",
+    )
+    parser.add_argument("--timeout", type=int, help="Timeout in ms")
+    parser.add_argument("--user", help="User ID")
 
     args = parser.parse_args()
     result = None
 
     if args.navigate:
-        result = asyncio.run(navigate(
-            args.navigate,
-            wait_for=args.wait_for,
-            timeout=args.timeout,
-            user_id=args.user
-        ))
+        result = asyncio.run(
+            navigate(args.navigate, wait_for=args.wait_for, timeout=args.timeout, user_id=args.user)
+        )
 
     elif args.screenshot:
         if not args.output:
             print("Error: --output required for screenshot")
             sys.exit(1)
-        result = asyncio.run(screenshot(
-            args.screenshot,
-            args.output,
-            full_page=args.full_page,
-            user_id=args.user
-        ))
+        result = asyncio.run(
+            screenshot(args.screenshot, args.output, full_page=args.full_page, user_id=args.user)
+        )
 
     elif args.pdf:
         if not args.output:
             print("Error: --output required for pdf")
             sys.exit(1)
-        result = asyncio.run(pdf(
-            args.pdf,
-            args.output,
-            user_id=args.user
-        ))
+        result = asyncio.run(pdf(args.pdf, args.output, user_id=args.user))
 
     elif args.extract:
-        result = asyncio.run(extract_text(
-            args.extract,
-            selector=args.selector,
-            user_id=args.user
-        ))
+        result = asyncio.run(extract_text(args.extract, selector=args.selector, user_id=args.user))
 
     elif args.check_domain:
         is_allowed, reason = is_domain_allowed(args.check_domain)
@@ -716,7 +702,7 @@ def main():
             "success": True,
             "url": args.check_domain,
             "allowed": is_allowed,
-            "reason": reason
+            "reason": reason,
         }
 
     elif args.allowlist:
@@ -727,7 +713,7 @@ def main():
         sys.exit(1)
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")

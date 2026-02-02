@@ -50,31 +50,26 @@ Configuration: args/learning.yaml
 
 from pathlib import Path
 
+
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DB_PATH = PROJECT_ROOT / 'data' / 'learning.db'
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'learning.yaml'
+DB_PATH = PROJECT_ROOT / "data" / "learning.db"
+CONFIG_PATH = PROJECT_ROOT / "args" / "learning.yaml"
 
 # Energy levels
-ENERGY_LEVELS = ['low', 'medium', 'high', 'peak']
+ENERGY_LEVELS = ["low", "medium", "high", "peak"]
 
 # Pattern types
-PATTERN_TYPES = [
-    'daily_routine',
-    'weekly_cycle',
-    'avoidance',
-    'productive_burst',
-    'context_switch'
-]
+PATTERN_TYPES = ["daily_routine", "weekly_cycle", "avoidance", "productive_burst", "context_switch"]
 
 # Default task energy requirements
 DEFAULT_TASK_ENERGY = {
-    'creative': 'peak',
-    'problem_solving': 'high',
-    'writing': 'medium',
-    'admin': 'low',
-    'organizing': 'low',
-    'communication': 'medium',
-    'learning': 'high',
-    'review': 'medium'
+    "creative": "peak",
+    "problem_solving": "high",
+    "writing": "medium",
+    "admin": "low",
+    "organizing": "low",
+    "communication": "medium",
+    "learning": "high",
+    "review": "medium",
 }

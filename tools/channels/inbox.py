@@ -19,21 +19,22 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.channels.models import (
-    UnifiedMessage,
-    ChannelUser,
     Attachment,
-    PairingCode,
+    ChannelUser,
+    UnifiedMessage,
 )
 
+
 # Database path
-DB_PATH = PROJECT_ROOT / 'data' / 'inbox.db'
+DB_PATH = PROJECT_ROOT / "data" / "inbox.db"
 
 
 def get_connection() -> sqlite3.Connection:
@@ -50,7 +51,7 @@ def init_database() -> None:
     cursor = conn.cursor()
 
     # Messages table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
             channel TEXT NOT NULL,
@@ -67,15 +68,17 @@ def init_database() -> None:
             metadata TEXT,
             UNIQUE(channel, channel_message_id)
         )
-    ''')
+    """)
 
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_channel_user ON messages(channel, channel_user_id)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_messages_channel_user ON messages(channel, channel_user_id)"
+    )
 
     # Channel users table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS channel_users (
             id TEXT PRIMARY KEY,
             channel TEXT NOT NULL,
@@ -87,10 +90,10 @@ def init_database() -> None:
             metadata TEXT,
             UNIQUE(channel, channel_user_id)
         )
-    ''')
+    """)
 
     # User preferences table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_preferences (
             user_id TEXT PRIMARY KEY,
             preferred_channel TEXT,
@@ -99,10 +102,10 @@ def init_database() -> None:
             dnd_end TEXT,
             metadata TEXT
         )
-    ''')
+    """)
 
     # Cross-channel identity linking
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS identity_links (
             user_id TEXT NOT NULL,
             channel TEXT NOT NULL,
@@ -110,10 +113,10 @@ def init_database() -> None:
             linked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(user_id, channel)
         )
-    ''')
+    """)
 
     # Pairing codes table (for cross-channel linking)
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS pairing_codes (
             code TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -123,7 +126,7 @@ def init_database() -> None:
             expires_at DATETIME,
             used INTEGER DEFAULT 0
         )
-    ''')
+    """)
 
     conn.commit()
     conn.close()
@@ -137,7 +140,8 @@ init_database()
 # Message Operations
 # =============================================================================
 
-def store_message(message: UnifiedMessage) -> Dict[str, Any]:
+
+def store_message(message: UnifiedMessage) -> dict[str, Any]:
     """
     Store a message in the inbox.
 
@@ -151,46 +155,50 @@ def store_message(message: UnifiedMessage) -> Dict[str, Any]:
     cursor = conn.cursor()
 
     try:
-        attachments_json = json.dumps([
-            a.to_dict() if hasattr(a, 'to_dict') else a
-            for a in message.attachments
-        ]) if message.attachments else None
+        attachments_json = (
+            json.dumps([a.to_dict() if hasattr(a, "to_dict") else a for a in message.attachments])
+            if message.attachments
+            else None
+        )
 
         metadata_json = json.dumps(message.metadata) if message.metadata else None
 
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO messages
             (id, channel, channel_message_id, session_id, user_id, channel_user_id,
              direction, content, content_type, attachments, reply_to, timestamp, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            message.id,
-            message.channel,
-            message.channel_message_id,
-            message.session_id,
-            message.user_id,
-            message.channel_user_id,
-            message.direction,
-            message.content,
-            message.content_type,
-            attachments_json,
-            message.reply_to,
-            message.timestamp.isoformat(),
-            metadata_json
-        ))
+        """,
+            (
+                message.id,
+                message.channel,
+                message.channel_message_id,
+                message.session_id,
+                message.user_id,
+                message.channel_user_id,
+                message.direction,
+                message.content,
+                message.content_type,
+                attachments_json,
+                message.reply_to,
+                message.timestamp.isoformat(),
+                metadata_json,
+            ),
+        )
 
         conn.commit()
-        return {'success': True, 'message_id': message.id}
+        return {"success": True, "message_id": message.id}
 
     except sqlite3.IntegrityError as e:
-        return {'success': False, 'error': f'integrity_error: {e}'}
+        return {"success": False, "error": f"integrity_error: {e}"}
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
 
-def get_message(message_id: str) -> Optional[UnifiedMessage]:
+def get_message(message_id: str) -> UnifiedMessage | None:
     """
     Retrieve a message by ID.
 
@@ -203,7 +211,7 @@ def get_message(message_id: str) -> Optional[UnifiedMessage]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM messages WHERE id = ?', (message_id,))
+    cursor.execute("SELECT * FROM messages WHERE id = ?", (message_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -214,11 +222,8 @@ def get_message(message_id: str) -> Optional[UnifiedMessage]:
 
 
 def get_conversation_history(
-    user_id: str,
-    limit: int = 50,
-    offset: int = 0,
-    channel: Optional[str] = None
-) -> List[UnifiedMessage]:
+    user_id: str, limit: int = 50, offset: int = 0, channel: str | None = None
+) -> list[UnifiedMessage]:
     """
     Get conversation history for a user.
 
@@ -235,19 +240,25 @@ def get_conversation_history(
     cursor = conn.cursor()
 
     if channel:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT * FROM messages
             WHERE user_id = ? AND channel = ?
             ORDER BY timestamp DESC
             LIMIT ? OFFSET ?
-        ''', (user_id, channel, limit, offset))
+        """,
+            (user_id, channel, limit, offset),
+        )
     else:
-        cursor.execute('''
+        cursor.execute(
+            """
             SELECT * FROM messages
             WHERE user_id = ?
             ORDER BY timestamp DESC
             LIMIT ? OFFSET ?
-        ''', (user_id, limit, offset))
+        """,
+            (user_id, limit, offset),
+        )
 
     rows = cursor.fetchall()
     conn.close()
@@ -256,10 +267,8 @@ def get_conversation_history(
 
 
 def get_channel_history(
-    channel: str,
-    channel_user_id: str,
-    limit: int = 50
-) -> List[UnifiedMessage]:
+    channel: str, channel_user_id: str, limit: int = 50
+) -> list[UnifiedMessage]:
     """
     Get message history for a specific channel user.
 
@@ -274,12 +283,15 @@ def get_channel_history(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM messages
         WHERE channel = ? AND channel_user_id = ?
         ORDER BY timestamp DESC
         LIMIT ?
-    ''', (channel, channel_user_id, limit))
+    """,
+        (channel, channel_user_id, limit),
+    )
 
     rows = cursor.fetchall()
     conn.close()
@@ -290,32 +302,32 @@ def get_channel_history(
 def _row_to_message(row: sqlite3.Row) -> UnifiedMessage:
     """Convert database row to UnifiedMessage."""
     attachments = []
-    if row['attachments']:
-        attachments_data = json.loads(row['attachments'])
+    if row["attachments"]:
+        attachments_data = json.loads(row["attachments"])
         attachments = [Attachment(**a) for a in attachments_data]
 
     metadata = {}
-    if row['metadata']:
-        metadata = json.loads(row['metadata'])
+    if row["metadata"]:
+        metadata = json.loads(row["metadata"])
 
-    timestamp = row['timestamp']
+    timestamp = row["timestamp"]
     if isinstance(timestamp, str):
         timestamp = datetime.fromisoformat(timestamp)
 
     return UnifiedMessage(
-        id=row['id'],
-        channel=row['channel'],
-        channel_message_id=row['channel_message_id'],
-        session_id=row['session_id'],
-        user_id=row['user_id'],
-        channel_user_id=row['channel_user_id'],
-        direction=row['direction'],
-        content=row['content'] or '',
-        content_type=row['content_type'] or 'text',
+        id=row["id"],
+        channel=row["channel"],
+        channel_message_id=row["channel_message_id"],
+        session_id=row["session_id"],
+        user_id=row["user_id"],
+        channel_user_id=row["channel_user_id"],
+        direction=row["direction"],
+        content=row["content"] or "",
+        content_type=row["content_type"] or "text",
         attachments=attachments,
-        reply_to=row['reply_to'],
+        reply_to=row["reply_to"],
         timestamp=timestamp,
-        metadata=metadata
+        metadata=metadata,
     )
 
 
@@ -323,7 +335,8 @@ def _row_to_message(row: sqlite3.Row) -> UnifiedMessage:
 # User Operations
 # =============================================================================
 
-def get_user_by_channel(channel: str, channel_user_id: str) -> Optional[ChannelUser]:
+
+def get_user_by_channel(channel: str, channel_user_id: str) -> ChannelUser | None:
     """
     Get user by their channel-specific ID.
 
@@ -337,10 +350,13 @@ def get_user_by_channel(channel: str, channel_user_id: str) -> Optional[ChannelU
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM channel_users
         WHERE channel = ? AND channel_user_id = ?
-    ''', (channel, channel_user_id))
+    """,
+        (channel, channel_user_id),
+    )
 
     row = cursor.fetchone()
     conn.close()
@@ -351,7 +367,7 @@ def get_user_by_channel(channel: str, channel_user_id: str) -> Optional[ChannelU
     return _row_to_user(row)
 
 
-def get_user_by_id(user_id: str) -> Optional[ChannelUser]:
+def get_user_by_id(user_id: str) -> ChannelUser | None:
     """
     Get user by internal user ID.
 
@@ -364,7 +380,7 @@ def get_user_by_id(user_id: str) -> Optional[ChannelUser]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM channel_users WHERE id = ?', (user_id,))
+    cursor.execute("SELECT * FROM channel_users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -374,7 +390,7 @@ def get_user_by_id(user_id: str) -> Optional[ChannelUser]:
     return _row_to_user(row)
 
 
-def create_or_update_user(user: ChannelUser) -> Dict[str, Any]:
+def create_or_update_user(user: ChannelUser) -> dict[str, Any]:
     """
     Create or update a channel user.
 
@@ -390,31 +406,34 @@ def create_or_update_user(user: ChannelUser) -> Dict[str, Any]:
     try:
         metadata_json = json.dumps(user.metadata) if user.metadata else None
 
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO channel_users
             (id, channel, channel_user_id, display_name, username, is_paired, first_seen, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            user.id,
-            user.channel,
-            user.channel_user_id,
-            user.display_name,
-            user.username,
-            1 if user.is_paired else 0,
-            user.first_seen.isoformat(),
-            metadata_json
-        ))
+        """,
+            (
+                user.id,
+                user.channel,
+                user.channel_user_id,
+                user.display_name,
+                user.username,
+                1 if user.is_paired else 0,
+                user.first_seen.isoformat(),
+                metadata_json,
+            ),
+        )
 
         conn.commit()
-        return {'success': True, 'user_id': user.id}
+        return {"success": True, "user_id": user.id}
 
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
 
-def update_user_paired_status(user_id: str, is_paired: bool) -> Dict[str, Any]:
+def update_user_paired_status(user_id: str, is_paired: bool) -> dict[str, Any]:
     """
     Update a user's pairing status.
 
@@ -429,15 +448,18 @@ def update_user_paired_status(user_id: str, is_paired: bool) -> Dict[str, Any]:
     cursor = conn.cursor()
 
     try:
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE channel_users SET is_paired = ? WHERE id = ?
-        ''', (1 if is_paired else 0, user_id))
+        """,
+            (1 if is_paired else 0, user_id),
+        )
 
         conn.commit()
-        return {'success': True, 'updated': cursor.rowcount}
+        return {"success": True, "updated": cursor.rowcount}
 
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
@@ -445,22 +467,22 @@ def update_user_paired_status(user_id: str, is_paired: bool) -> Dict[str, Any]:
 def _row_to_user(row: sqlite3.Row) -> ChannelUser:
     """Convert database row to ChannelUser."""
     metadata = {}
-    if row['metadata']:
-        metadata = json.loads(row['metadata'])
+    if row["metadata"]:
+        metadata = json.loads(row["metadata"])
 
-    first_seen = row['first_seen']
+    first_seen = row["first_seen"]
     if isinstance(first_seen, str):
         first_seen = datetime.fromisoformat(first_seen)
 
     return ChannelUser(
-        id=row['id'],
-        channel=row['channel'],
-        channel_user_id=row['channel_user_id'],
-        display_name=row['display_name'] or '',
-        username=row['username'],
-        is_paired=bool(row['is_paired']),
+        id=row["id"],
+        channel=row["channel"],
+        channel_user_id=row["channel_user_id"],
+        display_name=row["display_name"] or "",
+        username=row["username"],
+        is_paired=bool(row["is_paired"]),
         first_seen=first_seen,
-        metadata=metadata
+        metadata=metadata,
     )
 
 
@@ -468,7 +490,8 @@ def _row_to_user(row: sqlite3.Row) -> ChannelUser:
 # Identity Linking
 # =============================================================================
 
-def link_identity(user_id: str, channel: str, channel_user_id: str) -> Dict[str, Any]:
+
+def link_identity(user_id: str, channel: str, channel_user_id: str) -> dict[str, Any]:
     """
     Link a channel identity to a user.
 
@@ -484,29 +507,35 @@ def link_identity(user_id: str, channel: str, channel_user_id: str) -> Dict[str,
     cursor = conn.cursor()
 
     try:
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO identity_links
             (user_id, channel, channel_user_id, linked_at)
             VALUES (?, ?, ?, ?)
-        ''', (user_id, channel, channel_user_id, datetime.now().isoformat()))
+        """,
+            (user_id, channel, channel_user_id, datetime.now().isoformat()),
+        )
 
         # Also update the channel_users table if the user exists there
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE channel_users
             SET id = ?, is_paired = 1
             WHERE channel = ? AND channel_user_id = ?
-        ''', (user_id, channel, channel_user_id))
+        """,
+            (user_id, channel, channel_user_id),
+        )
 
         conn.commit()
-        return {'success': True}
+        return {"success": True}
 
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
 
-def get_linked_channels(user_id: str) -> List[Dict[str, str]]:
+def get_linked_channels(user_id: str) -> list[dict[str, str]]:
     """
     Get all channels linked to a user.
 
@@ -519,27 +548,30 @@ def get_linked_channels(user_id: str) -> List[Dict[str, str]]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT channel, channel_user_id, linked_at
         FROM identity_links
         WHERE user_id = ?
         ORDER BY linked_at
-    ''', (user_id,))
+    """,
+        (user_id,),
+    )
 
     rows = cursor.fetchall()
     conn.close()
 
     return [
         {
-            'channel': row['channel'],
-            'channel_user_id': row['channel_user_id'],
-            'linked_at': row['linked_at']
+            "channel": row["channel"],
+            "channel_user_id": row["channel_user_id"],
+            "linked_at": row["linked_at"],
         }
         for row in rows
     ]
 
 
-def get_user_by_linked_channel(channel: str, channel_user_id: str) -> Optional[str]:
+def get_user_by_linked_channel(channel: str, channel_user_id: str) -> str | None:
     """
     Get internal user ID from a linked channel identity.
 
@@ -553,28 +585,28 @@ def get_user_by_linked_channel(channel: str, channel_user_id: str) -> Optional[s
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT user_id FROM identity_links
         WHERE channel = ? AND channel_user_id = ?
-    ''', (channel, channel_user_id))
+    """,
+        (channel, channel_user_id),
+    )
 
     row = cursor.fetchone()
     conn.close()
 
-    return row['user_id'] if row else None
+    return row["user_id"] if row else None
 
 
 # =============================================================================
 # Pairing Codes
 # =============================================================================
 
+
 def create_pairing_code(
-    user_id: str,
-    channel: str,
-    channel_user_id: str,
-    code: str,
-    ttl_seconds: int = 600
-) -> Dict[str, Any]:
+    user_id: str, channel: str, channel_user_id: str, code: str, ttl_seconds: int = 600
+) -> dict[str, Any]:
     """
     Create a pairing code for cross-channel identity linking.
 
@@ -592,38 +624,38 @@ def create_pairing_code(
     cursor = conn.cursor()
 
     from datetime import timedelta
+
     expires_at = datetime.now() + timedelta(seconds=ttl_seconds)
 
     try:
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT INTO pairing_codes
             (code, user_id, channel, channel_user_id, created_at, expires_at, used)
             VALUES (?, ?, ?, ?, ?, ?, 0)
-        ''', (
-            code,
-            user_id,
-            channel,
-            channel_user_id,
-            datetime.now().isoformat(),
-            expires_at.isoformat()
-        ))
+        """,
+            (
+                code,
+                user_id,
+                channel,
+                channel_user_id,
+                datetime.now().isoformat(),
+                expires_at.isoformat(),
+            ),
+        )
 
         conn.commit()
-        return {
-            'success': True,
-            'code': code,
-            'expires_at': expires_at.isoformat()
-        }
+        return {"success": True, "code": code, "expires_at": expires_at.isoformat()}
 
     except sqlite3.IntegrityError:
-        return {'success': False, 'error': 'code_already_exists'}
+        return {"success": False, "error": "code_already_exists"}
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
 
-def validate_pairing_code(code: str) -> Dict[str, Any]:
+def validate_pairing_code(code: str) -> dict[str, Any]:
     """
     Validate a pairing code and return its data.
 
@@ -637,32 +669,35 @@ def validate_pairing_code(code: str) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM pairing_codes WHERE code = ?
-    ''', (code,))
+    """,
+        (code,),
+    )
 
     row = cursor.fetchone()
     conn.close()
 
     if not row:
-        return {'success': False, 'error': 'code_not_found'}
+        return {"success": False, "error": "code_not_found"}
 
-    if row['used']:
-        return {'success': False, 'error': 'code_already_used'}
+    if row["used"]:
+        return {"success": False, "error": "code_already_used"}
 
-    expires_at = datetime.fromisoformat(row['expires_at'])
+    expires_at = datetime.fromisoformat(row["expires_at"])
     if datetime.now() > expires_at:
-        return {'success': False, 'error': 'code_expired'}
+        return {"success": False, "error": "code_expired"}
 
     return {
-        'success': True,
-        'user_id': row['user_id'],
-        'channel': row['channel'],
-        'channel_user_id': row['channel_user_id']
+        "success": True,
+        "user_id": row["user_id"],
+        "channel": row["channel"],
+        "channel_user_id": row["channel_user_id"],
     }
 
 
-def consume_pairing_code(code: str) -> Dict[str, Any]:
+def consume_pairing_code(code: str) -> dict[str, Any]:
     """
     Mark a pairing code as used.
 
@@ -674,22 +709,25 @@ def consume_pairing_code(code: str) -> Dict[str, Any]:
     """
     # First validate
     validation = validate_pairing_code(code)
-    if not validation['success']:
+    if not validation["success"]:
         return validation
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE pairing_codes SET used = 1 WHERE code = ?
-        ''', (code,))
+        """,
+            (code,),
+        )
 
         conn.commit()
-        return {'success': True, **validation}
+        return {"success": True, **validation}
 
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
@@ -698,7 +736,8 @@ def consume_pairing_code(code: str) -> Dict[str, Any]:
 # User Preferences
 # =============================================================================
 
-def set_preference(user_id: str, key: str, value: Any) -> Dict[str, Any]:
+
+def set_preference(user_id: str, key: str, value: Any) -> dict[str, Any]:
     """
     Set a user preference.
 
@@ -712,34 +751,40 @@ def set_preference(user_id: str, key: str, value: Any) -> Dict[str, Any]:
     Returns:
         {"success": True} or {"success": False, "error": str}
     """
-    valid_keys = {'preferred_channel', 'fallback_channel', 'dnd_start', 'dnd_end'}
+    valid_keys = {"preferred_channel", "fallback_channel", "dnd_start", "dnd_end"}
     if key not in valid_keys:
-        return {'success': False, 'error': f'invalid_key: {key}'}
+        return {"success": False, "error": f"invalid_key: {key}"}
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
         # Ensure user preferences row exists
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)
-        ''', (user_id,))
+        """,
+            (user_id,),
+        )
 
         # Update the specific preference
-        cursor.execute(f'''
+        cursor.execute(
+            f"""
             UPDATE user_preferences SET {key} = ? WHERE user_id = ?
-        ''', (value, user_id))
+        """,
+            (value, user_id),
+        )
 
         conn.commit()
-        return {'success': True}
+        return {"success": True}
 
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
     finally:
         conn.close()
 
 
-def get_preference(user_id: str, key: str) -> Optional[Any]:
+def get_preference(user_id: str, key: str) -> Any | None:
     """
     Get a user preference.
 
@@ -750,16 +795,19 @@ def get_preference(user_id: str, key: str) -> Optional[Any]:
     Returns:
         Preference value or None if not set
     """
-    valid_keys = {'preferred_channel', 'fallback_channel', 'dnd_start', 'dnd_end', 'metadata'}
+    valid_keys = {"preferred_channel", "fallback_channel", "dnd_start", "dnd_end", "metadata"}
     if key not in valid_keys:
         return None
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(f'''
+    cursor.execute(
+        f"""
         SELECT {key} FROM user_preferences WHERE user_id = ?
-    ''', (user_id,))
+    """,
+        (user_id,),
+    )
 
     row = cursor.fetchone()
     conn.close()
@@ -767,7 +815,7 @@ def get_preference(user_id: str, key: str) -> Optional[Any]:
     return row[key] if row else None
 
 
-def get_preferred_channel(user_id: str) -> Optional[str]:
+def get_preferred_channel(user_id: str) -> str | None:
     """
     Get user's preferred channel for notifications.
 
@@ -777,10 +825,10 @@ def get_preferred_channel(user_id: str) -> Optional[str]:
     Returns:
         Channel name or None if not set
     """
-    return get_preference(user_id, 'preferred_channel')
+    return get_preference(user_id, "preferred_channel")
 
 
-def get_all_preferences(user_id: str) -> Dict[str, Any]:
+def get_all_preferences(user_id: str) -> dict[str, Any]:
     """
     Get all preferences for a user.
 
@@ -793,7 +841,7 @@ def get_all_preferences(user_id: str) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM user_preferences WHERE user_id = ?', (user_id,))
+    cursor.execute("SELECT * FROM user_preferences WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -801,11 +849,11 @@ def get_all_preferences(user_id: str) -> Dict[str, Any]:
         return {}
 
     return {
-        'preferred_channel': row['preferred_channel'],
-        'fallback_channel': row['fallback_channel'],
-        'dnd_start': row['dnd_start'],
-        'dnd_end': row['dnd_end'],
-        'metadata': json.loads(row['metadata']) if row['metadata'] else {}
+        "preferred_channel": row["preferred_channel"],
+        "fallback_channel": row["fallback_channel"],
+        "dnd_start": row["dnd_start"],
+        "dnd_end": row["dnd_end"],
+        "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
     }
 
 
@@ -813,7 +861,8 @@ def get_all_preferences(user_id: str) -> Dict[str, Any]:
 # Status & Maintenance
 # =============================================================================
 
-def get_status() -> Dict[str, Any]:
+
+def get_status() -> dict[str, Any]:
     """
     Get inbox status and statistics.
 
@@ -824,53 +873,53 @@ def get_status() -> Dict[str, Any]:
     cursor = conn.cursor()
 
     # Message counts
-    cursor.execute('SELECT COUNT(*) as total FROM messages')
-    total_messages = cursor.fetchone()['total']
+    cursor.execute("SELECT COUNT(*) as total FROM messages")
+    total_messages = cursor.fetchone()["total"]
 
-    cursor.execute('''
+    cursor.execute("""
         SELECT channel, COUNT(*) as count
         FROM messages
         GROUP BY channel
-    ''')
-    messages_by_channel = {row['channel']: row['count'] for row in cursor.fetchall()}
+    """)
+    messages_by_channel = {row["channel"]: row["count"] for row in cursor.fetchall()}
 
-    cursor.execute('''
+    cursor.execute("""
         SELECT direction, COUNT(*) as count
         FROM messages
         GROUP BY direction
-    ''')
-    messages_by_direction = {row['direction']: row['count'] for row in cursor.fetchall()}
+    """)
+    messages_by_direction = {row["direction"]: row["count"] for row in cursor.fetchall()}
 
     # User counts
-    cursor.execute('SELECT COUNT(*) as total FROM channel_users')
-    total_users = cursor.fetchone()['total']
+    cursor.execute("SELECT COUNT(*) as total FROM channel_users")
+    total_users = cursor.fetchone()["total"]
 
-    cursor.execute('SELECT COUNT(*) as paired FROM channel_users WHERE is_paired = 1')
-    paired_users = cursor.fetchone()['paired']
+    cursor.execute("SELECT COUNT(*) as paired FROM channel_users WHERE is_paired = 1")
+    paired_users = cursor.fetchone()["paired"]
 
     # Identity links
-    cursor.execute('SELECT COUNT(*) as total FROM identity_links')
-    total_links = cursor.fetchone()['total']
+    cursor.execute("SELECT COUNT(*) as total FROM identity_links")
+    total_links = cursor.fetchone()["total"]
 
     conn.close()
 
     return {
-        'database': str(DB_PATH),
-        'messages': {
-            'total': total_messages,
-            'by_channel': messages_by_channel,
-            'by_direction': messages_by_direction
+        "database": str(DB_PATH),
+        "messages": {
+            "total": total_messages,
+            "by_channel": messages_by_channel,
+            "by_direction": messages_by_direction,
         },
-        'users': {
-            'total': total_users,
-            'paired': paired_users,
-            'unpaired': total_users - paired_users
+        "users": {
+            "total": total_users,
+            "paired": paired_users,
+            "unpaired": total_users - paired_users,
         },
-        'identity_links': total_links
+        "identity_links": total_links,
     }
 
 
-def cleanup_expired_pairing_codes() -> Dict[str, Any]:
+def cleanup_expired_pairing_codes() -> dict[str, Any]:
     """
     Remove expired pairing codes.
 
@@ -880,42 +929,59 @@ def cleanup_expired_pairing_codes() -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         DELETE FROM pairing_codes
         WHERE expires_at < ? OR used = 1
-    ''', (datetime.now().isoformat(),))
+    """,
+        (datetime.now().isoformat(),),
+    )
 
     deleted = cursor.rowcount
     conn.commit()
     conn.close()
 
-    return {'success': True, 'deleted': deleted}
+    return {"success": True, "deleted": deleted}
 
 
 # =============================================================================
 # CLI Interface
 # =============================================================================
 
+
 def main():
-    parser = argparse.ArgumentParser(description='Unified Inbox - Message Storage')
-    parser.add_argument('--action', required=True,
-                        choices=['store', 'get', 'history', 'get-user', 'create-user',
-                                 'link', 'get-links', 'preference', 'status', 'cleanup'])
-    parser.add_argument('--message', help='JSON message for store action')
-    parser.add_argument('--message-id', help='Message ID for get action')
-    parser.add_argument('--user-id', help='Internal user ID')
-    parser.add_argument('--channel', help='Channel name')
-    parser.add_argument('--channel-user-id', help='Platform-specific user ID')
-    parser.add_argument('--limit', type=int, default=50, help='Limit for history')
-    parser.add_argument('--key', help='Preference key')
-    parser.add_argument('--value', help='Preference value')
-    parser.add_argument('--display-name', help='User display name')
-    parser.add_argument('--username', help='Platform username')
+    parser = argparse.ArgumentParser(description="Unified Inbox - Message Storage")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=[
+            "store",
+            "get",
+            "history",
+            "get-user",
+            "create-user",
+            "link",
+            "get-links",
+            "preference",
+            "status",
+            "cleanup",
+        ],
+    )
+    parser.add_argument("--message", help="JSON message for store action")
+    parser.add_argument("--message-id", help="Message ID for get action")
+    parser.add_argument("--user-id", help="Internal user ID")
+    parser.add_argument("--channel", help="Channel name")
+    parser.add_argument("--channel-user-id", help="Platform-specific user ID")
+    parser.add_argument("--limit", type=int, default=50, help="Limit for history")
+    parser.add_argument("--key", help="Preference key")
+    parser.add_argument("--value", help="Preference value")
+    parser.add_argument("--display-name", help="User display name")
+    parser.add_argument("--username", help="Platform username")
 
     args = parser.parse_args()
 
     try:
-        if args.action == 'store':
+        if args.action == "store":
             if not args.message:
                 print("ERROR: --message required for store action")
                 sys.exit(1)
@@ -923,28 +989,28 @@ def main():
             message = UnifiedMessage.from_dict(msg_data)
             result = store_message(message)
 
-        elif args.action == 'get':
+        elif args.action == "get":
             if not args.message_id:
                 print("ERROR: --message-id required for get action")
                 sys.exit(1)
             message = get_message(args.message_id)
-            result = message.to_dict() if message else {'error': 'not_found'}
+            result = message.to_dict() if message else {"error": "not_found"}
 
-        elif args.action == 'history':
+        elif args.action == "history":
             if not args.user_id:
                 print("ERROR: --user-id required for history action")
                 sys.exit(1)
             messages = get_conversation_history(args.user_id, args.limit, channel=args.channel)
-            result = {'messages': [m.to_dict() for m in messages], 'count': len(messages)}
+            result = {"messages": [m.to_dict() for m in messages], "count": len(messages)}
 
-        elif args.action == 'get-user':
+        elif args.action == "get-user":
             if not args.channel or not args.channel_user_id:
                 print("ERROR: --channel and --channel-user-id required for get-user action")
                 sys.exit(1)
             user = get_user_by_channel(args.channel, args.channel_user_id)
-            result = user.to_dict() if user else {'error': 'not_found'}
+            result = user.to_dict() if user else {"error": "not_found"}
 
-        elif args.action == 'create-user':
+        elif args.action == "create-user":
             if not args.channel or not args.channel_user_id:
                 print("ERROR: --channel and --channel-user-id required for create-user action")
                 sys.exit(1)
@@ -952,25 +1018,25 @@ def main():
                 id=ChannelUser.generate_id(),
                 channel=args.channel,
                 channel_user_id=args.channel_user_id,
-                display_name=args.display_name or 'Unknown',
-                username=args.username
+                display_name=args.display_name or "Unknown",
+                username=args.username,
             )
             result = create_or_update_user(user)
 
-        elif args.action == 'link':
+        elif args.action == "link":
             if not args.user_id or not args.channel or not args.channel_user_id:
                 print("ERROR: --user-id, --channel, and --channel-user-id required for link action")
                 sys.exit(1)
             result = link_identity(args.user_id, args.channel, args.channel_user_id)
 
-        elif args.action == 'get-links':
+        elif args.action == "get-links":
             if not args.user_id:
                 print("ERROR: --user-id required for get-links action")
                 sys.exit(1)
             links = get_linked_channels(args.user_id)
-            result = {'links': links, 'count': len(links)}
+            result = {"links": links, "count": len(links)}
 
-        elif args.action == 'preference':
+        elif args.action == "preference":
             if not args.user_id or not args.key:
                 print("ERROR: --user-id and --key required for preference action")
                 sys.exit(1)
@@ -978,19 +1044,19 @@ def main():
                 result = set_preference(args.user_id, args.key, args.value)
             else:
                 value = get_preference(args.user_id, args.key)
-                result = {'key': args.key, 'value': value}
+                result = {"key": args.key, "value": value}
 
-        elif args.action == 'status':
+        elif args.action == "status":
             result = get_status()
 
-        elif args.action == 'cleanup':
+        elif args.action == "cleanup":
             result = cleanup_expired_pairing_codes()
 
         else:
             print(f"ERROR: Unknown action: {args.action}")
             sys.exit(1)
 
-        print("OK" if result.get('success', True) else "ERROR")
+        print("OK" if result.get("success", True) else "ERROR")
         print(json.dumps(result, indent=2))
 
     except json.JSONDecodeError as e:
@@ -1001,5 +1067,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

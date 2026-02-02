@@ -26,13 +26,13 @@ Output:
     Combined memory context ready for LLM injection
 """
 
-import os
-import sys
-import json
 import argparse
+import json
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
+
 
 # Paths
 MEMORY_DIR = Path(__file__).parent.parent.parent / "memory"
@@ -42,18 +42,20 @@ LOGS_DIR = MEMORY_DIR / "logs"
 # Import memory_db functions
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from memory_db import get_recent, list_entries, get_daily_log
+    from memory_db import get_daily_log, get_recent, list_entries
 except ImportError:
     # Fallback if running standalone
     def get_recent(hours=24, entry_type=None):
         return {"success": False, "entries": []}
+
     def list_entries(**kwargs):
         return {"success": False, "entries": []}
+
     def get_daily_log(date):
         return {"success": False}
 
 
-def read_memory_file() -> Dict[str, Any]:
+def read_memory_file() -> dict[str, Any]:
     """
     Read the main MEMORY.md file.
 
@@ -61,41 +63,37 @@ def read_memory_file() -> Dict[str, Any]:
         dict with content and metadata
     """
     if not MEMORY_FILE.exists():
-        return {
-            "success": False,
-            "error": f"MEMORY.md not found at {MEMORY_FILE}",
-            "content": None
-        }
+        return {"success": False, "error": f"MEMORY.md not found at {MEMORY_FILE}", "content": None}
 
-    content = MEMORY_FILE.read_text(encoding='utf-8')
+    content = MEMORY_FILE.read_text(encoding="utf-8")
 
     # Parse sections (simple parsing)
     sections = {}
     current_section = "preamble"
     current_content = []
 
-    for line in content.split('\n'):
-        if line.startswith('## '):
+    for line in content.split("\n"):
+        if line.startswith("## "):
             if current_content:
-                sections[current_section] = '\n'.join(current_content).strip()
-            current_section = line[3:].strip().lower().replace(' ', '_')
+                sections[current_section] = "\n".join(current_content).strip()
+            current_section = line[3:].strip().lower().replace(" ", "_")
             current_content = []
         else:
             current_content.append(line)
 
     if current_content:
-        sections[current_section] = '\n'.join(current_content).strip()
+        sections[current_section] = "\n".join(current_content).strip()
 
     return {
         "success": True,
         "path": str(MEMORY_FILE),
         "content": content,
         "sections": sections,
-        "last_modified": datetime.fromtimestamp(MEMORY_FILE.stat().st_mtime).isoformat()
+        "last_modified": datetime.fromtimestamp(MEMORY_FILE.stat().st_mtime).isoformat(),
     }
 
 
-def read_daily_log(date: str) -> Dict[str, Any]:
+def read_daily_log(date: str) -> dict[str, Any]:
     """
     Read a daily log file.
 
@@ -110,28 +108,24 @@ def read_daily_log(date: str) -> Dict[str, Any]:
     if not log_file.exists():
         # Try SQLite
         db_result = get_daily_log(date)
-        if db_result.get('success'):
+        if db_result.get("success"):
             return {
                 "success": True,
                 "date": date,
                 "source": "database",
-                "content": db_result['log'].get('raw_log', ''),
-                "summary": db_result['log'].get('summary', ''),
-                "key_events": json.loads(db_result['log'].get('key_events', '[]') or '[]')
+                "content": db_result["log"].get("raw_log", ""),
+                "summary": db_result["log"].get("summary", ""),
+                "key_events": json.loads(db_result["log"].get("key_events", "[]") or "[]"),
             }
-        return {
-            "success": False,
-            "date": date,
-            "error": f"No log found for {date}"
-        }
+        return {"success": False, "date": date, "error": f"No log found for {date}"}
 
-    content = log_file.read_text(encoding='utf-8')
+    content = log_file.read_text(encoding="utf-8")
 
     # Extract key events (lines starting with - or *)
     key_events = []
-    for line in content.split('\n'):
+    for line in content.split("\n"):
         line = line.strip()
-        if line.startswith('- ') or line.startswith('* '):
+        if line.startswith("- ") or line.startswith("* "):
             key_events.append(line[2:])
 
     return {
@@ -141,11 +135,11 @@ def read_daily_log(date: str) -> Dict[str, Any]:
         "path": str(log_file),
         "content": content,
         "key_events": key_events,
-        "last_modified": datetime.fromtimestamp(log_file.stat().st_mtime).isoformat()
+        "last_modified": datetime.fromtimestamp(log_file.stat().st_mtime).isoformat(),
     }
 
 
-def read_recent_logs(days: int = 2) -> List[Dict[str, Any]]:
+def read_recent_logs(days: int = 2) -> list[dict[str, Any]]:
     """
     Read the most recent daily logs.
 
@@ -167,10 +161,8 @@ def read_recent_logs(days: int = 2) -> List[Dict[str, Any]]:
 
 
 def read_db_entries(
-    hours: int = 24,
-    entry_type: Optional[str] = None,
-    min_importance: int = 5
-) -> List[Dict[str, Any]]:
+    hours: int = 24, entry_type: str | None = None, min_importance: int = 5
+) -> list[dict[str, Any]]:
     """
     Read recent entries from SQLite database.
 
@@ -182,14 +174,10 @@ def read_db_entries(
     Returns:
         List of entries
     """
-    result = list_entries(
-        entry_type=entry_type,
-        min_importance=min_importance,
-        limit=50
-    )
+    result = list_entries(entry_type=entry_type, min_importance=min_importance, limit=50)
 
-    if result.get('success'):
-        return result.get('entries', [])
+    if result.get("success"):
+        return result.get("entries", [])
     return []
 
 
@@ -199,8 +187,8 @@ def load_all_memory(
     include_db: bool = False,
     log_days: int = 2,
     db_hours: int = 24,
-    min_importance: int = 5
-) -> Dict[str, Any]:
+    min_importance: int = 5,
+) -> dict[str, Any]:
     """
     Load all memory context for session start.
 
@@ -221,22 +209,22 @@ def load_all_memory(
         "memory_file": None,
         "daily_logs": [],
         "db_entries": [],
-        "summary": {}
+        "summary": {},
     }
 
     # Load MEMORY.md
     if include_memory:
         memory = read_memory_file()
         result["memory_file"] = memory
-        if memory.get('success'):
-            result["summary"]["memory_sections"] = list(memory.get('sections', {}).keys())
+        if memory.get("success"):
+            result["summary"]["memory_sections"] = list(memory.get("sections", {}).keys())
 
     # Load daily logs
     if include_logs:
         logs = read_recent_logs(days=log_days)
         result["daily_logs"] = logs
-        result["summary"]["logs_loaded"] = len([l for l in logs if l.get('success')])
-        result["summary"]["log_dates"] = [l.get('date') for l in logs if l.get('success')]
+        result["summary"]["logs_loaded"] = len([l for l in logs if l.get("success")])
+        result["summary"]["log_dates"] = [l.get("date") for l in logs if l.get("success")]
 
     # Load DB entries
     if include_db:
@@ -247,7 +235,7 @@ def load_all_memory(
     return result
 
 
-def format_as_markdown(memory_context: Dict[str, Any]) -> str:
+def format_as_markdown(memory_context: dict[str, Any]) -> str:
     """
     Format memory context as markdown for LLM injection.
 
@@ -260,51 +248,59 @@ def format_as_markdown(memory_context: Dict[str, Any]) -> str:
     parts = []
 
     # MEMORY.md content
-    if memory_context.get('memory_file', {}).get('success'):
+    if memory_context.get("memory_file", {}).get("success"):
         parts.append("# Persistent Memory\n")
-        parts.append(memory_context['memory_file']['content'])
+        parts.append(memory_context["memory_file"]["content"])
         parts.append("\n---\n")
 
     # Daily logs
-    for log in memory_context.get('daily_logs', []):
-        if log.get('success'):
+    for log in memory_context.get("daily_logs", []):
+        if log.get("success"):
             parts.append(f"## Daily Log: {log['date']}\n")
-            if log.get('content'):
-                parts.append(log['content'])
-            elif log.get('summary'):
+            if log.get("content"):
+                parts.append(log["content"])
+            elif log.get("summary"):
                 parts.append(f"**Summary:** {log['summary']}")
-                if log.get('key_events'):
+                if log.get("key_events"):
                     parts.append("\n**Key Events:**")
-                    for event in log['key_events']:
+                    for event in log["key_events"]:
                         parts.append(f"- {event}")
             parts.append("\n")
 
     # DB entries (if included)
-    if memory_context.get('db_entries'):
+    if memory_context.get("db_entries"):
         parts.append("## Recent Memory Entries\n")
-        for entry in memory_context['db_entries']:
+        for entry in memory_context["db_entries"]:
             parts.append(f"- [{entry.get('type', 'fact')}] {entry.get('content')}")
         parts.append("\n")
 
-    return '\n'.join(parts)
+    return "\n".join(parts)
 
 
-def format_as_json(memory_context: Dict[str, Any]) -> str:
+def format_as_json(memory_context: dict[str, Any]) -> str:
     """Format memory context as JSON."""
     return json.dumps(memory_context, indent=2, default=str)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Memory Reader - Load persistent memory at session start')
-    parser.add_argument('--memory-only', action='store_true', help='Only load MEMORY.md')
-    parser.add_argument('--logs-only', action='store_true', help='Only load daily logs')
-    parser.add_argument('--include-db', action='store_true', help='Include SQLite entries')
-    parser.add_argument('--days', type=int, default=2, help='Days of logs to include')
-    parser.add_argument('--db-hours', type=int, default=24, help='Hours of DB entries')
-    parser.add_argument('--min-importance', type=int, default=5, help='Min importance for DB entries')
-    parser.add_argument('--format', choices=['markdown', 'json', 'summary'], default='markdown',
-                       help='Output format')
-    parser.add_argument('--quiet', action='store_true', help='Suppress status messages')
+    parser = argparse.ArgumentParser(
+        description="Memory Reader - Load persistent memory at session start"
+    )
+    parser.add_argument("--memory-only", action="store_true", help="Only load MEMORY.md")
+    parser.add_argument("--logs-only", action="store_true", help="Only load daily logs")
+    parser.add_argument("--include-db", action="store_true", help="Include SQLite entries")
+    parser.add_argument("--days", type=int, default=2, help="Days of logs to include")
+    parser.add_argument("--db-hours", type=int, default=24, help="Hours of DB entries")
+    parser.add_argument(
+        "--min-importance", type=int, default=5, help="Min importance for DB entries"
+    )
+    parser.add_argument(
+        "--format",
+        choices=["markdown", "json", "summary"],
+        default="markdown",
+        help="Output format",
+    )
+    parser.add_argument("--quiet", action="store_true", help="Suppress status messages")
 
     args = parser.parse_args()
 
@@ -319,32 +315,40 @@ def main():
         include_db=args.include_db,
         log_days=args.days,
         db_hours=args.db_hours,
-        min_importance=args.min_importance
+        min_importance=args.min_importance,
     )
 
     # Format output
-    if args.format == 'markdown':
+    if args.format == "markdown":
         output = format_as_markdown(context)
         if not args.quiet:
-            summary = context.get('summary', {})
-            print(f"# Memory loaded: {summary.get('memory_sections', [])} sections, "
-                  f"{summary.get('logs_loaded', 0)} logs", file=sys.stderr)
+            summary = context.get("summary", {})
+            print(
+                f"# Memory loaded: {summary.get('memory_sections', [])} sections, "
+                f"{summary.get('logs_loaded', 0)} logs",
+                file=sys.stderr,
+            )
         print(output)
 
-    elif args.format == 'json':
+    elif args.format == "json":
         print(format_as_json(context))
 
-    elif args.format == 'summary':
-        summary = context.get('summary', {})
-        print(json.dumps({
-            "success": True,
-            "loaded_at": context.get('loaded_at'),
-            "memory_file_loaded": context.get('memory_file', {}).get('success', False),
-            "memory_sections": summary.get('memory_sections', []),
-            "logs_loaded": summary.get('logs_loaded', 0),
-            "log_dates": summary.get('log_dates', []),
-            "db_entries_loaded": summary.get('db_entries_loaded', 0)
-        }, indent=2))
+    elif args.format == "summary":
+        summary = context.get("summary", {})
+        print(
+            json.dumps(
+                {
+                    "success": True,
+                    "loaded_at": context.get("loaded_at"),
+                    "memory_file_loaded": context.get("memory_file", {}).get("success", False),
+                    "memory_sections": summary.get("memory_sections", []),
+                    "logs_loaded": summary.get("logs_loaded", 0),
+                    "log_dates": summary.get("log_dates", []),
+                    "db_entries_loaded": summary.get("db_entries_loaded", 0),
+                },
+                indent=2,
+            )
+        )
 
 
 if __name__ == "__main__":

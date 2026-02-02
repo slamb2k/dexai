@@ -17,24 +17,30 @@ import argparse
 import sys
 from pathlib import Path
 
+
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
-    from textual.app import App, ComposeResult
-    from textual.widgets import Header, Footer, Static, Button, Input, RadioSet, RadioButton, Label
-    from textual.containers import Container, Vertical, Horizontal, Center
-    from textual.screen import Screen
     from textual import events
+    from textual.app import App, ComposeResult
+    from textual.containers import Center, Container, Horizontal, Vertical
+    from textual.screen import Screen
+    from textual.widgets import Button, Footer, Header, Input, Label, RadioButton, RadioSet, Static
+
     TEXTUAL_AVAILABLE = True
 except ImportError:
     TEXTUAL_AVAILABLE = False
 
 from tools.setup.wizard import (
-    SetupState, SetupStep, detect_timezone,
-    validate_channel, apply_configuration,
-    is_setup_complete, reset_setup
+    SetupState,
+    SetupStep,
+    apply_configuration,
+    detect_timezone,
+    is_setup_complete,
+    reset_setup,
+    validate_channel,
 )
 
 
@@ -96,7 +102,7 @@ if TEXTUAL_AVAILABLE:
                     "What you'll need:\n"
                     "• A messaging app (Telegram, Discord, or Slack)\n"
                     "• About 3-5 minutes\n",
-                    id="welcome-text"
+                    id="welcome-text",
                 )
                 with Horizontal(id="button-row"):
                     yield Button("Get Started", variant="primary", id="start")
@@ -110,7 +116,6 @@ if TEXTUAL_AVAILABLE:
                 self.app.push_screen(ChannelScreen())
             elif event.button.id == "skip":
                 self.app.exit(message="Setup skipped. Run 'dexai setup' to continue later.")
-
 
     class ChannelScreen(Screen):
         """Channel selection screen."""
@@ -192,8 +197,7 @@ if TEXTUAL_AVAILABLE:
             elif event.pressed.id == "slack":
                 self.selected_channel = "slack"
                 info_widget.update(
-                    "Best for work integration.\n"
-                    "You'll create an app in the Slack App Directory."
+                    "Best for work integration.\nYou'll create an app in the Slack App Directory."
                 )
             else:
                 self.selected_channel = None
@@ -216,7 +220,6 @@ if TEXTUAL_AVAILABLE:
                     self.app.state.mark_step_complete(SetupStep.CHANNEL)
                     self.app.state.save()
                     self.app.push_screen(PreferencesScreen())
-
 
     class ChannelTokenScreen(Screen):
         """Token entry for selected channel."""
@@ -276,9 +279,11 @@ if TEXTUAL_AVAILABLE:
                         "2. Send /newbot and follow the prompts\n"
                         "3. Copy the token BotFather gives you\n"
                         "4. Paste it below:",
-                        id="instructions"
+                        id="instructions",
                     )
-                    yield Input(placeholder="Paste your Telegram bot token here", id="token", password=True)
+                    yield Input(
+                        placeholder="Paste your Telegram bot token here", id="token", password=True
+                    )
 
                 elif self.channel == "discord":
                     yield Static("Set up Discord", id="title")
@@ -287,9 +292,11 @@ if TEXTUAL_AVAILABLE:
                         "2. Click 'New Application' and name it\n"
                         "3. Go to Bot → Add Bot → Copy Token\n"
                         "4. Paste it below:",
-                        id="instructions"
+                        id="instructions",
                     )
-                    yield Input(placeholder="Paste your Discord bot token here", id="token", password=True)
+                    yield Input(
+                        placeholder="Paste your Discord bot token here", id="token", password=True
+                    )
 
                 elif self.channel == "slack":
                     yield Static("Set up Slack", id="title")
@@ -298,7 +305,7 @@ if TEXTUAL_AVAILABLE:
                         "2. Go to OAuth & Permissions and install to workspace\n"
                         "3. Copy the Bot User OAuth Token (xoxb-...)\n"
                         "4. Go to Basic Information and get App-Level Token (xapp-...)",
-                        id="instructions"
+                        id="instructions",
                     )
                     yield Input(placeholder="Bot Token (xoxb-...)", id="bot_token", password=True)
                     yield Input(placeholder="App Token (xapp-...)", id="app_token", password=True)
@@ -323,7 +330,7 @@ if TEXTUAL_AVAILABLE:
                 if self.channel == "slack":
                     config = {
                         "bot_token": self.query_one("#bot_token", Input).value,
-                        "app_token": self.query_one("#app_token", Input).value
+                        "app_token": self.query_one("#app_token", Input).value,
                     }
                 else:
                     config = {"token": self.query_one("#token", Input).value}
@@ -352,7 +359,6 @@ if TEXTUAL_AVAILABLE:
                     self.app.state.mark_step_complete(SetupStep.CHANNEL)
                     self.app.state.save()
                     self.app.push_screen(PreferencesScreen())
-
 
     class PreferencesScreen(Screen):
         """User preferences screen."""
@@ -409,10 +415,7 @@ if TEXTUAL_AVAILABLE:
                     yield Label("End hour (0-23)")
                     yield Input(value="22", id="end_hour")
 
-                yield Static(
-                    "\n(Dex won't disturb you outside these hours)",
-                    id="hint"
-                )
+                yield Static("\n(Dex won't disturb you outside these hours)", id="hint")
 
                 with Horizontal(id="button-row"):
                     yield Button("← Back", variant="default", id="back")
@@ -431,14 +434,15 @@ if TEXTUAL_AVAILABLE:
 
                 self.app.state.user_name = name if name else None
                 self.app.state.timezone = timezone or "UTC"
-                self.app.state.active_hours_start = f"{int(start):02d}:00" if start.isdigit() else "09:00"
+                self.app.state.active_hours_start = (
+                    f"{int(start):02d}:00" if start.isdigit() else "09:00"
+                )
                 self.app.state.active_hours_end = f"{int(end):02d}:00" if end.isdigit() else "22:00"
 
                 self.app.state.mark_step_complete(SetupStep.PREFERENCES)
                 self.app.state.mark_step_complete(SetupStep.SECURITY)  # Skip security for now
                 self.app.state.save()
                 self.app.push_screen(ApiKeyScreen())
-
 
     class ApiKeyScreen(Screen):
         """API key entry screen."""
@@ -489,9 +493,11 @@ if TEXTUAL_AVAILABLE:
                     "Do you have an Anthropic API key?\n\n"
                     "If not, get one at console.anthropic.com\n"
                     "(You can also skip this and add it later)",
-                    id="instructions"
+                    id="instructions",
                 )
-                yield Input(placeholder="Paste your API key (sk-ant-...)", id="api_key", password=True)
+                yield Input(
+                    placeholder="Paste your API key (sk-ant-...)", id="api_key", password=True
+                )
                 yield Static("", id="status")
 
                 with Horizontal(id="button-row"):
@@ -522,6 +528,7 @@ if TEXTUAL_AVAILABLE:
                 status.update("Verifying API key...")
 
                 from tools.setup.wizard import validate_anthropic_key
+
                 result = await validate_anthropic_key(api_key)
 
                 if result["success"]:
@@ -538,13 +545,13 @@ if TEXTUAL_AVAILABLE:
 
                     # Small delay so user sees the success message
                     import asyncio
+
                     await asyncio.sleep(1)
                     self.app.push_screen(CompleteScreen())
                 else:
                     status.update(f"✗ {result.get('error', 'Verification failed')}")
                     status.add_class("error")
                     status.remove_class("success")
-
 
     class CompleteScreen(Screen):
         """Setup complete screen."""
@@ -582,20 +589,18 @@ if TEXTUAL_AVAILABLE:
             with Container():
                 yield Static("🎉", id="banner")
                 yield Static(
-                    "You're all set!\n\n"
-                    "Dex is configured and ready to help.",
-                    id="message"
+                    "You're all set!\n\nDex is configured and ready to help.", id="message"
                 )
 
                 yield Static(
                     "Quick tips to get started:\n\n"
                     "💬  Just chat naturally\n"
-                    "    \"Remind me to call mom tomorrow\"\n\n"
+                    '    "Remind me to call mom tomorrow"\n\n'
                     "⚡  Dex learns your patterns\n"
                     "    The more you chat, the better Dex gets\n\n"
                     "🔕  Dex respects your focus\n"
                     "    Won't interrupt during hyperfocus periods",
-                    id="tips"
+                    id="tips",
                 )
 
                 with Horizontal(id="button-row"):
@@ -612,7 +617,6 @@ if TEXTUAL_AVAILABLE:
                     self.app.exit(message="Setup complete! Start chatting with Dex.")
                 else:
                     self.app.exit(message=f"Setup finished with warnings: {result['errors']}")
-
 
     # =========================================================================
     # Main Application
@@ -643,12 +647,15 @@ if TEXTUAL_AVAILABLE:
             super().__init__()
             self.state = SetupState.load() if resume else SetupState()
             if not resume:
-                self.state.started_at = __import__('datetime').datetime.now().isoformat()
+                self.state.started_at = __import__("datetime").datetime.now().isoformat()
 
         def on_mount(self) -> None:
             """Start on the appropriate screen."""
             # Resume from current step if resuming
-            if self.state.current_step == SetupStep.WELCOME or SetupStep.WELCOME not in self.state.completed_steps:
+            if (
+                self.state.current_step == SetupStep.WELCOME
+                or SetupStep.WELCOME not in self.state.completed_steps
+            ):
                 self.push_screen(WelcomeScreen())
             elif self.state.current_step == SetupStep.CHANNEL:
                 self.push_screen(ChannelScreen())
@@ -676,18 +683,21 @@ if TEXTUAL_AVAILABLE:
 # CLI Entry Point
 # =============================================================================
 
+
 def main():
-    parser = argparse.ArgumentParser(description='DexAI Setup Wizard')
-    parser.add_argument('--resume', action='store_true', help='Resume previous setup')
-    parser.add_argument('--reset', action='store_true', help='Reset and start fresh')
-    parser.add_argument('--web', action='store_true', help='Open web-based wizard')
-    parser.add_argument('--status', action='store_true', help='Show setup status')
+    parser = argparse.ArgumentParser(description="DexAI Setup Wizard")
+    parser.add_argument("--resume", action="store_true", help="Resume previous setup")
+    parser.add_argument("--reset", action="store_true", help="Reset and start fresh")
+    parser.add_argument("--web", action="store_true", help="Open web-based wizard")
+    parser.add_argument("--status", action="store_true", help="Show setup status")
 
     args = parser.parse_args()
 
     if args.status:
-        from tools.setup.wizard import get_setup_status
         import json
+
+        from tools.setup.wizard import get_setup_status
+
         print(json.dumps(get_setup_status(), indent=2))
         return
 
@@ -698,6 +708,7 @@ def main():
 
     if args.web:
         import webbrowser
+
         webbrowser.open("http://localhost:3000/setup")
         print("Opening web setup wizard...")
         return

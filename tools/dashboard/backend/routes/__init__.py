@@ -6,11 +6,12 @@ that can be included in the main FastAPI application.
 
 from fastapi import APIRouter
 
-from .status import router as status_router
-from .tasks import router as tasks_router
 from .activity import router as activity_router
 from .metrics import router as metrics_router
 from .settings import router as settings_router
+from .status import router as status_router
+from .tasks import router as tasks_router
+
 
 # Create main API router
 api_router = APIRouter(prefix="/api")
@@ -22,4 +23,4 @@ api_router.include_router(activity_router, prefix="/activity", tags=["activity"]
 api_router.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 api_router.include_router(settings_router, prefix="/settings", tags=["settings"])
 
-__all__ = ['api_router']
+__all__ = ["api_router"]
