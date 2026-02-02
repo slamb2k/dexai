@@ -1,0 +1,184 @@
+# Security Configuration
+# Settings for authentication, authorization, and protection
+
+# =============================================================================
+# Session Settings
+# =============================================================================
+session:
+  # Session token length (bytes of entropy)
+  token_bytes: 32
+
+  # Default session duration (hours)
+  default_ttl_hours: 24
+
+  # Maximum session duration (hours)
+  max_ttl_hours: 168  # 7 days
+
+  # Extend session on activity
+  extend_on_activity: true
+
+  # Maximum concurrent sessions per user
+  max_concurrent: 5
+
+  # Bind session to channel/device
+  channel_binding: true
+
+  # Force re-authentication after idle (hours)
+  idle_timeout_hours: 4
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # Maximum failed attempts before lockout
+  max_failed_attempts: 5
+
+  # Lockout duration (minutes)
+  lockout_duration_minutes: 15
+
+  # Require re-auth for sensitive operations
+  sensitive_ops_reauth: true
+
+  # Methods: password, token, oauth, api_key
+  allowed_methods:
+    - "token"
+    - "api_key"
+
+# =============================================================================
+# Secrets Management
+# =============================================================================
+secrets:
+  # Encryption algorithm for secrets at rest
+  encryption: "AES-256-GCM"
+
+  # Key derivation function
+  kdf: "PBKDF2"
+  kdf_iterations: 100000
+
+  # Master key source: env, file, prompt
+  master_key_source: "env"
+  master_key_env_var: "ADDULTING_MASTER_KEY"
+
+  # Secret rotation reminder (days)
+  rotation_reminder_days: 90
+
+  # Namespace isolation for multi-tenant
+  namespace_isolation: true
+
+# =============================================================================
+# Input Validation
+# =============================================================================
+input:
+  # Maximum message length (bytes)
+  max_message_bytes: 10240  # 10KB
+
+  # Strip HTML/script tags
+  strip_html: true
+
+  # Unicode normalization form: NFC, NFD, NFKC, NFKD
+  unicode_normalization: "NFC"
+
+  # Check for prompt injection patterns
+  injection_detection: true
+
+  # Block known malicious patterns
+  pattern_blocking: true
+
+  # Log blocked inputs for analysis
+  log_blocked: true
+
+# =============================================================================
+# Audit Logging
+# =============================================================================
+audit:
+  # Enable audit logging
+  enabled: true
+
+  # Log level: minimal, standard, verbose
+  level: "standard"
+
+  # Retention period (days)
+  retention_days: 90
+
+  # Events to log
+  events:
+    - "auth_success"
+    - "auth_failure"
+    - "permission_denied"
+    - "secret_access"
+    - "rate_limit_exceeded"
+    - "command_execution"
+    - "error"
+    - "security_alert"
+
+  # Include request body in logs (careful with PII)
+  include_request_body: false
+
+  # Mask sensitive fields in logs
+  mask_fields:
+    - "password"
+    - "token"
+    - "api_key"
+    - "secret"
+
+# =============================================================================
+# Permission System
+# =============================================================================
+permissions:
+  # Default role for new users
+  default_role: "user"
+
+  # Available roles (in order of privilege)
+  roles:
+    - "guest"
+    - "user"
+    - "power_user"
+    - "admin"
+    - "owner"
+
+  # Require elevation prompt for sensitive actions
+  elevation_prompt: true
+
+  # Actions requiring elevation
+  elevated_actions:
+    - "delete_user"
+    - "modify_permissions"
+    - "access_secrets"
+    - "system_config"
+    - "audit_logs"
+
+# =============================================================================
+# Content Security
+# =============================================================================
+content:
+  # Scan for sensitive data patterns (SSN, CC, etc.)
+  pii_detection: true
+
+  # Action when PII detected: log, warn, block
+  pii_action: "warn"
+
+  # Patterns to detect
+  pii_patterns:
+    - "ssn"
+    - "credit_card"
+    - "phone"
+    - "email"
+
+  # Redact sensitive data in logs
+  redact_in_logs: true
+
+# =============================================================================
+# Network Security
+# =============================================================================
+network:
+  # Allowed IP ranges (CIDR notation, empty = all)
+  allowed_ips: []
+
+  # Blocked IP ranges
+  blocked_ips: []
+
+  # Require HTTPS for API
+  require_https: true
+
+  # CORS allowed origins (for web)
+  cors_origins: []

@@ -1,0 +1,96 @@
+# System Configuration
+# Core settings for the addulting-ai platform
+# Modify these to change overall system behavior
+
+# =============================================================================
+# LLM Settings
+# =============================================================================
+llm:
+  # Default model for general tasks
+  default_model: "gpt-4o"
+
+  # Model for fast, simple tasks (classification, extraction)
+  fast_model: "gpt-4o-mini"
+
+  # Model for embedding generation
+  embedding_model: "text-embedding-3-small"
+
+  # Temperature settings by task type
+  temperature:
+    creative: 0.9
+    balanced: 0.7
+    precise: 0.3
+    deterministic: 0.0
+
+  # Token limits
+  max_tokens:
+    default: 4096
+    summary: 500
+    extraction: 1000
+
+  # Request timeout in seconds
+  timeout: 60
+
+# =============================================================================
+# Response Settings
+# =============================================================================
+response:
+  # Default response format
+  format: "markdown"
+
+  # Maximum response length (characters)
+  max_length: 10000
+
+  # Include metadata in responses
+  include_metadata: false
+
+  # Verbosity level: minimal, normal, verbose, debug
+  verbosity: "normal"
+
+# =============================================================================
+# System Behavior
+# =============================================================================
+behavior:
+  # Enable debug logging
+  debug: false
+
+  # Log all LLM requests/responses
+  log_llm_calls: true
+
+  # Retry failed API calls
+  retry_attempts: 3
+  retry_delay_seconds: 2
+
+  # Cache LLM responses
+  enable_cache: true
+  cache_ttl_hours: 24
+
+# =============================================================================
+# Environment
+# =============================================================================
+environment:
+  # Current environment: development, staging, production
+  name: "development"
+
+  # Base paths (relative to project root)
+  paths:
+    data: "data"
+    logs: "memory/logs"
+    temp: ".tmp"
+    tools: "tools"
+
+# =============================================================================
+# Feature Flags
+# =============================================================================
+features:
+  # Enable semantic search (requires embeddings)
+  semantic_search: true
+
+  # Enable memory consolidation
+  memory_consolidation: true
+
+  # Enable audit logging
+  audit_logging: true
+
+  # Enable rate limiting
+  rate_limiting: true

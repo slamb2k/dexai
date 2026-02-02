@@ -1,0 +1,125 @@
+# Rate Limiting Configuration
+# Controls request throttling at multiple levels
+# Uses token bucket algorithm with burst allowance
+
+# =============================================================================
+# Global Limits (System-wide)
+# =============================================================================
+global:
+  # Maximum requests per minute (all users combined)
+  requests_per_minute: 1000
+
+  # Maximum cost per hour (in dollars)
+  cost_per_hour: 10.00
+
+  # Maximum cost per day (in dollars)
+  cost_per_day: 100.00
+
+  # Burst multiplier (temporary spike allowance)
+  burst_multiplier: 2.0
+
+# =============================================================================
+# Per-User Limits
+# =============================================================================
+user:
+  # Standard user limits
+  standard:
+    requests_per_minute: 30
+    requests_per_hour: 500
+    cost_per_hour: 1.00
+    cost_per_day: 10.00
+
+  # Power user limits (elevated privileges)
+  power_user:
+    requests_per_minute: 60
+    requests_per_hour: 1000
+    cost_per_hour: 5.00
+    cost_per_day: 50.00
+
+  # Admin limits
+  admin:
+    requests_per_minute: 100
+    requests_per_hour: 2000
+    cost_per_hour: 10.00
+    cost_per_day: 100.00
+
+# =============================================================================
+# Per-Channel Limits
+# =============================================================================
+channel:
+  # Default limits for any channel
+  default:
+    requests_per_minute: 60
+    concurrent_requests: 5
+
+  # Discord channel limits
+  discord:
+    requests_per_minute: 100
+    concurrent_requests: 10
+
+  # API channel limits
+  api:
+    requests_per_minute: 200
+    concurrent_requests: 20
+
+  # CLI channel limits (local usage)
+  cli:
+    requests_per_minute: 300
+    concurrent_requests: 50
+
+# =============================================================================
+# Cost Tracking
+# =============================================================================
+costs:
+  # Cost per 1K tokens (approximate)
+  models:
+    "gpt-4o":
+      input: 0.0025
+      output: 0.01
+    "gpt-4o-mini":
+      input: 0.00015
+      output: 0.0006
+    "text-embedding-3-small":
+      input: 0.00002
+      output: 0.0
+
+  # Alert thresholds (percentage of limit)
+  alerts:
+    warning: 0.75
+    critical: 0.90
+
+# =============================================================================
+# Behavior Settings
+# =============================================================================
+behavior:
+  # How to handle rate limit exceeded
+  # options: reject, queue, delay
+  exceeded_action: "reject"
+
+  # Cooldown period after limit exceeded (seconds)
+  cooldown_seconds: 60
+
+  # Sync limits across instances (if distributed)
+  sync_enabled: false
+
+  # Window type: sliding, fixed
+  window_type: "sliding"
+
+  # Token bucket refill interval (seconds)
+  refill_interval: 1
+
+# =============================================================================
+# Exempt Patterns
+# =============================================================================
+exempt:
+  # User IDs exempt from rate limiting
+  users: []
+
+  # Action types exempt from rate limiting
+  actions:
+    - "health_check"
+    - "metrics"
+
+  # IP addresses exempt (for monitoring)
+  ips:
+    - "127.0.0.1"

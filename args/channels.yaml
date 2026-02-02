@@ -1,0 +1,195 @@
+# =============================================================================
+# Messaging Channels Configuration
+# =============================================================================
+# Configuration for the messaging gateway and channel adapters.
+# This file controls gateway behavior, channel-specific settings, and pairing.
+
+# -----------------------------------------------------------------------------
+# Gateway Server Settings
+# -----------------------------------------------------------------------------
+# The gateway provides a WebSocket server for real-time communication between
+# channel adapters and the AI agent.
+
+gateway:
+  # Network binding
+  host: "127.0.0.1"           # Bind address (use 0.0.0.0 for external access)
+  port: 18789                  # WebSocket port
+
+  # Connection limits
+  max_connections: 100         # Maximum concurrent WebSocket connections
+  max_message_size: 65536      # Maximum message size in bytes (64KB)
+
+  # Keep-alive settings
+  ping_interval: 30            # Seconds between ping messages
+  ping_timeout: 10             # Seconds to wait for pong response
+
+  # Shutdown behavior
+  shutdown_timeout: 30         # Seconds to wait for graceful shutdown
+
+# -----------------------------------------------------------------------------
+# Channel Configurations
+# -----------------------------------------------------------------------------
+# Settings for each messaging platform adapter.
+
+channels:
+  # Telegram Bot
+  telegram:
+    enabled: true
+    polling_interval: 1        # Seconds between poll requests
+    max_message_length: 4096   # Telegram's message length limit
+    require_pairing: true      # Require account pairing before full access
+
+    # Rate limiting (in addition to global limits)
+    rate_limit:
+      messages_per_minute: 20
+      burst_size: 5
+
+    # Welcome message
+    welcome_message: |
+      Welcome to addulting-ai!
+      I'm your AI assistant for adulting tasks.
+      Use /pair to link your account.
+
+  # Discord Bot
+  discord:
+    enabled: true
+    slash_commands: true       # Enable slash commands (/ask, /pair)
+    threads: true              # Enable thread support
+    require_pairing: true
+
+    # Rate limiting
+    rate_limit:
+      messages_per_minute: 30
+      burst_size: 10
+
+    # Role mapping (Discord roles -> internal roles)
+    role_mapping:
+      "Admin": "admin"
+      "Moderator": "power_user"
+      "Member": "user"
+
+  # Slack App
+  slack:
+    enabled: true
+    socket_mode: true          # Use Socket Mode (recommended)
+    slash_commands: true       # Enable slash commands
+    threads: true              # Reply in threads
+    rich_messages: true        # Use Block Kit formatting
+    require_pairing: true
+
+    # Rate limiting
+    rate_limit:
+      messages_per_minute: 30
+      burst_size: 10
+
+  # WhatsApp (future)
+  whatsapp:
+    enabled: false
+    # Configuration will be added when WhatsApp support is implemented
+
+  # API (direct HTTP access)
+  api:
+    enabled: true
+    require_auth: true         # Require authentication for API access
+    rate_limit:
+      requests_per_minute: 60
+      burst_size: 20
+
+  # CLI (local command line)
+  cli:
+    enabled: true
+    require_auth: false        # No auth needed for local CLI
+    rate_limit:
+      messages_per_minute: 100
+      burst_size: 50
+
+# -----------------------------------------------------------------------------
+# Unified Inbox Settings
+# -----------------------------------------------------------------------------
+# Configuration for message storage and retrieval.
+
+inbox:
+  # Message retention
+  retention_days: 90           # Days to keep messages (0 = forever)
+
+  # Session continuity
+  session_continuity: true     # Link messages to sessions when available
+
+  # Search settings
+  search:
+    max_results: 100           # Maximum search results
+    context_messages: 5        # Messages to include for context
+
+# -----------------------------------------------------------------------------
+# Account Pairing
+# -----------------------------------------------------------------------------
+# Settings for cross-channel identity linking.
+
+pairing:
+  required: true               # Require pairing for full access
+  code_length: 8               # Pairing code length
+  code_ttl_seconds: 600        # Pairing code expiration (10 minutes)
+  max_attempts: 3              # Max failed pairing attempts before lockout
+  lockout_minutes: 30          # Lockout duration after max attempts
+
+  # What unpaired users can do
+  unpaired_access:
+    - "view_help"
+    - "generate_pairing_code"
+    - "check_status"
+
+# -----------------------------------------------------------------------------
+# Notification Settings
+# -----------------------------------------------------------------------------
+# How to handle outbound notifications.
+
+notifications:
+  # Delivery preferences
+  prefer_user_channel: true    # Use user's preferred channel when possible
+  fallback_enabled: true       # Try fallback channel if preferred fails
+
+  # Do Not Disturb
+  dnd:
+    enabled: true
+    default_start: "22:00"     # Default DND start time (HH:MM)
+    default_end: "08:00"       # Default DND end time (HH:MM)
+    queue_during_dnd: true     # Queue messages during DND
+
+  # Priority handling
+  priorities:
+    high:
+      ignore_dnd: true         # High priority ignores DND
+      retry_count: 3           # Retry attempts for failed delivery
+    normal:
+      ignore_dnd: false
+      retry_count: 1
+    low:
+      ignore_dnd: false
+      retry_count: 0
+      batch_allowed: true      # Can be batched with other messages
+
+# -----------------------------------------------------------------------------
+# Security Settings
+# -----------------------------------------------------------------------------
+# Channel-specific security configuration.
+
+security:
+  # Content filtering
+  content_filter:
+    enabled: true
+    block_urls: false          # Block messages with URLs
+    block_attachments: false   # Block file attachments
+    max_attachment_size_mb: 10 # Maximum attachment size
+
+  # Audit logging
+  audit:
+    log_all_messages: true     # Log all messages (required for compliance)
+    log_attachments: true      # Log attachment metadata (not content)
+    retention_days: 365        # Audit log retention
+
+  # Anti-abuse
+  abuse_prevention:
+    enabled: true
+    max_messages_per_hour: 100 # Per-user limit
+    spam_detection: true       # Enable spam pattern detection
+    cooldown_minutes: 5        # Cooldown after hitting limits

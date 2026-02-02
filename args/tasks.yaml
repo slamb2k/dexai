@@ -1,0 +1,94 @@
+# Task System Configuration
+# Controls how Claude Code manages and executes tasks
+
+# =============================================================================
+# Task Creation Defaults
+# =============================================================================
+defaults:
+  # Always require activeForm for spinner display
+  require_active_form: true
+
+  # Default priority for new tasks (1-10, higher = more important)
+  default_priority: 5
+
+  # Auto-assign owner on creation
+  auto_assign: true
+
+# =============================================================================
+# Execution Patterns
+# =============================================================================
+patterns:
+  # Prefer parallel execution when tasks are independent
+  prefer_parallel: true
+
+  # Maximum concurrent background agents
+  max_parallel_agents: 3
+
+  # Timeout for individual tasks (seconds)
+  task_timeout: 600  # 10 minutes
+
+  # Retry failed tasks automatically
+  auto_retry: false
+  max_retries: 2
+
+# =============================================================================
+# Task Lifecycle
+# =============================================================================
+lifecycle:
+  # Statuses: pending, in_progress, completed, deleted
+
+  # Require verification before marking completed
+  require_verification: true
+
+  # Auto-mark stale tasks (hours since last update)
+  stale_threshold_hours: 24
+
+  # Action for stale tasks: warn, auto_delete, none
+  stale_action: warn
+
+# =============================================================================
+# Display Settings
+# =============================================================================
+display:
+  # Show task list on session start
+  show_on_start: true
+
+  # Maximum tasks to show in list
+  list_limit: 20
+
+  # Group by status in list view
+  group_by_status: true
+
+  # Show blocked tasks
+  show_blocked: true
+
+# =============================================================================
+# Integration
+# =============================================================================
+integration:
+  # Log task events to audit system
+  audit_logging: true
+
+  # Sync with memory system (track completed tasks)
+  memory_sync: true
+
+  # Event types to log
+  log_events:
+    - created
+    - started
+    - completed
+    - failed
+    - deleted
+
+# =============================================================================
+# Cleanup
+# =============================================================================
+cleanup:
+  # Auto-cleanup completed tasks after N days
+  completed_retention_days: 7
+
+  # Auto-cleanup deleted tasks after N days
+  deleted_retention_days: 1
+
+  # Run cleanup on session start
+  cleanup_on_start: true

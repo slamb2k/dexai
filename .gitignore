@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Secrets & credentials (NEVER commit these)
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+token.json
+*.vault_salt
+.vault_salt
+
+# Databases (contain user data)
+data/*.db
+data/*.db-journal
+
+# Temporary files
+.tmp/
+tmp/
+*.tmp
+*.temp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Memory logs (may contain sensitive conversation data)
+memory/logs/*.md
+
+# Claude Code
+.claude/
