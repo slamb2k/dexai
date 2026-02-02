@@ -358,7 +358,7 @@ function ActivityDetailModal({
               Timestamp
             </h3>
             <p className="text-body text-text-secondary font-mono">
-              {formatDate(item.timestamp)} {item.timestamp.toLocaleTimeString()}
+              {formatDate(item.timestamp)} {new Date(item.timestamp).toLocaleTimeString()}
             </p>
           </div>
 
