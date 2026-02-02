@@ -9,12 +9,14 @@ Tests the FastAPI dashboard routes:
 These tests use an isolated test database and FastAPI TestClient.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
+
 
 # Skip all tests in this module if FastAPI is not installed
 try:
-    from fastapi.testclient import TestClient
+    from fastapi.testclient import TestClient  # noqa: F401
 
     HAS_FASTAPI = True
 except ImportError:
@@ -308,9 +310,7 @@ class TestActivityEndpoint:
             "/api/activity", json={"event_type": "message", "summary": "Message event"}
         )
         test_client.post("/api/activity", json={"event_type": "task", "summary": "Task event"})
-        test_client.post(
-            "/api/activity", json={"event_type": "system", "summary": "System event"}
-        )
+        test_client.post("/api/activity", json={"event_type": "system", "summary": "System event"})
 
         # Filter by message type
         response = test_client.get("/api/activity", params={"event_type": "message"})
@@ -357,9 +357,7 @@ class TestActivityEndpoint:
         assert data["cursor"] is not None
 
         # Next page
-        response = test_client.get(
-            "/api/activity", params={"limit": 5, "cursor": data["cursor"]}
-        )
+        response = test_client.get("/api/activity", params={"limit": 5, "cursor": data["cursor"]})
         data2 = response.json()
 
         assert len(data2["events"]) == 5

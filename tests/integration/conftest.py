@@ -17,23 +17,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+
 # Handle optional dependencies gracefully
 try:
-    import pytest_asyncio
+    import pytest_asyncio  # noqa: F401
 
     HAS_ASYNC = True
 except ImportError:
     HAS_ASYNC = False
 
 try:
-    from fastapi.testclient import TestClient
+    from fastapi.testclient import TestClient  # noqa: F401
 
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
 
 try:
-    from httpx import ASGITransport, AsyncClient
+    from httpx import ASGITransport, AsyncClient  # noqa: F401
 
     HAS_HTTPX = True
 except ImportError:
