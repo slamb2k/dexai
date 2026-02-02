@@ -56,7 +56,9 @@ DEFAULT_ROLES = {
             "memory:read",
             "memory:write",
             "chat:*",
-            "help:*"
+            "help:*",
+            "files:read",
+            "files:write"
         ]
     },
     "power_user": {
@@ -67,7 +69,10 @@ DEFAULT_ROLES = {
             "chat:*",
             "help:*",
             "tools:execute",
-            "experimental:*"
+            "experimental:*",
+            "files:*",
+            "system:execute",
+            "network:request"
         ]
     },
     "admin": {
@@ -82,7 +87,11 @@ DEFAULT_ROLES = {
             "users:manage",
             "audit:read",
             "settings:read",
-            "settings:write"
+            "settings:write",
+            "files:*",
+            "system:*",
+            "network:*",
+            "browser:*"
         ]
     },
     "owner": {
