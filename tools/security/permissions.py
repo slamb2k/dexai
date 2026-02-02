@@ -72,7 +72,9 @@ DEFAULT_ROLES = {
             "experimental:*",
             "files:*",
             "system:execute",
-            "network:request"
+            "network:request",
+            "automation:read",
+            "automation:execute"
         ]
     },
     "admin": {
@@ -91,7 +93,8 @@ DEFAULT_ROLES = {
             "files:*",
             "system:*",
             "network:*",
-            "browser:*"
+            "browser:*",
+            "automation:*"
         ]
     },
     "owner": {
