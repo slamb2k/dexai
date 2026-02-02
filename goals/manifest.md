@@ -11,6 +11,8 @@ Index of all available goal workflows. Check here before creating new goals.
 | `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
 | `build_app.md` | ATLAS workflow for building full-stack applications with AI assistance |
 | `phase1_security.md` | Phase 1 tactical implementation guide — security tools (vault, audit, sanitizer, etc.) |
+| `phase7_dashboard.md` | Phase 7 tactical implementation guide — web dashboard with Dex avatar and monitoring |
+| `phase8_installation.md` | Phase 8 tactical implementation guide — guided setup wizard (web + TUI) |
 | `task_orchestration.md` | Task execution patterns — sequential, parallel, fan-out, fan-in, pipeline |
 | `prd_addulting_ai_v1.md` | **Archived** — Original PRD before ADHD pivot |
 
@@ -37,6 +39,8 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 4 | Smart Notifications (Time-blind-aware) | ⏳ Pending |
 | Phase 5 | Task Engine (Decomposition, friction-solving) | ⏳ Pending |
 | Phase 6 | Learning (Energy patterns, personalization) | ⏳ Pending |
+| Phase 7 | Web Dashboard (Monitoring + configuration) | ⏳ Pending |
+| Phase 8 | Guided Installation (Setup wizard) | ⏳ Pending |
 
 ---
 
