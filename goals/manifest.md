@@ -8,23 +8,35 @@ Index of all available goal workflows. Check here before creating new goals.
 
 | Goal | Description |
 |------|-------------|
+| `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
 | `build_app.md` | ATLAS workflow for building full-stack applications with AI assistance |
-| `prd_addulting_ai_v1.md` | Product Requirements Document for addulting-ai v1.0 — security-first AI agent platform |
 | `phase1_security.md` | Phase 1 tactical implementation guide — security tools (vault, audit, sanitizer, etc.) |
 | `task_orchestration.md` | Task execution patterns — sequential, parallel, fan-out, fan-in, pipeline |
+| `prd_addulting_ai_v1.md` | **Archived** — Original PRD before ADHD pivot |
+
+---
+
+## Context Documents
+
+| Document | Description |
+|----------|-------------|
+| `context/adhd_design_principles.md` | **Core** — ADHD-specific design philosophy and anti-patterns |
+| `context/openclaw_research.md` | Competitive analysis of OpenClaw |
+| `context/gap_analysis.md` | Feature gap analysis and roadmap justification |
 
 ---
 
 ## Phase Goals (Implementation Roadmap)
 
-| Phase | Goal File | Status |
-|-------|-----------|--------|
-| Phase 0 | (inline in plan) | ✅ Complete — DB migration, args, hardprompts |
-| Phase 1 | `phase1_security.md` | ✅ Complete — 6 security tools built |
-| Phase 2 | `phase2_channels.md` | 🔜 Next — Gateway + messaging adapters |
-| Phase 3 | (not created) | ⏳ Pending — System access (sandbox, browser) |
-| Phase 4 | (not created) | ⏳ Pending — Proactive automation (heartbeat, cron) |
-| Phase 5 | (not created) | ⏳ Pending — Skills ecosystem |
+| Phase | Focus | Status |
+|-------|-------|--------|
+| Phase 0 | Foundation (Security + Memory) | ✅ Complete |
+| Phase 1 | Channels (Multi-platform messaging) | ✅ Complete |
+| Phase 2 | External Working Memory (Context capture) | 🔜 Next |
+| Phase 3 | ADHD Communication Mode (RSD-safe) | ⏳ Pending |
+| Phase 4 | Smart Notifications (Time-blind-aware) | ⏳ Pending |
+| Phase 5 | Task Engine (Decomposition, friction-solving) | ⏳ Pending |
+| Phase 6 | Learning (Energy patterns, personalization) | ⏳ Pending |
 
 ---
 
