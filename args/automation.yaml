@@ -1,0 +1,83 @@
+# =============================================================================
+# Automation Configuration
+# =============================================================================
+# Controls the behavior of proactive automation tools: heartbeat, cron,
+# triggers, notifications, and the background runner daemon.
+
+heartbeat:
+  enabled: true
+  interval_minutes: 30           # How often to run heartbeat checks
+  activity_skip_window: 300      # Skip if user active within 5 min (seconds)
+  cost_limit: 0.25               # Max cost per heartbeat run (USD)
+  timeout_seconds: 180           # Max time for heartbeat execution
+  batch_checks: true             # Batch multiple checks into single LLM turn
+  checks_file: "HEARTBEAT.md"    # File defining heartbeat checks
+  active_hours:
+    start: "06:00"               # Don't run before this time
+    end: "23:00"                 # Don't run after this time
+
+cron:
+  enabled: true
+  poll_interval_seconds: 60      # How often to check for due jobs
+  default_timeout: 120           # Default job timeout (seconds)
+  default_cost_limit: 0.50       # Default max cost per job (USD)
+  max_concurrent_jobs: 3         # Max jobs running simultaneously
+  retry:
+    max_attempts: 3              # Max retry attempts on failure
+    initial_delay_seconds: 60    # First retry delay
+    backoff_multiplier: 2.0      # Multiply delay each retry
+    max_delay_seconds: 3600      # Cap retry delay at 1 hour
+  timezone: "UTC"                # Timezone for cron expressions
+
+triggers:
+  enabled: true
+  file_watcher:
+    enabled: true
+    watch_dirs:                  # Directories to monitor for changes
+      - "workspace"
+      - ".tmp/inbox"
+    ignore_patterns:             # Files to ignore
+      - "*.swp"
+      - "*.tmp"
+      - ".*"
+      - "__pycache__"
+      - "*.pyc"
+    debounce_seconds: 5          # Ignore rapid successive changes
+  webhook:
+    enabled: false               # Disabled by default for security
+    port: 18790                  # Port for webhook listener
+    host: "127.0.0.1"            # Bind to localhost only
+    secret_env_var: "WEBHOOK_SECRET"  # Env var for webhook auth
+
+notifications:
+  enabled: true
+  process_interval: 10           # Seconds between queue processing
+  use_preferred_channel: true    # Use user's preferred channel if set
+  priorities:
+    urgent:
+      ignore_dnd: true           # Send even during Do Not Disturb
+      retry_count: 5
+    high:
+      ignore_dnd: false
+      retry_count: 3
+    normal:
+      ignore_dnd: false
+      retry_count: 2
+    low:
+      ignore_dnd: false
+      retry_count: 1
+  dnd:
+    enabled: true                # Enable Do Not Disturb feature
+    default_start: "22:00"       # Default DND start time
+    default_end: "08:00"         # Default DND end time
+    queue_during_dnd: true       # Queue notifications during DND (send later)
+  aggregation:
+    enabled: true                # Aggregate similar notifications
+    window_seconds: 300          # Aggregation window (5 minutes)
+    max_batch_size: 10           # Max notifications in one batch
+
+runner:
+  pid_file: ".tmp/automation.pid"           # PID file for daemon
+  status_file: ".tmp/automation_status.json"  # Status file
+  shutdown_timeout: 30           # Seconds to wait for graceful shutdown
+  log_file: ".tmp/automation.log"  # Log file for daemon output
