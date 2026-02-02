@@ -42,33 +42,34 @@ Output:
     JSON result with success status, formatted content, and metadata
 """
 
-import os
-import sys
+import argparse
 import json
 import re
-import argparse
-from pathlib import Path
-from typing import Optional, Dict, Any, List
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Configuration path
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'adhd_mode.yaml'
+CONFIG_PATH = PROJECT_ROOT / "args" / "adhd_mode.yaml"
 
 # Track user expansion requests (in-memory, per-session)
 # In production, this would be stored in a database
-_expansion_requests: Dict[str, datetime] = {}
+_expansion_requests: dict[str, datetime] = {}
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load ADHD mode configuration from YAML file."""
     try:
         import yaml
+
         if CONFIG_PATH.exists():
-            with open(CONFIG_PATH, 'r') as f:
+            with open(CONFIG_PATH) as f:
                 return yaml.safe_load(f)
         else:
             return get_default_config()
@@ -76,42 +77,53 @@ def load_config() -> Dict[str, Any]:
         return get_default_config()
 
 
-def get_default_config() -> Dict[str, Any]:
+def get_default_config() -> dict[str, Any]:
     """Return default config if YAML unavailable."""
     return {
-        'adhd_mode': {
-            'brevity': {
-                'default_max_sentences': 2,
-                'default_max_chars': 280,
-                'expand_on_keywords': ['more', 'details', 'explain', 'why'],
-                'strip_preamble': [
-                    'Sure!', 'Of course!', 'Absolutely!', 'Great question!',
-                    "That's a great question!", "I'd be happy to", "I'd be glad to",
-                    'No problem!', 'Certainly!', 'Let me help you with that'
-                ]
-            },
-            'one_thing': {
-                'enabled': True,
-                'trigger_phrases': [
-                    'what should i do', "what's next", 'where do i start',
-                    "i'm stuck", "i'm overwhelmed", 'help me decide'
+        "adhd_mode": {
+            "brevity": {
+                "default_max_sentences": 2,
+                "default_max_chars": 280,
+                "expand_on_keywords": ["more", "details", "explain", "why"],
+                "strip_preamble": [
+                    "Sure!",
+                    "Of course!",
+                    "Absolutely!",
+                    "Great question!",
+                    "That's a great question!",
+                    "I'd be happy to",
+                    "I'd be glad to",
+                    "No problem!",
+                    "Certainly!",
+                    "Let me help you with that",
                 ],
-                'alternative_phrases': ['something else', 'another option', 'not that']
-            }
+            },
+            "one_thing": {
+                "enabled": True,
+                "trigger_phrases": [
+                    "what should i do",
+                    "what's next",
+                    "where do i start",
+                    "i'm stuck",
+                    "i'm overwhelmed",
+                    "help me decide",
+                ],
+                "alternative_phrases": ["something else", "another option", "not that"],
+            },
         }
     }
 
 
-def get_brevity_config() -> Dict[str, Any]:
+def get_brevity_config() -> dict[str, Any]:
     """Get the brevity section of the config."""
     config = load_config()
-    return config.get('adhd_mode', {}).get('brevity', {})
+    return config.get("adhd_mode", {}).get("brevity", {})
 
 
-def get_one_thing_config() -> Dict[str, Any]:
+def get_one_thing_config() -> dict[str, Any]:
     """Get the one-thing section of the config."""
     config = load_config()
-    return config.get('adhd_mode', {}).get('one_thing', {})
+    return config.get("adhd_mode", {}).get("one_thing", {})
 
 
 def strip_preamble(content: str) -> str:
@@ -132,7 +144,7 @@ def strip_preamble(content: str) -> str:
         "So basically..."
     """
     config = get_brevity_config()
-    preambles = config.get('strip_preamble', [])
+    preambles = config.get("strip_preamble", [])
 
     result = content.strip()
 
@@ -143,24 +155,21 @@ def strip_preamble(content: str) -> str:
         for preamble in preambles:
             # Check start of string (case-insensitive)
             if result.lower().startswith(preamble.lower()):
-                result = result[len(preamble):].strip()
+                result = result[len(preamble) :].strip()
                 changed = True
                 break
 
             # Also check if it's a sentence at the start
-            pattern = re.compile(
-                r'^' + re.escape(preamble) + r'[.!?\s]+',
-                re.IGNORECASE
-            )
+            pattern = re.compile(r"^" + re.escape(preamble) + r"[.!?\s]+", re.IGNORECASE)
             if pattern.match(result):
-                result = pattern.sub('', result).strip()
+                result = pattern.sub("", result).strip()
                 changed = True
                 break
 
     return result
 
 
-def split_sentences(content: str) -> List[str]:
+def split_sentences(content: str) -> list[str]:
     """
     Split content into sentences, handling common edge cases.
 
@@ -171,13 +180,13 @@ def split_sentences(content: str) -> List[str]:
         List of sentences
     """
     # Handle common abbreviations
-    content = re.sub(r'\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e)\.', r'\1<PERIOD>', content)
+    content = re.sub(r"\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e)\.", r"\1<PERIOD>", content)
 
     # Split on sentence endings
-    sentences = re.split(r'(?<=[.!?])\s+', content)
+    sentences = re.split(r"(?<=[.!?])\s+", content)
 
     # Restore abbreviations
-    sentences = [s.replace('<PERIOD>', '.') for s in sentences]
+    sentences = [s.replace("<PERIOD>", ".") for s in sentences]
 
     # Filter empty
     return [s.strip() for s in sentences if s.strip()]
@@ -205,22 +214,22 @@ def truncate_to_sentences(content: str, max_sentences: int = 2) -> str:
 
     # Take first N sentences
     truncated = sentences[:max_sentences]
-    result = ' '.join(truncated)
+    result = " ".join(truncated)
 
     # Ensure proper ending punctuation
-    if result and not result[-1] in '.!?':
-        result += '.'
+    if result and result[-1] not in ".!?":
+        result += "."
 
     return result
 
 
 def format_response(
     content: str,
-    max_sentences: Optional[int] = None,
-    max_chars: Optional[int] = None,
+    max_sentences: int | None = None,
+    max_chars: int | None = None,
     add_more_hint: bool = True,
-    apply_rsd_filter: bool = True
-) -> Dict[str, Any]:
+    apply_rsd_filter: bool = True,
+) -> dict[str, Any]:
     """
     Format a response for ADHD-friendly consumption.
 
@@ -245,8 +254,8 @@ def format_response(
         }
     """
     config = get_brevity_config()
-    max_sent = max_sentences or config.get('default_max_sentences', 2)
-    max_ch = max_chars or config.get('default_max_chars', 280)
+    max_sent = max_sentences or config.get("default_max_sentences", 2)
+    max_ch = max_chars or config.get("default_max_chars", 280)
 
     # Step 1: Strip preamble
     cleaned = strip_preamble(content)
@@ -255,8 +264,9 @@ def format_response(
     if apply_rsd_filter:
         try:
             from tools.adhd.language_filter import filter_content
+
             filter_result = filter_content(cleaned)
-            cleaned = filter_result.get('filtered', cleaned)
+            cleaned = filter_result.get("filtered", cleaned)
         except ImportError:
             pass  # RSD filter not available
 
@@ -269,14 +279,14 @@ def format_response(
 
     # Step 5: Check character limit (if still too long)
     if len(formatted) > max_ch:
-        formatted = formatted[:max_ch].rsplit(' ', 1)[0]
-        if not formatted.endswith(('.', '!', '?')):
-            formatted += '...'
+        formatted = formatted[:max_ch].rsplit(" ", 1)[0]
+        if not formatted.endswith((".", "!", "?")):
+            formatted += "..."
 
     # Step 6: Add "more" hint if truncated
     was_truncated = original_count > max_sent or len(cleaned) > len(formatted)
     if was_truncated and add_more_hint:
-        formatted = formatted.rstrip('.!?') + ". Say 'more' for details."
+        formatted = formatted.rstrip(".!?") + ". Say 'more' for details."
 
     return {
         "success": True,
@@ -286,15 +296,11 @@ def format_response(
         "original_sentences": original_count,
         "kept_sentences": min(original_count, max_sent),
         "original_chars": len(content),
-        "formatted_chars": len(formatted)
+        "formatted_chars": len(formatted),
     }
 
 
-def expand_response(
-    content: str,
-    user: str,
-    apply_rsd_filter: bool = True
-) -> Dict[str, Any]:
+def expand_response(content: str, user: str, apply_rsd_filter: bool = True) -> dict[str, Any]:
     """
     Return full response when user requests expansion.
 
@@ -324,20 +330,16 @@ def expand_response(
     if apply_rsd_filter:
         try:
             from tools.adhd.language_filter import filter_content
+
             filter_result = filter_content(cleaned)
-            cleaned = filter_result.get('filtered', cleaned)
+            cleaned = filter_result.get("filtered", cleaned)
         except ImportError:
             pass
 
-    return {
-        "success": True,
-        "expanded": cleaned,
-        "user": user,
-        "expansion_tracked": True
-    }
+    return {"success": True, "expanded": cleaned, "user": user, "expansion_tracked": True}
 
 
-def should_expand(user: str, message: str) -> Dict[str, Any]:
+def should_expand(user: str, message: str) -> dict[str, Any]:
     """
     Check if user's message indicates they want expanded response.
 
@@ -356,7 +358,7 @@ def should_expand(user: str, message: str) -> Dict[str, Any]:
         {"success": True, "should_expand": False, "matched_keyword": None}
     """
     config = get_brevity_config()
-    keywords = config.get('expand_on_keywords', ['more', 'details', 'explain', 'why'])
+    keywords = config.get("expand_on_keywords", ["more", "details", "explain", "why"])
 
     message_lower = message.lower()
 
@@ -366,7 +368,7 @@ def should_expand(user: str, message: str) -> Dict[str, Any]:
                 "success": True,
                 "should_expand": True,
                 "matched_keyword": keyword,
-                "user": user
+                "user": user,
             }
 
     # Also check if user recently requested expansion (within 5 minutes)
@@ -379,18 +381,13 @@ def should_expand(user: str, message: str) -> Dict[str, Any]:
                 "should_expand": True,
                 "matched_keyword": None,
                 "reason": "recent_expansion_context",
-                "user": user
+                "user": user,
             }
 
-    return {
-        "success": True,
-        "should_expand": False,
-        "matched_keyword": None,
-        "user": user
-    }
+    return {"success": True, "should_expand": False, "matched_keyword": None, "user": user}
 
 
-def extract_one_thing(content: str, context: Optional[str] = None) -> Dict[str, Any]:
+def extract_one_thing(content: str, context: str | None = None) -> dict[str, Any]:
     """
     Extract THE single most important actionable item from content.
 
@@ -417,21 +414,21 @@ def extract_one_thing(content: str, context: Optional[str] = None) -> Dict[str, 
     items = []
 
     # Pattern 1: Numbered list (1. item, 2. item)
-    numbered = re.findall(r'\d+[.)]\s*([^\n\d]+?)(?=\d+[.)]|\n|$)', content)
+    numbered = re.findall(r"\d+[.)]\s*([^\n\d]+?)(?=\d+[.)]|\n|$)", content)
     items.extend([i.strip() for i in numbered if i.strip()])
 
     # Pattern 2: Bullet list (- item, * item)
-    bulleted = re.findall(r'[-*]\s*([^\n-*]+?)(?=[-*]|\n|$)', content)
+    bulleted = re.findall(r"[-*]\s*([^\n-*]+?)(?=[-*]|\n|$)", content)
     items.extend([i.strip() for i in bulleted if i.strip()])
 
     # Pattern 3: Comma-separated (do X, do Y, do Z)
-    if not items and ',' in content:
-        parts = content.split(',')
+    if not items and "," in content:
+        parts = content.split(",")
         items = [p.strip() for p in parts if p.strip() and len(p.strip()) > 5]
 
     # Pattern 4: "or" separated (do X or do Y or do Z)
-    if not items and ' or ' in content.lower():
-        parts = re.split(r'\s+or\s+', content, flags=re.IGNORECASE)
+    if not items and " or " in content.lower():
+        parts = re.split(r"\s+or\s+", content, flags=re.IGNORECASE)
         items = [p.strip() for p in parts if p.strip() and len(p.strip()) > 5]
 
     # If no list found, the content itself might be the one thing
@@ -446,12 +443,12 @@ def extract_one_thing(content: str, context: Optional[str] = None) -> Dict[str, 
             "success": True,
             "one_thing": "Let's figure out what's most important. What's on your mind?",
             "alternatives_available": False,
-            "total_found": 0
+            "total_found": 0,
         }
 
     # Select the first item (in production, this would use LLM for smart selection)
     # For now, prefer shorter items (less overwhelming) with action verbs
-    action_verbs = ['send', 'call', 'email', 'write', 'review', 'check', 'finish', 'start']
+    action_verbs = ["send", "call", "email", "write", "review", "check", "finish", "start"]
 
     # Score items
     scored = []
@@ -469,10 +466,10 @@ def extract_one_thing(content: str, context: Optional[str] = None) -> Dict[str, 
     selected = scored[0][0]
 
     # Clean up the selected item
-    selected = selected.strip().rstrip('.')
+    selected = selected.strip().rstrip(".")
     if selected and not selected[0].isupper():
         selected = selected[0].upper() + selected[1:]
-    selected += '.'
+    selected += "."
 
     # Add hint about alternatives
     if len(items) > 1:
@@ -483,11 +480,11 @@ def extract_one_thing(content: str, context: Optional[str] = None) -> Dict[str, 
         "one_thing": selected,
         "alternatives_available": len(items) > 1,
         "total_found": len(items),
-        "all_items": items  # Include for debugging/logging
+        "all_items": items,  # Include for debugging/logging
     }
 
 
-def is_one_thing_trigger(message: str) -> Dict[str, Any]:
+def is_one_thing_trigger(message: str) -> dict[str, Any]:
     """
     Check if user's message should trigger one-thing mode.
 
@@ -505,26 +502,18 @@ def is_one_thing_trigger(message: str) -> Dict[str, Any]:
         {"success": True, "is_trigger": False, "matched_phrase": None}
     """
     config = get_one_thing_config()
-    triggers = config.get('trigger_phrases', [])
+    triggers = config.get("trigger_phrases", [])
 
     message_lower = message.lower()
 
     for phrase in triggers:
         if phrase.lower() in message_lower:
-            return {
-                "success": True,
-                "is_trigger": True,
-                "matched_phrase": phrase
-            }
+            return {"success": True, "is_trigger": True, "matched_phrase": phrase}
 
-    return {
-        "success": True,
-        "is_trigger": False,
-        "matched_phrase": None
-    }
+    return {"success": True, "is_trigger": False, "matched_phrase": None}
 
 
-def format_with_rsd(content: str, **kwargs) -> Dict[str, Any]:
+def format_with_rsd(content: str, **kwargs) -> dict[str, Any]:
     """
     Convenience function: format + RSD filter in one call.
 
@@ -540,7 +529,7 @@ def format_with_rsd(content: str, **kwargs) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='ADHD Response Formatter - brevity-first, one-thing mode',
+        description="ADHD Response Formatter - brevity-first, one-thing mode",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -558,24 +547,27 @@ Examples:
 
   # Check if message triggers one-thing mode
   python response_formatter.py --action is-trigger --message "what should I do?"
-        """
+        """,
     )
 
-    parser.add_argument('--action', required=True,
-                       choices=['format', 'expand', 'one-thing', 'should-expand', 'is-trigger', 'strip-preamble'],
-                       help='Action to perform')
-    parser.add_argument('--content', help='Text content to format')
-    parser.add_argument('--message', help='User message to check')
-    parser.add_argument('--user', help='User ID')
-    parser.add_argument('--max-sentences', type=int, help='Override max sentences')
-    parser.add_argument('--max-chars', type=int, help='Override max characters')
-    parser.add_argument('--no-more-hint', action='store_true', help='Skip adding "say more" hint')
-    parser.add_argument('--no-rsd-filter', action='store_true', help='Skip RSD language filter')
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=["format", "expand", "one-thing", "should-expand", "is-trigger", "strip-preamble"],
+        help="Action to perform",
+    )
+    parser.add_argument("--content", help="Text content to format")
+    parser.add_argument("--message", help="User message to check")
+    parser.add_argument("--user", help="User ID")
+    parser.add_argument("--max-sentences", type=int, help="Override max sentences")
+    parser.add_argument("--max-chars", type=int, help="Override max characters")
+    parser.add_argument("--no-more-hint", action="store_true", help='Skip adding "say more" hint')
+    parser.add_argument("--no-rsd-filter", action="store_true", help="Skip RSD language filter")
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'format':
+    if args.action == "format":
         if not args.content:
             print("Error: --content required for format action")
             sys.exit(1)
@@ -584,41 +576,37 @@ Examples:
             max_sentences=args.max_sentences,
             max_chars=args.max_chars,
             add_more_hint=not args.no_more_hint,
-            apply_rsd_filter=not args.no_rsd_filter
+            apply_rsd_filter=not args.no_rsd_filter,
         )
 
-    elif args.action == 'expand':
+    elif args.action == "expand":
         if not args.content:
             print("Error: --content required for expand action")
             sys.exit(1)
         if not args.user:
             print("Error: --user required for expand action")
             sys.exit(1)
-        result = expand_response(
-            args.content,
-            args.user,
-            apply_rsd_filter=not args.no_rsd_filter
-        )
+        result = expand_response(args.content, args.user, apply_rsd_filter=not args.no_rsd_filter)
 
-    elif args.action == 'one-thing':
+    elif args.action == "one-thing":
         if not args.content:
             print("Error: --content required for one-thing action")
             sys.exit(1)
         result = extract_one_thing(args.content)
 
-    elif args.action == 'should-expand':
+    elif args.action == "should-expand":
         if not args.user or not args.message:
             print("Error: --user and --message required for should-expand action")
             sys.exit(1)
         result = should_expand(args.user, args.message)
 
-    elif args.action == 'is-trigger':
+    elif args.action == "is-trigger":
         if not args.message:
             print("Error: --message required for is-trigger action")
             sys.exit(1)
         result = is_one_thing_trigger(args.message)
 
-    elif args.action == 'strip-preamble':
+    elif args.action == "strip-preamble":
         if not args.content:
             print("Error: --content required for strip-preamble action")
             sys.exit(1)
@@ -627,11 +615,11 @@ Examples:
             "success": True,
             "original": args.content,
             "cleaned": cleaned,
-            "chars_removed": len(args.content) - len(cleaned)
+            "chars_removed": len(args.content) - len(cleaned),
         }
 
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print("OK Formatted")
         else:
             print(f"ERROR {result.get('error')}")

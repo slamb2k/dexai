@@ -11,9 +11,10 @@ This package provides secure system access capabilities:
 
 from pathlib import Path
 
+
 # Package info
 __version__ = "1.0.0"
-__all__ = ["executor", "fileops", "browser", "network"]
+__all__ = ["browser", "executor", "fileops", "network"]
 
 # Common paths
 SYSTEM_ROOT = Path(__file__).parent

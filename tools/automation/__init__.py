@@ -47,17 +47,18 @@ Dependencies:
 
 from pathlib import Path
 
+
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DB_PATH = PROJECT_ROOT / 'data' / 'scheduler.db'
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'automation.yaml'
-SMART_NOTIFICATIONS_CONFIG = PROJECT_ROOT / 'args' / 'smart_notifications.yaml'
-HEARTBEAT_FILE = PROJECT_ROOT / 'HEARTBEAT.md'
+DB_PATH = PROJECT_ROOT / "data" / "scheduler.db"
+CONFIG_PATH = PROJECT_ROOT / "args" / "automation.yaml"
+SMART_NOTIFICATIONS_CONFIG = PROJECT_ROOT / "args" / "smart_notifications.yaml"
+HEARTBEAT_FILE = PROJECT_ROOT / "HEARTBEAT.md"
 
 __all__ = [
-    'PROJECT_ROOT',
-    'DB_PATH',
-    'CONFIG_PATH',
-    'SMART_NOTIFICATIONS_CONFIG',
-    'HEARTBEAT_FILE',
+    "CONFIG_PATH",
+    "DB_PATH",
+    "HEARTBEAT_FILE",
+    "PROJECT_ROOT",
+    "SMART_NOTIFICATIONS_CONFIG",
 ]

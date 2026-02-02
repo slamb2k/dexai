@@ -25,14 +25,14 @@ Output:
     JSON result with success status and data
 """
 
-import os
-import sys
+import argparse
 import json
 import sqlite3
-import argparse
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -40,22 +40,23 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.automation import DB_PATH
 
+
 # Config path
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'smart_notifications.yaml'
+CONFIG_PATH = PROJECT_ROOT / "args" / "smart_notifications.yaml"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load configuration from YAML file."""
     default_config = {
-        'smart_notifications': {
-            'flow_protection': {
-                'enabled': True,
-                'detection_window_minutes': 15,
-                'min_activity_for_flow': 3,
-                'flow_score_threshold': 60,
-                'suppress_low_priority': True,
-                'suppress_medium_during_deep_flow': True,
-                'deep_flow_threshold': 80
+        "smart_notifications": {
+            "flow_protection": {
+                "enabled": True,
+                "detection_window_minutes": 15,
+                "min_activity_for_flow": 3,
+                "flow_score_threshold": 60,
+                "suppress_low_priority": True,
+                "suppress_medium_during_deep_flow": True,
+                "deep_flow_threshold": 80,
             }
         }
     }
@@ -65,6 +66,7 @@ def load_config() -> Dict[str, Any]:
 
     try:
         import yaml
+
         with open(CONFIG_PATH) as f:
             config = yaml.safe_load(f)
         return config if config else default_config
@@ -81,7 +83,7 @@ def get_connection() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # Activity patterns table - tracks flow patterns by time of day
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS activity_patterns (
             user_id TEXT NOT NULL,
             hour INTEGER,
@@ -93,48 +95,45 @@ def get_connection() -> sqlite3.Connection:
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(user_id, hour, day_of_week)
         )
-    ''')
+    """)
 
     # Flow overrides table - manual focus mode
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS flow_overrides (
             user_id TEXT PRIMARY KEY,
             is_focusing INTEGER DEFAULT 0,
             until DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
 
     # Recent activity table - for real-time flow detection
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS recent_activity (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
             response_time_seconds REAL,
             recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
 
     # Indexes for common queries
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_patterns(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_recent_user ON recent_activity(user_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_recent_time ON recent_activity(recorded_at)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_patterns(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recent_user ON recent_activity(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recent_time ON recent_activity(recorded_at)")
 
     conn.commit()
     return conn
 
 
-def row_to_dict(row) -> Optional[Dict]:
+def row_to_dict(row) -> dict | None:
     """Convert sqlite3.Row to dictionary."""
     if row is None:
         return None
     return dict(row)
 
 
-def record_activity(
-    user_id: str,
-    response_time_seconds: Optional[float] = None
-) -> Dict[str, Any]:
+def record_activity(user_id: str, response_time_seconds: float | None = None) -> dict[str, Any]:
     """
     Record user activity for flow detection.
 
@@ -151,16 +150,20 @@ def record_activity(
     now = datetime.now()
 
     # Record in recent_activity for real-time detection
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO recent_activity (user_id, response_time_seconds, recorded_at)
         VALUES (?, ?, ?)
-    ''', (user_id, response_time_seconds, now.isoformat()))
+    """,
+        (user_id, response_time_seconds, now.isoformat()),
+    )
 
     # Update activity_patterns for historical learning
     hour = now.hour
     day_of_week = now.weekday()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO activity_patterns (user_id, hour, day_of_week, message_count, avg_response_time_seconds, sample_count, updated_at)
         VALUES (?, ?, ?, 1, ?, 1, ?)
         ON CONFLICT(user_id, hour, day_of_week) DO UPDATE SET
@@ -172,23 +175,21 @@ def record_activity(
             END,
             sample_count = sample_count + 1,
             updated_at = excluded.updated_at
-    ''', (user_id, hour, day_of_week, response_time_seconds, now.isoformat()))
+    """,
+        (user_id, hour, day_of_week, response_time_seconds, now.isoformat()),
+    )
 
     # Clean up old recent_activity (keep last 24 hours)
     cutoff = (now - timedelta(hours=24)).isoformat()
-    cursor.execute('DELETE FROM recent_activity WHERE recorded_at < ?', (cutoff,))
+    cursor.execute("DELETE FROM recent_activity WHERE recorded_at < ?", (cutoff,))
 
     conn.commit()
     conn.close()
 
-    return {
-        "success": True,
-        "message": "Activity recorded",
-        "user_id": user_id
-    }
+    return {"success": True, "message": "Activity recorded", "user_id": user_id}
 
 
-def get_flow_score(user_id: str, window_minutes: Optional[int] = None) -> Dict[str, Any]:
+def get_flow_score(user_id: str, window_minutes: int | None = None) -> dict[str, Any]:
     """
     Calculate current flow score for user.
 
@@ -205,12 +206,12 @@ def get_flow_score(user_id: str, window_minutes: Optional[int] = None) -> Dict[s
         dict with flow score and components
     """
     config = load_config()
-    flow_config = config.get('smart_notifications', {}).get('flow_protection', {})
+    flow_config = config.get("smart_notifications", {}).get("flow_protection", {})
 
     if window_minutes is None:
-        window_minutes = flow_config.get('detection_window_minutes', 15)
+        window_minutes = flow_config.get("detection_window_minutes", 15)
 
-    min_activity = flow_config.get('min_activity_for_flow', 3)
+    min_activity = flow_config.get("min_activity_for_flow", 3)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -219,27 +220,33 @@ def get_flow_score(user_id: str, window_minutes: Optional[int] = None) -> Dict[s
     cutoff = (now - timedelta(minutes=window_minutes)).isoformat()
 
     # Get recent activity count and avg response time
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT
             COUNT(*) as activity_count,
             AVG(response_time_seconds) as avg_response_time
         FROM recent_activity
         WHERE user_id = ? AND recorded_at >= ?
-    ''', (user_id, cutoff))
+    """,
+        (user_id, cutoff),
+    )
 
     recent = cursor.fetchone()
-    activity_count = recent['activity_count'] or 0
-    avg_response_time = recent['avg_response_time']
+    activity_count = recent["activity_count"] or 0
+    avg_response_time = recent["avg_response_time"]
 
     # Get historical pattern for this time slot
     hour = now.hour
     day_of_week = now.weekday()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT flow_score, message_count, avg_response_time_seconds, sample_count
         FROM activity_patterns
         WHERE user_id = ? AND hour = ? AND day_of_week = ?
-    ''', (user_id, hour, day_of_week))
+    """,
+        (user_id, hour, day_of_week),
+    )
 
     historical = cursor.fetchone()
     conn.close()
@@ -271,18 +278,14 @@ def get_flow_score(user_id: str, window_minutes: Optional[int] = None) -> Dict[s
         response_score = 0  # No response time data
 
     # Historical pattern score (0-100)
-    if historical and historical['sample_count'] >= 5:
+    if historical and historical["sample_count"] >= 5:
         # Use stored flow score if we have enough samples
-        historical_score = historical['flow_score'] or 0
+        historical_score = historical["flow_score"] or 0
     else:
         historical_score = 50  # Neutral if insufficient data
 
     # Weighted combination
-    flow_score = (
-        activity_score * 0.50 +
-        response_score * 0.30 +
-        historical_score * 0.20
-    )
+    flow_score = activity_score * 0.50 + response_score * 0.30 + historical_score * 0.20
 
     return {
         "success": True,
@@ -291,14 +294,14 @@ def get_flow_score(user_id: str, window_minutes: Optional[int] = None) -> Dict[s
         "components": {
             "activity": round(activity_score, 1),
             "response_time": round(response_score, 1),
-            "historical": round(historical_score, 1)
+            "historical": round(historical_score, 1),
         },
         "activity_count": activity_count,
-        "avg_response_time_seconds": round(avg_response_time, 1) if avg_response_time else None
+        "avg_response_time_seconds": round(avg_response_time, 1) if avg_response_time else None,
     }
 
 
-def detect_flow(user_id: str) -> Dict[str, Any]:
+def detect_flow(user_id: str) -> dict[str, Any]:
     """
     Detect if user is currently in flow state.
 
@@ -313,37 +316,32 @@ def detect_flow(user_id: str) -> Dict[str, Any]:
         dict with flow state and source
     """
     config = load_config()
-    flow_config = config.get('smart_notifications', {}).get('flow_protection', {})
+    flow_config = config.get("smart_notifications", {}).get("flow_protection", {})
 
-    if not flow_config.get('enabled', True):
-        return {
-            "success": True,
-            "in_flow": False,
-            "score": 0,
-            "source": "disabled"
-        }
+    if not flow_config.get("enabled", True):
+        return {"success": True, "in_flow": False, "score": 0, "source": "disabled"}
 
-    threshold = flow_config.get('flow_score_threshold', 60)
-    deep_threshold = flow_config.get('deep_flow_threshold', 80)
+    threshold = flow_config.get("flow_score_threshold", 60)
+    deep_threshold = flow_config.get("deep_flow_threshold", 80)
 
     # Check manual override first
     override = get_override(user_id)
-    if override.get('success') and override.get('is_focusing'):
+    if override.get("success") and override.get("is_focusing"):
         return {
             "success": True,
             "in_flow": True,
             "deep_flow": True,  # Manual focus always counts as deep
             "score": 100,
             "source": "manual_override",
-            "until": override.get('until')
+            "until": override.get("until"),
         }
 
     # Calculate flow score
     score_result = get_flow_score(user_id)
-    if not score_result.get('success'):
+    if not score_result.get("success"):
         return score_result
 
-    score = score_result['score']
+    score = score_result["score"]
     in_flow = score >= threshold
     deep_flow = score >= deep_threshold
 
@@ -353,11 +351,11 @@ def detect_flow(user_id: str) -> Dict[str, Any]:
         "deep_flow": deep_flow,
         "score": score,
         "source": "activity_pattern" if in_flow else "no_flow",
-        "components": score_result.get('components')
+        "components": score_result.get("components"),
     }
 
 
-def set_override(user_id: str, duration_minutes: int) -> Dict[str, Any]:
+def set_override(user_id: str, duration_minutes: int) -> dict[str, Any]:
     """
     Set manual focus mode for user.
 
@@ -380,14 +378,17 @@ def set_override(user_id: str, duration_minutes: int) -> Dict[str, Any]:
     now = datetime.now()
     until = now + timedelta(minutes=duration_minutes)
 
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO flow_overrides (user_id, is_focusing, until, created_at)
         VALUES (?, 1, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             is_focusing = 1,
             until = excluded.until,
             created_at = excluded.created_at
-    ''', (user_id, until.isoformat(), now.isoformat()))
+    """,
+        (user_id, until.isoformat(), now.isoformat()),
+    )
 
     conn.commit()
     conn.close()
@@ -395,12 +396,13 @@ def set_override(user_id: str, duration_minutes: int) -> Dict[str, Any]:
     # Log to audit
     try:
         from tools.security import audit
+
         audit.log_event(
-            event_type='system',
-            action='flow_override_set',
+            event_type="system",
+            action="flow_override_set",
             user_id=user_id,
-            status='success',
-            details={'duration_minutes': duration_minutes, 'until': until.isoformat()}
+            status="success",
+            details={"duration_minutes": duration_minutes, "until": until.isoformat()},
         )
     except Exception:
         pass
@@ -409,11 +411,11 @@ def set_override(user_id: str, duration_minutes: int) -> Dict[str, Any]:
         "success": True,
         "until": until.isoformat(),
         "duration_minutes": duration_minutes,
-        "message": f"Focus mode enabled for {duration_minutes} minutes"
+        "message": f"Focus mode enabled for {duration_minutes} minutes",
     }
 
 
-def clear_override(user_id: str) -> Dict[str, Any]:
+def clear_override(user_id: str) -> dict[str, Any]:
     """
     Clear manual focus mode for user.
 
@@ -426,11 +428,14 @@ def clear_override(user_id: str) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE flow_overrides
         SET is_focusing = 0, until = NULL
         WHERE user_id = ?
-    ''', (user_id,))
+    """,
+        (user_id,),
+    )
 
     affected = cursor.rowcount
     conn.commit()
@@ -439,22 +444,20 @@ def clear_override(user_id: str) -> Dict[str, Any]:
     # Log to audit
     try:
         from tools.security import audit
+
         audit.log_event(
-            event_type='system',
-            action='flow_override_cleared',
-            user_id=user_id,
-            status='success'
+            event_type="system", action="flow_override_cleared", user_id=user_id, status="success"
         )
     except Exception:
         pass
 
     return {
         "success": True,
-        "message": "Focus mode cleared" if affected > 0 else "No active focus mode"
+        "message": "Focus mode cleared" if affected > 0 else "No active focus mode",
     }
 
 
-def get_override(user_id: str) -> Dict[str, Any]:
+def get_override(user_id: str) -> dict[str, Any]:
     """
     Get current focus mode status for user.
 
@@ -467,24 +470,23 @@ def get_override(user_id: str) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT is_focusing, until, created_at
         FROM flow_overrides
         WHERE user_id = ?
-    ''', (user_id,))
+    """,
+        (user_id,),
+    )
 
     row = cursor.fetchone()
     conn.close()
 
     if not row:
-        return {
-            "success": True,
-            "is_focusing": False,
-            "message": "No focus mode set"
-        }
+        return {"success": True, "is_focusing": False, "message": "No focus mode set"}
 
-    is_focusing = bool(row['is_focusing'])
-    until = row['until']
+    is_focusing = bool(row["is_focusing"])
+    until = row["until"]
 
     # Check if override has expired
     if is_focusing and until:
@@ -493,11 +495,7 @@ def get_override(user_id: str) -> Dict[str, Any]:
             if datetime.now() > until_dt:
                 # Expired - clear it
                 clear_override(user_id)
-                return {
-                    "success": True,
-                    "is_focusing": False,
-                    "message": "Focus mode expired"
-                }
+                return {"success": True, "is_focusing": False, "message": "Focus mode expired"}
         except ValueError:
             pass
 
@@ -505,11 +503,11 @@ def get_override(user_id: str) -> Dict[str, Any]:
         "success": True,
         "is_focusing": is_focusing,
         "until": until if is_focusing else None,
-        "created_at": row['created_at']
+        "created_at": row["created_at"],
     }
 
 
-def get_patterns(user_id: str) -> Dict[str, Any]:
+def get_patterns(user_id: str) -> dict[str, Any]:
     """
     Get historical activity patterns for user.
 
@@ -522,12 +520,15 @@ def get_patterns(user_id: str) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT hour, day_of_week, message_count, avg_response_time_seconds, flow_score, sample_count
         FROM activity_patterns
         WHERE user_id = ?
         ORDER BY day_of_week, hour
-    ''', (user_id,))
+    """,
+        (user_id,),
+    )
 
     patterns = [row_to_dict(row) for row in cursor.fetchall()]
     conn.close()
@@ -537,14 +538,14 @@ def get_patterns(user_id: str) -> Dict[str, Any]:
             "success": True,
             "patterns": [],
             "peak_hours": [],
-            "message": "No activity patterns recorded yet"
+            "message": "No activity patterns recorded yet",
         }
 
     # Identify peak hours (highest activity)
     hourly_activity = {}
     for p in patterns:
-        hour = p['hour']
-        count = p['message_count'] or 0
+        hour = p["hour"]
+        count = p["message_count"] or 0
         if hour not in hourly_activity:
             hourly_activity[hour] = 0
         hourly_activity[hour] += count
@@ -557,11 +558,11 @@ def get_patterns(user_id: str) -> Dict[str, Any]:
         "success": True,
         "patterns": patterns,
         "peak_hours": peak_hours,
-        "total_samples": sum(p.get('sample_count', 0) for p in patterns)
+        "total_samples": sum(p.get("sample_count", 0) for p in patterns),
     }
 
 
-def update_historical_flow_scores() -> Dict[str, Any]:
+def update_historical_flow_scores() -> dict[str, Any]:
     """
     Update stored flow scores based on accumulated data.
     Run periodically (e.g., daily) to recalculate historical patterns.
@@ -573,20 +574,20 @@ def update_historical_flow_scores() -> Dict[str, Any]:
     cursor = conn.cursor()
 
     # Get all patterns with enough samples
-    cursor.execute('''
+    cursor.execute("""
         SELECT user_id, hour, day_of_week, message_count, avg_response_time_seconds, sample_count
         FROM activity_patterns
         WHERE sample_count >= 5
-    ''')
+    """)
 
     patterns = cursor.fetchall()
     updated = 0
 
     for p in patterns:
         # Calculate flow score based on historical data
-        msg_count = p['message_count'] or 0
-        avg_response = p['avg_response_time_seconds']
-        samples = p['sample_count']
+        msg_count = p["message_count"] or 0
+        avg_response = p["avg_response_time_seconds"]
+        samples = p["sample_count"]
 
         # Normalize message count per sample
         avg_messages = msg_count / samples if samples > 0 else 0
@@ -611,13 +612,16 @@ def update_historical_flow_scores() -> Dict[str, Any]:
             response_score = 50
 
         # Combined flow score
-        flow_score = (activity_score * 0.6 + response_score * 0.4)
+        flow_score = activity_score * 0.6 + response_score * 0.4
 
-        cursor.execute('''
+        cursor.execute(
+            """
             UPDATE activity_patterns
             SET flow_score = ?
             WHERE user_id = ? AND hour = ? AND day_of_week = ?
-        ''', (flow_score, p['user_id'], p['hour'], p['day_of_week']))
+        """,
+            (flow_score, p["user_id"], p["hour"], p["day_of_week"]),
+        )
 
         updated += 1
 
@@ -627,39 +631,51 @@ def update_historical_flow_scores() -> Dict[str, Any]:
     return {
         "success": True,
         "updated": updated,
-        "message": f"Updated {updated} historical flow scores"
+        "message": f"Updated {updated} historical flow scores",
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Flow State Detector')
-    parser.add_argument('--action', required=True,
-                       choices=['detect', 'score', 'set-override', 'clear-override',
-                               'get-override', 'record', 'patterns', 'update-scores'],
-                       help='Action to perform')
+    parser = argparse.ArgumentParser(description="Flow State Detector")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=[
+            "detect",
+            "score",
+            "set-override",
+            "clear-override",
+            "get-override",
+            "record",
+            "patterns",
+            "update-scores",
+        ],
+        help="Action to perform",
+    )
 
-    parser.add_argument('--user', help='User ID')
-    parser.add_argument('--duration', type=int, help='Focus mode duration in minutes')
-    parser.add_argument('--response-time', type=float, dest='response_time',
-                       help='Response time in seconds')
-    parser.add_argument('--window', type=int, help='Detection window in minutes')
+    parser.add_argument("--user", help="User ID")
+    parser.add_argument("--duration", type=int, help="Focus mode duration in minutes")
+    parser.add_argument(
+        "--response-time", type=float, dest="response_time", help="Response time in seconds"
+    )
+    parser.add_argument("--window", type=int, help="Detection window in minutes")
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'detect':
+    if args.action == "detect":
         if not args.user:
             print("Error: --user required for detect")
             sys.exit(1)
         result = detect_flow(args.user)
 
-    elif args.action == 'score':
+    elif args.action == "score":
         if not args.user:
             print("Error: --user required for score")
             sys.exit(1)
         result = get_flow_score(args.user, args.window)
 
-    elif args.action == 'set-override':
+    elif args.action == "set-override":
         if not args.user:
             print("Error: --user required for set-override")
             sys.exit(1)
@@ -668,36 +684,36 @@ def main():
             sys.exit(1)
         result = set_override(args.user, args.duration)
 
-    elif args.action == 'clear-override':
+    elif args.action == "clear-override":
         if not args.user:
             print("Error: --user required for clear-override")
             sys.exit(1)
         result = clear_override(args.user)
 
-    elif args.action == 'get-override':
+    elif args.action == "get-override":
         if not args.user:
             print("Error: --user required for get-override")
             sys.exit(1)
         result = get_override(args.user)
 
-    elif args.action == 'record':
+    elif args.action == "record":
         if not args.user:
             print("Error: --user required for record")
             sys.exit(1)
         result = record_activity(args.user, args.response_time)
 
-    elif args.action == 'patterns':
+    elif args.action == "patterns":
         if not args.user:
             print("Error: --user required for patterns")
             sys.exit(1)
         result = get_patterns(args.user)
 
-    elif args.action == 'update-scores':
+    elif args.action == "update-scores":
         result = update_historical_flow_scores()
 
     # Output
     if result:
-        if result.get('success'):
+        if result.get("success"):
             print(f"OK {result.get('message', 'Success')}")
         else:
             print(f"ERROR {result.get('error')}")

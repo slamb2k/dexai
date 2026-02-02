@@ -29,16 +29,15 @@ import json
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
 from . import CONFIG_PATH, FRICTION_TYPES, PROJECT_ROOT
-from .manager import add_friction, get_connection, get_step, get_task, row_to_dict, generate_id
+from .manager import add_friction, get_connection, get_step, get_task, row_to_dict
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load task engine configuration."""
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
@@ -82,7 +81,9 @@ Output JSON format:
 """
 
 
-def identify_friction_with_llm(task_title: str, step_description: Optional[str] = None) -> Dict[str, Any]:
+def identify_friction_with_llm(
+    task_title: str, step_description: str | None = None
+) -> dict[str, Any]:
     """
     Use LLM to identify friction points.
 
@@ -106,7 +107,11 @@ def identify_friction_with_llm(task_title: str, step_description: Optional[str] 
         return {"success": False, "error": "ANTHROPIC_API_KEY not set"}
 
     config = load_config()
-    model = config.get("task_engine", {}).get("decomposition", {}).get("llm_model", "claude-3-haiku-20240307")
+    model = (
+        config.get("task_engine", {})
+        .get("decomposition", {})
+        .get("llm_model", "claude-3-haiku-20240307")
+    )
 
     prompt = load_friction_prompt()
 
@@ -151,7 +156,9 @@ def identify_friction_with_llm(task_title: str, step_description: Optional[str] 
         return {"success": False, "error": f"LLM friction identification failed: {e}"}
 
 
-def identify_friction_simple(task_title: str, step_description: Optional[str] = None) -> Dict[str, Any]:
+def identify_friction_simple(
+    task_title: str, step_description: str | None = None
+) -> dict[str, Any]:
     """
     Simple rule-based friction identification fallback.
     """
@@ -160,52 +167,66 @@ def identify_friction_simple(task_title: str, step_description: Optional[str] = 
 
     # Phone call detection
     if any(word in text for word in ["call", "phone", "ring", "contact"]):
-        friction_points.append({
-            "type": "phone_call",
-            "description": "This involves a phone call",
-            "suggested_resolution": "Write down key points before calling. Best times are usually 10-11am or 2-3pm.",
-        })
+        friction_points.append(
+            {
+                "type": "phone_call",
+                "description": "This involves a phone call",
+                "suggested_resolution": "Write down key points before calling. Best times are usually 10-11am or 2-3pm.",
+            }
+        )
 
     # Password/login detection
-    if any(word in text for word in ["login", "log in", "sign in", "password", "account", "portal"]):
-        friction_points.append({
-            "type": "password",
-            "description": "May need login credentials",
-            "suggested_resolution": "Check password manager or browser saved passwords first",
-        })
+    if any(
+        word in text for word in ["login", "log in", "sign in", "password", "account", "portal"]
+    ):
+        friction_points.append(
+            {
+                "type": "password",
+                "description": "May need login credentials",
+                "suggested_resolution": "Check password manager or browser saved passwords first",
+            }
+        )
 
     # Document detection
-    if any(word in text for word in ["document", "file", "form", "receipt", "certificate", "statement"]):
-        friction_points.append({
-            "type": "document",
-            "description": "Need to find or prepare a document",
-            "suggested_resolution": "Check recent downloads, email attachments, or common folders",
-        })
+    if any(
+        word in text for word in ["document", "file", "form", "receipt", "certificate", "statement"]
+    ):
+        friction_points.append(
+            {
+                "type": "document",
+                "description": "Need to find or prepare a document",
+                "suggested_resolution": "Check recent downloads, email attachments, or common folders",
+            }
+        )
 
     # Decision detection
     if any(word in text for word in ["choose", "decide", "which", "option", "select"]):
-        friction_points.append({
-            "type": "decision",
-            "description": "A decision needs to be made first",
-            "suggested_resolution": "Set a 5-minute timer - any reasonable choice beats endless deliberation",
-        })
+        friction_points.append(
+            {
+                "type": "decision",
+                "description": "A decision needs to be made first",
+                "suggested_resolution": "Set a 5-minute timer - any reasonable choice beats endless deliberation",
+            }
+        )
 
     # Appointment detection
     if any(word in text for word in ["book", "schedule", "appointment", "meeting", "reserve"]):
-        friction_points.append({
-            "type": "appointment",
-            "description": "Need to schedule with someone else",
-            "suggested_resolution": "Check calendar for available slots first, then reach out",
-        })
+        friction_points.append(
+            {
+                "type": "appointment",
+                "description": "Need to schedule with someone else",
+                "suggested_resolution": "Check calendar for available slots first, then reach out",
+            }
+        )
 
     return {"success": True, "data": {"friction_points": friction_points}}
 
 
 def identify_friction(
-    task_id: Optional[str] = None,
-    step_id: Optional[str] = None,
+    task_id: str | None = None,
+    step_id: str | None = None,
     use_llm: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Identify friction points for a task or step.
 
@@ -276,7 +297,7 @@ def identify_friction(
     }
 
 
-def solve_friction(friction_id: str, resolution: str) -> Dict[str, Any]:
+def solve_friction(friction_id: str, resolution: str) -> dict[str, Any]:
     """
     Mark friction as solved with a resolution.
 
@@ -318,12 +339,12 @@ def solve_friction(friction_id: str, resolution: str) -> Dict[str, Any]:
 
 
 def list_friction(
-    user_id: Optional[str] = None,
-    task_id: Optional[str] = None,
+    user_id: str | None = None,
+    task_id: str | None = None,
     unresolved_only: bool = False,
-    friction_type: Optional[str] = None,
+    friction_type: str | None = None,
     limit: int = 50,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     List friction points with filters.
 
@@ -341,7 +362,7 @@ def list_friction(
     cursor = conn.cursor()
 
     conditions = []
-    params: List[Any] = []
+    params: list[Any] = []
 
     if user_id:
         # Join with tasks to filter by user
@@ -358,7 +379,10 @@ def list_friction(
     if friction_type:
         if friction_type not in FRICTION_TYPES:
             conn.close()
-            return {"success": False, "error": f"Invalid friction type. Must be one of: {FRICTION_TYPES}"}
+            return {
+                "success": False,
+                "error": f"Invalid friction type. Must be one of: {FRICTION_TYPES}",
+            }
         conditions.append("f.friction_type = ?")
         params.append(friction_type)
 
@@ -384,7 +408,7 @@ def list_friction(
     }
 
 
-def get_friction(friction_id: str) -> Dict[str, Any]:
+def get_friction(friction_id: str) -> dict[str, Any]:
     """
     Get a specific friction point.
 
@@ -424,9 +448,13 @@ def main():
     parser.add_argument("--friction-id", help="Friction point ID")
     parser.add_argument("--user", help="User ID")
     parser.add_argument("--resolution", help="How friction was resolved")
-    parser.add_argument("--type", dest="friction_type", choices=FRICTION_TYPES, help="Filter by friction type")
+    parser.add_argument(
+        "--type", dest="friction_type", choices=FRICTION_TYPES, help="Filter by friction type"
+    )
     parser.add_argument("--unresolved", action="store_true", help="Only show unresolved friction")
-    parser.add_argument("--no-llm", action="store_true", help="Use simple rule-based identification")
+    parser.add_argument(
+        "--no-llm", action="store_true", help="Use simple rule-based identification"
+    )
     parser.add_argument("--limit", type=int, default=50, help="Max results")
 
     args = parser.parse_args()
@@ -444,7 +472,9 @@ def main():
 
     elif args.action == "solve":
         if not args.friction_id or not args.resolution:
-            print(json.dumps({"success": False, "error": "--friction-id and --resolution required"}))
+            print(
+                json.dumps({"success": False, "error": "--friction-id and --resolution required"})
+            )
             sys.exit(1)
         result = solve_friction(args.friction_id, args.resolution)
 

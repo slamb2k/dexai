@@ -7,7 +7,7 @@ providing validation, serialization, and documentation.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field
 # Enums
 # =============================================================================
 
+
 class AvatarState(str, Enum):
     """Valid states for the Dex avatar."""
+
     IDLE = "idle"
     LISTENING = "listening"
     THINKING = "thinking"
@@ -31,6 +33,7 @@ class AvatarState(str, Enum):
 
 class TaskStatus(str, Enum):
     """Task execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -40,6 +43,7 @@ class TaskStatus(str, Enum):
 
 class EventSeverity(str, Enum):
     """Event severity levels."""
+
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -47,6 +51,7 @@ class EventSeverity(str, Enum):
 
 class EventType(str, Enum):
     """Types of dashboard events."""
+
     MESSAGE = "message"
     TASK = "task"
     SYSTEM = "system"
@@ -59,52 +64,61 @@ class EventType(str, Enum):
 # Status Models
 # =============================================================================
 
+
 class DexStatus(BaseModel):
     """Current Dex state for avatar display."""
+
     state: AvatarState = Field(default=AvatarState.IDLE, description="Current avatar state")
-    current_task: Optional[str] = Field(None, description="Description of current task")
+    current_task: str | None = Field(None, description="Description of current task")
     uptime_seconds: int = Field(default=0, description="System uptime in seconds")
     version: str = Field(default="0.1.0", description="DexAI version")
-    last_activity: Optional[datetime] = Field(None, description="Timestamp of last activity")
+    last_activity: datetime | None = Field(None, description="Timestamp of last activity")
 
 
 class HealthCheck(BaseModel):
     """Health check response."""
+
     status: str = Field(default="healthy", description="Overall system status")
     version: str = Field(default="0.1.0", description="API version")
     timestamp: datetime = Field(default_factory=datetime.now, description="Check timestamp")
-    services: Dict[str, str] = Field(default_factory=dict, description="Individual service statuses")
+    services: dict[str, str] = Field(
+        default_factory=dict, description="Individual service statuses"
+    )
 
 
 # =============================================================================
 # Task Models
 # =============================================================================
 
+
 class TaskSummary(BaseModel):
     """Summary of a task for list views."""
+
     id: str = Field(..., description="Task ID")
     request: str = Field(..., description="Original task request")
     status: TaskStatus = Field(..., description="Current status")
-    channel: Optional[str] = Field(None, description="Source channel")
+    channel: str | None = Field(None, description="Source channel")
     created_at: datetime = Field(..., description="Creation timestamp")
-    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
-    duration_seconds: Optional[float] = Field(None, description="Execution duration")
-    cost_usd: Optional[float] = Field(None, description="Estimated cost in USD")
+    completed_at: datetime | None = Field(None, description="Completion timestamp")
+    duration_seconds: float | None = Field(None, description="Execution duration")
+    cost_usd: float | None = Field(None, description="Estimated cost in USD")
 
 
 class TaskDetail(TaskSummary):
     """Full task details including execution info."""
-    response: Optional[str] = Field(None, description="Task response/output")
-    tools_used: List[str] = Field(default_factory=list, description="Tools invoked")
-    tokens_in: Optional[int] = Field(None, description="Input tokens consumed")
-    tokens_out: Optional[int] = Field(None, description="Output tokens generated")
-    error_message: Optional[str] = Field(None, description="Error if failed")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+    response: str | None = Field(None, description="Task response/output")
+    tools_used: list[str] = Field(default_factory=list, description="Tools invoked")
+    tokens_in: int | None = Field(None, description="Input tokens consumed")
+    tokens_out: int | None = Field(None, description="Output tokens generated")
+    error_message: str | None = Field(None, description="Error if failed")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 class TaskListResponse(BaseModel):
     """Paginated list of tasks."""
-    tasks: List[TaskSummary] = Field(default_factory=list, description="Task list")
+
+    tasks: list[TaskSummary] = Field(default_factory=list, description="Task list")
     total: int = Field(default=0, description="Total matching tasks")
     page: int = Field(default=1, description="Current page")
     page_size: int = Field(default=20, description="Items per page")
@@ -113,44 +127,49 @@ class TaskListResponse(BaseModel):
 
 class TaskFilters(BaseModel):
     """Filters for task queries."""
-    status: Optional[TaskStatus] = Field(None, description="Filter by status")
-    channel: Optional[str] = Field(None, description="Filter by channel")
-    start_date: Optional[datetime] = Field(None, description="Start of date range")
-    end_date: Optional[datetime] = Field(None, description="End of date range")
-    search: Optional[str] = Field(None, description="Search in request text")
+
+    status: TaskStatus | None = Field(None, description="Filter by status")
+    channel: str | None = Field(None, description="Filter by channel")
+    start_date: datetime | None = Field(None, description="Start of date range")
+    end_date: datetime | None = Field(None, description="End of date range")
+    search: str | None = Field(None, description="Search in request text")
 
 
 # =============================================================================
 # Activity Models
 # =============================================================================
 
+
 class ActivityEvent(BaseModel):
     """Single activity event."""
+
     id: int = Field(..., description="Event ID")
     event_type: EventType = Field(..., description="Type of event")
     timestamp: datetime = Field(..., description="Event timestamp")
-    channel: Optional[str] = Field(None, description="Related channel")
-    user_id: Optional[str] = Field(None, description="Related user")
+    channel: str | None = Field(None, description="Related channel")
+    user_id: str | None = Field(None, description="Related user")
     summary: str = Field(..., description="Short description")
-    details: Optional[Dict[str, Any]] = Field(None, description="Full event data")
+    details: dict[str, Any] | None = Field(None, description="Full event data")
     severity: EventSeverity = Field(default=EventSeverity.INFO, description="Severity level")
 
 
 class ActivityFeed(BaseModel):
     """Paginated activity feed."""
-    events: List[ActivityEvent] = Field(default_factory=list, description="Activity events")
+
+    events: list[ActivityEvent] = Field(default_factory=list, description="Activity events")
     total: int = Field(default=0, description="Total matching events")
-    cursor: Optional[str] = Field(None, description="Cursor for next page")
+    cursor: str | None = Field(None, description="Cursor for next page")
     has_more: bool = Field(default=False, description="More events available")
 
 
 class NewActivityEvent(BaseModel):
     """Request to log a new activity event."""
+
     event_type: EventType = Field(..., description="Type of event")
     summary: str = Field(..., description="Short description")
-    channel: Optional[str] = Field(None, description="Related channel")
-    user_id: Optional[str] = Field(None, description="Related user")
-    details: Optional[Dict[str, Any]] = Field(None, description="Full event data")
+    channel: str | None = Field(None, description="Related channel")
+    user_id: str | None = Field(None, description="Related user")
+    details: dict[str, Any] | None = Field(None, description="Full event data")
     severity: EventSeverity = Field(default=EventSeverity.INFO, description="Severity level")
 
 
@@ -158,8 +177,10 @@ class NewActivityEvent(BaseModel):
 # Metrics Models
 # =============================================================================
 
+
 class QuickStats(BaseModel):
     """Quick summary statistics for dashboard cards."""
+
     tasks_today: int = Field(default=0, description="Tasks completed today")
     messages_today: int = Field(default=0, description="Messages processed today")
     cost_today_usd: float = Field(default=0.0, description="Cost incurred today")
@@ -170,6 +191,7 @@ class QuickStats(BaseModel):
 
 class MetricsSummary(BaseModel):
     """Summary of metrics for dashboard display."""
+
     quick_stats: QuickStats = Field(default_factory=QuickStats, description="Quick stats")
     period: str = Field(default="24h", description="Summary period")
     generated_at: datetime = Field(default_factory=datetime.now, description="Generation time")
@@ -177,22 +199,25 @@ class MetricsSummary(BaseModel):
 
 class TimeSeriesPoint(BaseModel):
     """Single point in a time series."""
+
     timestamp: datetime = Field(..., description="Point timestamp")
     value: float = Field(..., description="Metric value")
-    label: Optional[str] = Field(None, description="Optional label")
+    label: str | None = Field(None, description="Optional label")
 
 
 class TimeSeriesData(BaseModel):
     """Time series data for charts."""
+
     metric_name: str = Field(..., description="Metric being tracked")
-    points: List[TimeSeriesPoint] = Field(default_factory=list, description="Data points")
+    points: list[TimeSeriesPoint] = Field(default_factory=list, description="Data points")
     period: str = Field(default="24h", description="Time period")
     aggregation: str = Field(default="sum", description="Aggregation method")
 
 
 class TimeSeriesRequest(BaseModel):
     """Request for time series data."""
-    metrics: List[str] = Field(..., description="Metrics to fetch")
+
+    metrics: list[str] = Field(..., description="Metrics to fetch")
     period: str = Field(default="7d", description="Time period: 24h, 7d, 30d")
     aggregation: str = Field(default="sum", description="Aggregation: sum, avg, max, min")
     granularity: str = Field(default="1h", description="Data point granularity")
@@ -200,7 +225,8 @@ class TimeSeriesRequest(BaseModel):
 
 class TimeSeriesResponse(BaseModel):
     """Response containing multiple time series."""
-    series: List[TimeSeriesData] = Field(default_factory=list, description="Time series data")
+
+    series: list[TimeSeriesData] = Field(default_factory=list, description="Time series data")
     period: str = Field(default="7d", description="Requested period")
 
 
@@ -208,16 +234,19 @@ class TimeSeriesResponse(BaseModel):
 # Settings Models
 # =============================================================================
 
+
 class NotificationSettings(BaseModel):
     """Notification preferences."""
+
     enabled: bool = Field(default=True, description="Notifications enabled")
-    quiet_hours_start: Optional[str] = Field(None, description="Start of quiet hours (HH:MM)")
-    quiet_hours_end: Optional[str] = Field(None, description="End of quiet hours (HH:MM)")
-    channels: List[str] = Field(default_factory=list, description="Enabled notification channels")
+    quiet_hours_start: str | None = Field(None, description="Start of quiet hours (HH:MM)")
+    quiet_hours_end: str | None = Field(None, description="End of quiet hours (HH:MM)")
+    channels: list[str] = Field(default_factory=list, description="Enabled notification channels")
 
 
 class PrivacySettings(BaseModel):
     """Privacy preferences."""
+
     remember_conversations: bool = Field(default=True, description="Remember conversation history")
     log_activity: bool = Field(default=True, description="Log activity events")
     data_retention_days: int = Field(default=90, description="Data retention period")
@@ -225,6 +254,7 @@ class PrivacySettings(BaseModel):
 
 class DashboardSettings(BaseModel):
     """All dashboard settings."""
+
     display_name: str = Field(default="User", description="Display name")
     timezone: str = Field(default="UTC", description="User timezone")
     language: str = Field(default="en", description="Preferred language")
@@ -236,46 +266,53 @@ class DashboardSettings(BaseModel):
 
 class SettingsUpdate(BaseModel):
     """Partial settings update request."""
-    display_name: Optional[str] = Field(None, description="Display name")
-    timezone: Optional[str] = Field(None, description="User timezone")
-    language: Optional[str] = Field(None, description="Preferred language")
-    notifications: Optional[NotificationSettings] = Field(None)
-    privacy: Optional[PrivacySettings] = Field(None)
-    theme: Optional[str] = Field(None, description="UI theme")
-    sidebar_collapsed: Optional[bool] = Field(None, description="Sidebar state")
+
+    display_name: str | None = Field(None, description="Display name")
+    timezone: str | None = Field(None, description="User timezone")
+    language: str | None = Field(None, description="Preferred language")
+    notifications: NotificationSettings | None = Field(None)
+    privacy: PrivacySettings | None = Field(None)
+    theme: str | None = Field(None, description="UI theme")
+    sidebar_collapsed: bool | None = Field(None, description="Sidebar state")
 
 
 # =============================================================================
 # WebSocket Models
 # =============================================================================
 
+
 class WSMessage(BaseModel):
     """WebSocket message wrapper."""
+
     event: str = Field(..., description="Event type")
-    data: Dict[str, Any] = Field(default_factory=dict, description="Event payload")
+    data: dict[str, Any] = Field(default_factory=dict, description="Event payload")
     timestamp: datetime = Field(default_factory=datetime.now, description="Event time")
 
 
 class StateChangeEvent(BaseModel):
     """Dex state change event."""
+
     state: AvatarState = Field(..., description="New avatar state")
-    task: Optional[str] = Field(None, description="Current task if any")
-    previous_state: Optional[AvatarState] = Field(None, description="Previous state")
+    task: str | None = Field(None, description="Current task if any")
+    previous_state: AvatarState | None = Field(None, description="Previous state")
 
 
 # =============================================================================
 # Error Models
 # =============================================================================
 
+
 class ErrorResponse(BaseModel):
     """Standard error response."""
+
     error: str = Field(..., description="Error message")
     code: str = Field(default="INTERNAL_ERROR", description="Error code")
-    details: Optional[Dict[str, Any]] = Field(None, description="Additional details")
+    details: dict[str, Any] | None = Field(None, description="Additional details")
 
 
 class ValidationError(BaseModel):
     """Validation error details."""
+
     field: str = Field(..., description="Field with error")
     message: str = Field(..., description="Error message")
-    value: Optional[Any] = Field(None, description="Invalid value")
+    value: Any | None = Field(None, description="Invalid value")

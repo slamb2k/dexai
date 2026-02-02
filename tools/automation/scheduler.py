@@ -24,46 +24,48 @@ Dependencies:
     - pyyaml
 """
 
-import os
-import sys
+import argparse
 import json
 import sqlite3
-import argparse
+import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.automation import DB_PATH, CONFIG_PATH
+from tools.automation import CONFIG_PATH, DB_PATH
+
 
 # Try to import croniter for cron expression parsing
 try:
     from croniter import croniter
+
     CRONITER_AVAILABLE = True
 except ImportError:
     CRONITER_AVAILABLE = False
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load configuration from YAML file."""
     default_config = {
-        'cron': {
-            'enabled': True,
-            'poll_interval_seconds': 60,
-            'default_timeout': 120,
-            'default_cost_limit': 0.50,
-            'max_concurrent_jobs': 3,
-            'retry': {
-                'max_attempts': 3,
-                'initial_delay_seconds': 60,
-                'backoff_multiplier': 2.0,
-                'max_delay_seconds': 3600
+        "cron": {
+            "enabled": True,
+            "poll_interval_seconds": 60,
+            "default_timeout": 120,
+            "default_cost_limit": 0.50,
+            "max_concurrent_jobs": 3,
+            "retry": {
+                "max_attempts": 3,
+                "initial_delay_seconds": 60,
+                "backoff_multiplier": 2.0,
+                "max_delay_seconds": 3600,
             },
-            'timezone': 'UTC'
+            "timezone": "UTC",
         }
     }
 
@@ -72,6 +74,7 @@ def load_config() -> Dict[str, Any]:
 
     try:
         import yaml
+
         with open(CONFIG_PATH) as f:
             config = yaml.safe_load(f)
         return config if config else default_config
@@ -88,7 +91,7 @@ def get_connection() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # Jobs table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id TEXT PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
@@ -106,14 +109,14 @@ def get_connection() -> sqlite3.Connection:
             next_run DATETIME,
             metadata TEXT
         )
-    ''')
+    """)
 
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_jobs_enabled ON jobs(enabled)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_jobs_next_run ON jobs(next_run)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(job_type)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_enabled ON jobs(enabled)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_next_run ON jobs(next_run)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(job_type)")
 
     # Executions table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS executions (
             id TEXT PRIMARY KEY,
             job_id TEXT NOT NULL,
@@ -128,17 +131,17 @@ def get_connection() -> sqlite3.Connection:
             triggered_by TEXT,
             FOREIGN KEY (job_id) REFERENCES jobs(id)
         )
-    ''')
+    """)
 
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_executions_job ON executions(job_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_executions_started ON executions(started_at)')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_executions_job ON executions(job_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_executions_started ON executions(started_at)")
 
     conn.commit()
     return conn
 
 
-def calculate_next_run(schedule: str, base_time: Optional[datetime] = None) -> Optional[datetime]:
+def calculate_next_run(schedule: str, base_time: datetime | None = None) -> datetime | None:
     """Calculate next run time from cron expression."""
     if not schedule:
         return None
@@ -155,7 +158,7 @@ def calculate_next_run(schedule: str, base_time: Optional[datetime] = None) -> O
         return None
 
 
-def validate_cron_expression(schedule: str) -> Dict[str, Any]:
+def validate_cron_expression(schedule: str) -> dict[str, Any]:
     """Validate a cron expression."""
     if not schedule:
         return {"valid": False, "error": "Empty schedule"}
@@ -166,11 +169,7 @@ def validate_cron_expression(schedule: str) -> Dict[str, Any]:
     try:
         cron = croniter(schedule)
         next_run = cron.get_next(datetime)
-        return {
-            "valid": True,
-            "next_run": next_run.isoformat(),
-            "expression": schedule
-        }
+        return {"valid": True, "next_run": next_run.isoformat(), "expression": schedule}
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
@@ -179,14 +178,14 @@ def create_job(
     name: str,
     job_type: str,
     task: str,
-    schedule: Optional[str] = None,
-    timeout_seconds: Optional[int] = None,
-    cost_limit: Optional[float] = None,
-    retry_count: Optional[int] = None,
-    retry_delay_seconds: Optional[int] = None,
-    metadata: Optional[Dict] = None,
-    enabled: bool = True
-) -> Dict[str, Any]:
+    schedule: str | None = None,
+    timeout_seconds: int | None = None,
+    cost_limit: float | None = None,
+    retry_count: int | None = None,
+    retry_delay_seconds: int | None = None,
+    metadata: dict | None = None,
+    enabled: bool = True,
+) -> dict[str, Any]:
     """
     Create a new scheduled job.
 
@@ -206,34 +205,39 @@ def create_job(
         dict with success status and job details
     """
     config = load_config()
-    cron_config = config.get('cron', {})
+    cron_config = config.get("cron", {})
 
     # Validate job type
-    if job_type not in ('cron', 'heartbeat', 'trigger'):
+    if job_type not in ("cron", "heartbeat", "trigger"):
         return {
             "success": False,
-            "error": f"Invalid job_type: {job_type}. Must be cron, heartbeat, or trigger"
+            "error": f"Invalid job_type: {job_type}. Must be cron, heartbeat, or trigger",
         }
 
     # Validate schedule for cron jobs
-    if job_type == 'cron':
+    if job_type == "cron":
         if not schedule:
-            return {
-                "success": False,
-                "error": "Schedule required for cron jobs"
-            }
+            return {"success": False, "error": "Schedule required for cron jobs"}
         validation = validate_cron_expression(schedule)
-        if not validation.get('valid'):
+        if not validation.get("valid"):
             return {
                 "success": False,
-                "error": f"Invalid cron expression: {validation.get('error')}"
+                "error": f"Invalid cron expression: {validation.get('error')}",
             }
 
     # Apply defaults from config
-    timeout_seconds = timeout_seconds or cron_config.get('default_timeout', 120)
-    cost_limit = cost_limit if cost_limit is not None else cron_config.get('default_cost_limit', 0.50)
-    retry_count = retry_count if retry_count is not None else cron_config.get('retry', {}).get('max_attempts', 3)
-    retry_delay_seconds = retry_delay_seconds or cron_config.get('retry', {}).get('initial_delay_seconds', 60)
+    timeout_seconds = timeout_seconds or cron_config.get("default_timeout", 120)
+    cost_limit = (
+        cost_limit if cost_limit is not None else cron_config.get("default_cost_limit", 0.50)
+    )
+    retry_count = (
+        retry_count
+        if retry_count is not None
+        else cron_config.get("retry", {}).get("max_attempts", 3)
+    )
+    retry_delay_seconds = retry_delay_seconds or cron_config.get("retry", {}).get(
+        "initial_delay_seconds", 60
+    )
 
     job_id = str(uuid.uuid4())
     next_run = calculate_next_run(schedule) if schedule else None
@@ -242,36 +246,45 @@ def create_job(
     cursor = conn.cursor()
 
     try:
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT INTO jobs (id, name, job_type, schedule, task, enabled,
                              timeout_seconds, cost_limit, retry_count, retry_delay_seconds,
                              next_run, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            job_id, name, job_type, schedule, task, 1 if enabled else 0,
-            timeout_seconds, cost_limit, retry_count, retry_delay_seconds,
-            next_run.isoformat() if next_run else None,
-            json.dumps(metadata) if metadata else None
-        ))
+        """,
+            (
+                job_id,
+                name,
+                job_type,
+                schedule,
+                task,
+                1 if enabled else 0,
+                timeout_seconds,
+                cost_limit,
+                retry_count,
+                retry_delay_seconds,
+                next_run.isoformat() if next_run else None,
+                json.dumps(metadata) if metadata else None,
+            ),
+        )
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        return {
-            "success": False,
-            "error": f"Job with name '{name}' already exists"
-        }
+        return {"success": False, "error": f"Job with name '{name}' already exists"}
 
     conn.close()
 
     # Log to audit
     try:
         from tools.security import audit
+
         audit.log_event(
-            event_type='system',
-            action='job_created',
+            event_type="system",
+            action="job_created",
             resource=f"job:{name}",
-            status='success',
-            details={'job_id': job_id, 'job_type': job_type}
+            status="success",
+            details={"job_id": job_id, "job_type": job_type},
         )
     except Exception:
         pass
@@ -283,17 +296,17 @@ def create_job(
         "job_type": job_type,
         "schedule": schedule,
         "next_run": next_run.isoformat() if next_run else None,
-        "message": f"Job '{name}' created successfully"
+        "message": f"Job '{name}' created successfully",
     }
 
 
-def get_job(job_id_or_name: str) -> Optional[Dict[str, Any]]:
+def get_job(job_id_or_name: str) -> dict[str, Any] | None:
     """Get a job by ID or name."""
     conn = get_connection()
     cursor = conn.cursor()
 
     # Try by ID first, then by name
-    cursor.execute('SELECT * FROM jobs WHERE id = ? OR name = ?', (job_id_or_name, job_id_or_name))
+    cursor.execute("SELECT * FROM jobs WHERE id = ? OR name = ?", (job_id_or_name, job_id_or_name))
     row = cursor.fetchone()
     conn.close()
 
@@ -301,44 +314,41 @@ def get_job(job_id_or_name: str) -> Optional[Dict[str, Any]]:
         return None
 
     return {
-        "id": row['id'],
-        "name": row['name'],
-        "job_type": row['job_type'],
-        "schedule": row['schedule'],
-        "task": row['task'],
-        "enabled": bool(row['enabled']),
-        "timeout_seconds": row['timeout_seconds'],
-        "cost_limit": row['cost_limit'],
-        "retry_count": row['retry_count'],
-        "retry_delay_seconds": row['retry_delay_seconds'],
-        "created_at": row['created_at'],
-        "updated_at": row['updated_at'],
-        "last_run": row['last_run'],
-        "next_run": row['next_run'],
-        "metadata": json.loads(row['metadata']) if row['metadata'] else None
+        "id": row["id"],
+        "name": row["name"],
+        "job_type": row["job_type"],
+        "schedule": row["schedule"],
+        "task": row["task"],
+        "enabled": bool(row["enabled"]),
+        "timeout_seconds": row["timeout_seconds"],
+        "cost_limit": row["cost_limit"],
+        "retry_count": row["retry_count"],
+        "retry_delay_seconds": row["retry_delay_seconds"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "last_run": row["last_run"],
+        "next_run": row["next_run"],
+        "metadata": json.loads(row["metadata"]) if row["metadata"] else None,
     }
 
 
-def list_jobs(
-    job_type: Optional[str] = None,
-    enabled: Optional[bool] = None
-) -> List[Dict[str, Any]]:
+def list_jobs(job_type: str | None = None, enabled: bool | None = None) -> list[dict[str, Any]]:
     """List all jobs, optionally filtered."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = 'SELECT * FROM jobs WHERE 1=1'
+    query = "SELECT * FROM jobs WHERE 1=1"
     params = []
 
     if job_type:
-        query += ' AND job_type = ?'
+        query += " AND job_type = ?"
         params.append(job_type)
 
     if enabled is not None:
-        query += ' AND enabled = ?'
+        query += " AND enabled = ?"
         params.append(1 if enabled else 0)
 
-    query += ' ORDER BY created_at DESC'
+    query += " ORDER BY created_at DESC"
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
@@ -346,29 +356,38 @@ def list_jobs(
 
     jobs = []
     for row in rows:
-        jobs.append({
-            "id": row['id'],
-            "name": row['name'],
-            "job_type": row['job_type'],
-            "schedule": row['schedule'],
-            "task": row['task'][:100] + "..." if len(row['task']) > 100 else row['task'],
-            "enabled": bool(row['enabled']),
-            "last_run": row['last_run'],
-            "next_run": row['next_run']
-        })
+        jobs.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "job_type": row["job_type"],
+                "schedule": row["schedule"],
+                "task": row["task"][:100] + "..." if len(row["task"]) > 100 else row["task"],
+                "enabled": bool(row["enabled"]),
+                "last_run": row["last_run"],
+                "next_run": row["next_run"],
+            }
+        )
 
     return jobs
 
 
-def update_job(job_id: str, **updates) -> Dict[str, Any]:
+def update_job(job_id: str, **updates) -> dict[str, Any]:
     """Update job properties."""
     job = get_job(job_id)
     if not job:
         return {"success": False, "error": f"Job '{job_id}' not found"}
 
     allowed_fields = {
-        'name', 'schedule', 'task', 'enabled', 'timeout_seconds',
-        'cost_limit', 'retry_count', 'retry_delay_seconds', 'metadata'
+        "name",
+        "schedule",
+        "task",
+        "enabled",
+        "timeout_seconds",
+        "cost_limit",
+        "retry_count",
+        "retry_delay_seconds",
+        "metadata",
     }
 
     # Filter to allowed fields
@@ -378,18 +397,21 @@ def update_job(job_id: str, **updates) -> Dict[str, Any]:
         return {"success": False, "error": "No valid fields to update"}
 
     # Validate schedule if being updated
-    if 'schedule' in valid_updates and job['job_type'] == 'cron':
-        validation = validate_cron_expression(valid_updates['schedule'])
-        if not validation.get('valid'):
-            return {"success": False, "error": f"Invalid cron expression: {validation.get('error')}"}
+    if "schedule" in valid_updates and job["job_type"] == "cron":
+        validation = validate_cron_expression(valid_updates["schedule"])
+        if not validation.get("valid"):
+            return {
+                "success": False,
+                "error": f"Invalid cron expression: {validation.get('error')}",
+            }
 
     # Build update query
     set_clauses = []
     params = []
     for field, value in valid_updates.items():
-        if field == 'metadata':
+        if field == "metadata":
             value = json.dumps(value) if value else None
-        elif field == 'enabled':
+        elif field == "enabled":
             value = 1 if value else 0
         set_clauses.append(f"{field} = ?")
         params.append(value)
@@ -397,12 +419,12 @@ def update_job(job_id: str, **updates) -> Dict[str, Any]:
     set_clauses.append("updated_at = CURRENT_TIMESTAMP")
 
     # Recalculate next_run if schedule changed
-    if 'schedule' in valid_updates:
-        next_run = calculate_next_run(valid_updates['schedule'])
+    if "schedule" in valid_updates:
+        next_run = calculate_next_run(valid_updates["schedule"])
         set_clauses.append("next_run = ?")
         params.append(next_run.isoformat() if next_run else None)
 
-    params.append(job['id'])
+    params.append(job["id"])
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -412,13 +434,13 @@ def update_job(job_id: str, **updates) -> Dict[str, Any]:
 
     return {
         "success": True,
-        "job_id": job['id'],
+        "job_id": job["id"],
         "updated_fields": list(valid_updates.keys()),
-        "message": f"Job '{job['name']}' updated"
+        "message": f"Job '{job['name']}' updated",
     }
 
 
-def delete_job(job_id: str) -> Dict[str, Any]:
+def delete_job(job_id: str) -> dict[str, Any]:
     """Delete a job and its execution history."""
     job = get_job(job_id)
     if not job:
@@ -428,8 +450,8 @@ def delete_job(job_id: str) -> Dict[str, Any]:
     cursor = conn.cursor()
 
     # Delete executions first (foreign key)
-    cursor.execute('DELETE FROM executions WHERE job_id = ?', (job['id'],))
-    cursor.execute('DELETE FROM jobs WHERE id = ?', (job['id'],))
+    cursor.execute("DELETE FROM executions WHERE job_id = ?", (job["id"],))
+    cursor.execute("DELETE FROM jobs WHERE id = ?", (job["id"],))
 
     conn.commit()
     conn.close()
@@ -437,51 +459,55 @@ def delete_job(job_id: str) -> Dict[str, Any]:
     # Log to audit
     try:
         from tools.security import audit
+
         audit.log_event(
-            event_type='system',
-            action='job_deleted',
+            event_type="system",
+            action="job_deleted",
             resource=f"job:{job['name']}",
-            status='success'
+            status="success",
         )
     except Exception:
         pass
 
     return {
         "success": True,
-        "job_id": job['id'],
-        "name": job['name'],
-        "message": f"Job '{job['name']}' deleted"
+        "job_id": job["id"],
+        "name": job["name"],
+        "message": f"Job '{job['name']}' deleted",
     }
 
 
-def enable_job(job_id: str) -> Dict[str, Any]:
+def enable_job(job_id: str) -> dict[str, Any]:
     """Enable a job."""
     job = get_job(job_id)
     if not job:
         return {"success": False, "error": f"Job '{job_id}' not found"}
 
     # Recalculate next_run when enabling
-    next_run = calculate_next_run(job['schedule']) if job['schedule'] else None
+    next_run = calculate_next_run(job["schedule"]) if job["schedule"] else None
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE jobs SET enabled = 1, updated_at = CURRENT_TIMESTAMP, next_run = ?
         WHERE id = ?
-    ''', (next_run.isoformat() if next_run else None, job['id']))
+    """,
+        (next_run.isoformat() if next_run else None, job["id"]),
+    )
     conn.commit()
     conn.close()
 
     return {
         "success": True,
-        "job_id": job['id'],
-        "name": job['name'],
+        "job_id": job["id"],
+        "name": job["name"],
         "next_run": next_run.isoformat() if next_run else None,
-        "message": f"Job '{job['name']}' enabled"
+        "message": f"Job '{job['name']}' enabled",
     }
 
 
-def disable_job(job_id: str) -> Dict[str, Any]:
+def disable_job(job_id: str) -> dict[str, Any]:
     """Disable a job."""
     job = get_job(job_id)
     if not job:
@@ -489,61 +515,65 @@ def disable_job(job_id: str) -> Dict[str, Any]:
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE jobs SET enabled = 0, updated_at = CURRENT_TIMESTAMP, next_run = NULL
         WHERE id = ?
-    ''', (job['id'],))
+    """,
+        (job["id"],),
+    )
     conn.commit()
     conn.close()
 
     return {
         "success": True,
-        "job_id": job['id'],
-        "name": job['name'],
-        "message": f"Job '{job['name']}' disabled"
+        "job_id": job["id"],
+        "name": job["name"],
+        "message": f"Job '{job['name']}' disabled",
     }
 
 
-def get_due_jobs() -> List[Dict[str, Any]]:
+def get_due_jobs() -> list[dict[str, Any]]:
     """Get all jobs that are due to run."""
     conn = get_connection()
     cursor = conn.cursor()
 
     now = datetime.now().isoformat()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         SELECT * FROM jobs
         WHERE enabled = 1
         AND job_type = 'cron'
         AND next_run IS NOT NULL
         AND next_run <= ?
         ORDER BY next_run ASC
-    ''', (now,))
+    """,
+        (now,),
+    )
 
     rows = cursor.fetchall()
     conn.close()
 
     jobs = []
     for row in rows:
-        jobs.append({
-            "id": row['id'],
-            "name": row['name'],
-            "job_type": row['job_type'],
-            "schedule": row['schedule'],
-            "task": row['task'],
-            "timeout_seconds": row['timeout_seconds'],
-            "cost_limit": row['cost_limit'],
-            "next_run": row['next_run']
-        })
+        jobs.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "job_type": row["job_type"],
+                "schedule": row["schedule"],
+                "task": row["task"],
+                "timeout_seconds": row["timeout_seconds"],
+                "cost_limit": row["cost_limit"],
+                "next_run": row["next_run"],
+            }
+        )
 
     return jobs
 
 
-def create_execution(
-    job_id: str,
-    triggered_by: str = 'schedule',
-    retry_attempt: int = 0
-) -> str:
+def create_execution(job_id: str, triggered_by: str = "schedule", retry_attempt: int = 0) -> str:
     """Create a new execution record and return its ID."""
     job = get_job(job_id)
     if not job:
@@ -554,10 +584,13 @@ def create_execution(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
+    cursor.execute(
+        """
         INSERT INTO executions (id, job_id, status, triggered_by, retry_attempt)
         VALUES (?, ?, 'pending', ?, ?)
-    ''', (exec_id, job['id'], triggered_by, retry_attempt))
+    """,
+        (exec_id, job["id"], triggered_by, retry_attempt),
+    )
 
     conn.commit()
     conn.close()
@@ -565,25 +598,25 @@ def create_execution(
     return exec_id
 
 
-def update_execution(exec_id: str, **updates) -> Dict[str, Any]:
+def update_execution(exec_id: str, **updates) -> dict[str, Any]:
     """Update execution status and details."""
     conn = get_connection()
     cursor = conn.cursor()
 
     # Verify execution exists
-    cursor.execute('SELECT id FROM executions WHERE id = ?', (exec_id,))
+    cursor.execute("SELECT id FROM executions WHERE id = ?", (exec_id,))
     if not cursor.fetchone():
         conn.close()
         return {"success": False, "error": f"Execution '{exec_id}' not found"}
 
-    allowed_fields = {'status', 'completed_at', 'duration_ms', 'cost_usd', 'output', 'error'}
+    allowed_fields = {"status", "completed_at", "duration_ms", "cost_usd", "output", "error"}
     valid_updates = {k: v for k, v in updates.items() if k in allowed_fields}
 
     if not valid_updates:
         conn.close()
         return {"success": False, "error": "No valid fields to update"}
 
-    set_clauses = [f"{k} = ?" for k in valid_updates.keys()]
+    set_clauses = [f"{k} = ?" for k in valid_updates]
     params = list(valid_updates.values())
     params.append(exec_id)
 
@@ -594,72 +627,63 @@ def update_execution(exec_id: str, **updates) -> Dict[str, Any]:
     return {"success": True, "execution_id": exec_id}
 
 
-def start_execution(exec_id: str) -> Dict[str, Any]:
+def start_execution(exec_id: str) -> dict[str, Any]:
     """Mark execution as running."""
-    return update_execution(exec_id, status='running')
+    return update_execution(exec_id, status="running")
 
 
 def complete_execution(
-    exec_id: str,
-    output: Optional[str] = None,
-    cost_usd: float = 0,
-    duration_ms: Optional[int] = None
-) -> Dict[str, Any]:
+    exec_id: str, output: str | None = None, cost_usd: float = 0, duration_ms: int | None = None
+) -> dict[str, Any]:
     """Mark execution as completed successfully."""
     return update_execution(
         exec_id,
-        status='completed',
+        status="completed",
         completed_at=datetime.now().isoformat(),
         output=output,
         cost_usd=cost_usd,
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
     )
 
 
-def fail_execution(
-    exec_id: str,
-    error: str,
-    duration_ms: Optional[int] = None
-) -> Dict[str, Any]:
+def fail_execution(exec_id: str, error: str, duration_ms: int | None = None) -> dict[str, Any]:
     """Mark execution as failed."""
     return update_execution(
         exec_id,
-        status='failed',
+        status="failed",
         completed_at=datetime.now().isoformat(),
         error=error,
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
     )
 
 
 def list_executions(
-    job_id: Optional[str] = None,
-    status: Optional[str] = None,
-    limit: int = 50
-) -> List[Dict[str, Any]]:
+    job_id: str | None = None, status: str | None = None, limit: int = 50
+) -> list[dict[str, Any]]:
     """List execution history."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = '''
+    query = """
         SELECT e.*, j.name as job_name
         FROM executions e
         JOIN jobs j ON e.job_id = j.id
         WHERE 1=1
-    '''
+    """
     params = []
 
     if job_id:
         # Allow job_id or job_name
         job = get_job(job_id)
         if job:
-            query += ' AND e.job_id = ?'
-            params.append(job['id'])
+            query += " AND e.job_id = ?"
+            params.append(job["id"])
 
     if status:
-        query += ' AND e.status = ?'
+        query += " AND e.status = ?"
         params.append(status)
 
-    query += ' ORDER BY e.started_at DESC LIMIT ?'
+    query += " ORDER BY e.started_at DESC LIMIT ?"
     params.append(limit)
 
     cursor.execute(query, params)
@@ -668,51 +692,58 @@ def list_executions(
 
     executions = []
     for row in rows:
-        executions.append({
-            "id": row['id'],
-            "job_id": row['job_id'],
-            "job_name": row['job_name'],
-            "status": row['status'],
-            "started_at": row['started_at'],
-            "completed_at": row['completed_at'],
-            "duration_ms": row['duration_ms'],
-            "cost_usd": row['cost_usd'],
-            "output": row['output'][:200] + "..." if row['output'] and len(row['output']) > 200 else row['output'],
-            "error": row['error'],
-            "retry_attempt": row['retry_attempt'],
-            "triggered_by": row['triggered_by']
-        })
+        executions.append(
+            {
+                "id": row["id"],
+                "job_id": row["job_id"],
+                "job_name": row["job_name"],
+                "status": row["status"],
+                "started_at": row["started_at"],
+                "completed_at": row["completed_at"],
+                "duration_ms": row["duration_ms"],
+                "cost_usd": row["cost_usd"],
+                "output": row["output"][:200] + "..."
+                if row["output"] and len(row["output"]) > 200
+                else row["output"],
+                "error": row["error"],
+                "retry_attempt": row["retry_attempt"],
+                "triggered_by": row["triggered_by"],
+            }
+        )
 
     return executions
 
 
-def mark_job_run(job_id: str) -> Dict[str, Any]:
+def mark_job_run(job_id: str) -> dict[str, Any]:
     """Update job's last_run and calculate next_run."""
     job = get_job(job_id)
     if not job:
         return {"success": False, "error": f"Job '{job_id}' not found"}
 
     now = datetime.now()
-    next_run = calculate_next_run(job['schedule'], now) if job['schedule'] else None
+    next_run = calculate_next_run(job["schedule"], now) if job["schedule"] else None
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute(
+        """
         UPDATE jobs SET last_run = ?, next_run = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-    ''', (now.isoformat(), next_run.isoformat() if next_run else None, job['id']))
+    """,
+        (now.isoformat(), next_run.isoformat() if next_run else None, job["id"]),
+    )
     conn.commit()
     conn.close()
 
     return {
         "success": True,
-        "job_id": job['id'],
+        "job_id": job["id"],
         "last_run": now.isoformat(),
-        "next_run": next_run.isoformat() if next_run else None
+        "next_run": next_run.isoformat() if next_run else None,
     }
 
 
-def run_job(job_id: str, triggered_by: str = 'manual') -> Dict[str, Any]:
+def run_job(job_id: str, triggered_by: str = "manual") -> dict[str, Any]:
     """
     Execute a job immediately.
 
@@ -723,41 +754,45 @@ def run_job(job_id: str, triggered_by: str = 'manual') -> Dict[str, Any]:
     if not job:
         return {"success": False, "error": f"Job '{job_id}' not found"}
 
-    exec_id = create_execution(job['id'], triggered_by=triggered_by)
+    exec_id = create_execution(job["id"], triggered_by=triggered_by)
 
     return {
         "success": True,
         "execution_id": exec_id,
-        "job_id": job['id'],
-        "job_name": job['name'],
-        "task": job['task'],
-        "message": f"Execution created for job '{job['name']}'"
+        "job_id": job["id"],
+        "job_name": job["name"],
+        "task": job["task"],
+        "message": f"Execution created for job '{job['name']}'",
     }
 
 
-def get_stats() -> Dict[str, Any]:
+def get_stats() -> dict[str, Any]:
     """Get scheduler statistics."""
     conn = get_connection()
     cursor = conn.cursor()
 
     # Job counts
-    cursor.execute('SELECT COUNT(*) FROM jobs')
+    cursor.execute("SELECT COUNT(*) FROM jobs")
     total_jobs = cursor.fetchone()[0]
 
-    cursor.execute('SELECT COUNT(*) FROM jobs WHERE enabled = 1')
+    cursor.execute("SELECT COUNT(*) FROM jobs WHERE enabled = 1")
     enabled_jobs = cursor.fetchone()[0]
 
-    cursor.execute('SELECT COUNT(*) FROM jobs WHERE job_type = ?', ('cron',))
+    cursor.execute("SELECT COUNT(*) FROM jobs WHERE job_type = ?", ("cron",))
     cron_jobs = cursor.fetchone()[0]
 
     # Execution counts
-    cursor.execute('SELECT COUNT(*) FROM executions')
+    cursor.execute("SELECT COUNT(*) FROM executions")
     total_executions = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM executions WHERE started_at > datetime('now', '-24 hours')")
+    cursor.execute(
+        "SELECT COUNT(*) FROM executions WHERE started_at > datetime('now', '-24 hours')"
+    )
     executions_24h = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM executions WHERE status = 'failed' AND started_at > datetime('now', '-24 hours')")
+    cursor.execute(
+        "SELECT COUNT(*) FROM executions WHERE status = 'failed' AND started_at > datetime('now', '-24 hours')"
+    )
     failures_24h = cursor.fetchone()[0]
 
     # Running executions
@@ -768,51 +803,60 @@ def get_stats() -> Dict[str, Any]:
 
     return {
         "success": True,
-        "jobs": {
-            "total": total_jobs,
-            "enabled": enabled_jobs,
-            "cron": cron_jobs
-        },
+        "jobs": {"total": total_jobs, "enabled": enabled_jobs, "cron": cron_jobs},
         "executions": {
             "total": total_executions,
             "last_24h": executions_24h,
             "failures_24h": failures_24h,
-            "running": running
-        }
+            "running": running,
+        },
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Cron Scheduler')
-    parser.add_argument('--action', required=True,
-                       choices=['create', 'get', 'list', 'update', 'delete',
-                               'enable', 'disable', 'run', 'due', 'executions',
-                               'stats', 'validate'],
-                       help='Action to perform')
+    parser = argparse.ArgumentParser(description="Cron Scheduler")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=[
+            "create",
+            "get",
+            "list",
+            "update",
+            "delete",
+            "enable",
+            "disable",
+            "run",
+            "due",
+            "executions",
+            "stats",
+            "validate",
+        ],
+        help="Action to perform",
+    )
 
     # Job identifiers
-    parser.add_argument('--name', help='Job name')
-    parser.add_argument('--job', help='Job ID or name')
-    parser.add_argument('--id', help='Job or execution ID')
+    parser.add_argument("--name", help="Job name")
+    parser.add_argument("--job", help="Job ID or name")
+    parser.add_argument("--id", help="Job or execution ID")
 
     # Job properties
-    parser.add_argument('--type', choices=['cron', 'heartbeat', 'trigger'],
-                       help='Job type')
-    parser.add_argument('--schedule', help='Cron expression')
-    parser.add_argument('--task', help='Task description/prompt')
-    parser.add_argument('--timeout', type=int, help='Timeout in seconds')
-    parser.add_argument('--cost-limit', type=float, help='Cost limit in USD')
-    parser.add_argument('--retry-count', type=int, help='Number of retries')
-    parser.add_argument('--enabled', type=bool, default=True, help='Enable job')
+    parser.add_argument("--type", choices=["cron", "heartbeat", "trigger"], help="Job type")
+    parser.add_argument("--schedule", help="Cron expression")
+    parser.add_argument("--task", help="Task description/prompt")
+    parser.add_argument("--timeout", type=int, help="Timeout in seconds")
+    parser.add_argument("--cost-limit", type=float, help="Cost limit in USD")
+    parser.add_argument("--retry-count", type=int, help="Number of retries")
+    parser.add_argument("--enabled", type=bool, default=True, help="Enable job")
 
     # Filters
-    parser.add_argument('--status', help='Filter by status')
-    parser.add_argument('--limit', type=int, default=50, help='Result limit')
+    parser.add_argument("--status", help="Filter by status")
+    parser.add_argument("--limit", type=int, default=50, help="Result limit")
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'create':
+    if args.action == "create":
         if not args.name or not args.type or not args.task:
             print("Error: --name, --type, and --task required for create")
             sys.exit(1)
@@ -824,89 +868,91 @@ def main():
             timeout_seconds=args.timeout,
             cost_limit=args.cost_limit,
             retry_count=args.retry_count,
-            enabled=args.enabled
+            enabled=args.enabled,
         )
 
-    elif args.action == 'get':
+    elif args.action == "get":
         job_id = args.job or args.name or args.id
         if not job_id:
             print("Error: --job, --name, or --id required")
             sys.exit(1)
         job = get_job(job_id)
-        result = {"success": True, "job": job} if job else {"success": False, "error": "Job not found"}
+        result = (
+            {"success": True, "job": job} if job else {"success": False, "error": "Job not found"}
+        )
 
-    elif args.action == 'list':
-        jobs = list_jobs(job_type=args.type, enabled=args.enabled if hasattr(args, 'enabled') else None)
+    elif args.action == "list":
+        jobs = list_jobs(
+            job_type=args.type, enabled=args.enabled if hasattr(args, "enabled") else None
+        )
         result = {"success": True, "jobs": jobs, "count": len(jobs)}
 
-    elif args.action == 'update':
+    elif args.action == "update":
         job_id = args.job or args.name or args.id
         if not job_id:
             print("Error: --job, --name, or --id required")
             sys.exit(1)
         updates = {}
         if args.schedule:
-            updates['schedule'] = args.schedule
+            updates["schedule"] = args.schedule
         if args.task:
-            updates['task'] = args.task
+            updates["task"] = args.task
         if args.timeout:
-            updates['timeout_seconds'] = args.timeout
+            updates["timeout_seconds"] = args.timeout
         if args.cost_limit:
-            updates['cost_limit'] = args.cost_limit
+            updates["cost_limit"] = args.cost_limit
         result = update_job(job_id, **updates)
 
-    elif args.action == 'delete':
+    elif args.action == "delete":
         job_id = args.job or args.name or args.id
         if not job_id:
             print("Error: --job, --name, or --id required")
             sys.exit(1)
         result = delete_job(job_id)
 
-    elif args.action == 'enable':
+    elif args.action == "enable":
         job_id = args.job or args.name or args.id
         if not job_id:
             print("Error: --job, --name, or --id required")
             sys.exit(1)
         result = enable_job(job_id)
 
-    elif args.action == 'disable':
+    elif args.action == "disable":
         job_id = args.job or args.name or args.id
         if not job_id:
             print("Error: --job, --name, or --id required")
             sys.exit(1)
         result = disable_job(job_id)
 
-    elif args.action == 'run':
+    elif args.action == "run":
         job_id = args.job or args.name or args.id
         if not job_id:
             print("Error: --job, --name, or --id required")
             sys.exit(1)
-        result = run_job(job_id, triggered_by='manual')
+        result = run_job(job_id, triggered_by="manual")
 
-    elif args.action == 'due':
+    elif args.action == "due":
         jobs = get_due_jobs()
         result = {"success": True, "due_jobs": jobs, "count": len(jobs)}
 
-    elif args.action == 'executions':
+    elif args.action == "executions":
         executions = list_executions(
-            job_id=args.job or args.name,
-            status=args.status,
-            limit=args.limit
+            job_id=args.job or args.name, status=args.status, limit=args.limit
         )
         result = {"success": True, "executions": executions, "count": len(executions)}
 
-    elif args.action == 'stats':
+    elif args.action == "stats":
         result = get_stats()
 
-    elif args.action == 'validate':
+    elif args.action == "validate":
         if not args.schedule:
             print("Error: --schedule required for validate")
             sys.exit(1)
         result = validate_cron_expression(args.schedule)
-        result['success'] = result.get('valid', False)
+        result["success"] = result.get("valid", False)
 
     # Output
-    if result.get('success'):
+    if result.get("success"):
         print(f"OK {result.get('message', 'Success')}")
     else:
         print(f"ERROR {result.get('error')}")

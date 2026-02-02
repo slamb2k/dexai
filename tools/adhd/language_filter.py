@@ -42,28 +42,29 @@ Output:
     JSON result with success status, filtered content, and detected phrases
 """
 
-import os
-import sys
+import argparse
 import json
 import re
-import argparse
+import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any
+
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Configuration path
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'adhd_mode.yaml'
+CONFIG_PATH = PROJECT_ROOT / "args" / "adhd_mode.yaml"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load ADHD mode configuration from YAML file."""
     try:
         import yaml
+
         if CONFIG_PATH.exists():
-            with open(CONFIG_PATH, 'r') as f:
+            with open(CONFIG_PATH) as f:
                 return yaml.safe_load(f)
         else:
             return get_default_config()
@@ -72,41 +73,49 @@ def load_config() -> Dict[str, Any]:
         return get_default_config()
 
 
-def get_default_config() -> Dict[str, Any]:
+def get_default_config() -> dict[str, Any]:
     """Return default RSD protection config if YAML unavailable."""
     return {
-        'adhd_mode': {
-            'rsd_protection': {
-                'enabled': True,
-                'blocked_phrases': [
-                    'overdue', 'you haven\'t', 'you still haven\'t',
-                    'failed to', 'you forgot', 'missed deadline',
-                    'behind schedule', 'you should have', 'you were supposed to',
-                    'you never', 'past due', 'you neglected'
+        "adhd_mode": {
+            "rsd_protection": {
+                "enabled": True,
+                "blocked_phrases": [
+                    "overdue",
+                    "you haven't",
+                    "you still haven't",
+                    "failed to",
+                    "you forgot",
+                    "missed deadline",
+                    "behind schedule",
+                    "you should have",
+                    "you were supposed to",
+                    "you never",
+                    "past due",
+                    "you neglected",
                 ],
-                'reframe_patterns': {
-                    'overdue': 'ready to pick up',
-                    'you haven\'t': 'want to',
-                    'you still haven\'t': 'ready when you are to',
-                    'you forgot': 'let\'s revisit',
-                    'you forgot to': 'let\'s',
-                    'missed': 'let\'s reschedule',
-                    'behind schedule': 'let\'s catch up on',
-                    'failed to': 'want to try',
-                    'past due': 'ready to tackle'
-                }
+                "reframe_patterns": {
+                    "overdue": "ready to pick up",
+                    "you haven't": "want to",
+                    "you still haven't": "ready when you are to",
+                    "you forgot": "let's revisit",
+                    "you forgot to": "let's",
+                    "missed": "let's reschedule",
+                    "behind schedule": "let's catch up on",
+                    "failed to": "want to try",
+                    "past due": "ready to tackle",
+                },
             }
         }
     }
 
 
-def get_rsd_config() -> Dict[str, Any]:
+def get_rsd_config() -> dict[str, Any]:
     """Get the RSD protection section of the config."""
     config = load_config()
-    return config.get('adhd_mode', {}).get('rsd_protection', {})
+    return config.get("adhd_mode", {}).get("rsd_protection", {})
 
 
-def detect_blocked_phrases(content: str) -> List[Dict[str, Any]]:
+def detect_blocked_phrases(content: str) -> list[dict[str, Any]]:
     """
     Detect all blocked phrases in content.
 
@@ -121,8 +130,8 @@ def detect_blocked_phrases(content: str) -> List[Dict[str, Any]]:
         [{'phrase': "you still haven't", 'position': 0, 'reframe': 'ready when you are to'}]
     """
     config = get_rsd_config()
-    blocked = config.get('blocked_phrases', [])
-    reframes = config.get('reframe_patterns', {})
+    blocked = config.get("blocked_phrases", [])
+    reframes = config.get("reframe_patterns", {})
 
     detections = []
     content_lower = content.lower()
@@ -139,20 +148,17 @@ def detect_blocked_phrases(content: str) -> List[Dict[str, Any]]:
             # Get the suggested reframe
             reframe = reframes.get(phrase_lower, reframes.get(phrase, None))
 
-            detections.append({
-                'phrase': phrase,
-                'position': pos,
-                'length': len(phrase),
-                'reframe': reframe
-            })
+            detections.append(
+                {"phrase": phrase, "position": pos, "length": len(phrase), "reframe": reframe}
+            )
             start = pos + 1
 
     # Sort by position
-    detections.sort(key=lambda x: x['position'])
+    detections.sort(key=lambda x: x["position"])
     return detections
 
 
-def reframe_content(content: str) -> Tuple[str, List[Dict[str, Any]]]:
+def reframe_content(content: str) -> tuple[str, list[dict[str, Any]]]:
     """
     Reframe content by replacing blocked phrases with forward-facing alternatives.
 
@@ -170,8 +176,8 @@ def reframe_content(content: str) -> Tuple[str, List[Dict[str, Any]]]:
         ("The task is ready to pick up, 3 days ready", [{'original': 'overdue', ...}])
     """
     config = get_rsd_config()
-    reframes = config.get('reframe_patterns', {})
-    blocked = config.get('blocked_phrases', [])
+    reframes = config.get("reframe_patterns", {})
+    blocked = config.get("blocked_phrases", [])
 
     changes = []
     result = content
@@ -201,20 +207,18 @@ def reframe_content(content: str) -> Tuple[str, List[Dict[str, Any]]]:
                 else:
                     replacement = reframe.lower()
 
-                changes.append({
-                    'original': original,
-                    'replacement': replacement,
-                    'position': match.start()
-                })
+                changes.append(
+                    {"original": original, "replacement": replacement, "position": match.start()}
+                )
 
-                result = result[:match.start()] + replacement + result[match.end():]
+                result = result[: match.start()] + replacement + result[match.end() :]
 
     # Sort changes by original position
-    changes.sort(key=lambda x: x['position'])
+    changes.sort(key=lambda x: x["position"])
     return result, changes
 
 
-def check_content(content: str) -> Dict[str, Any]:
+def check_content(content: str) -> dict[str, Any]:
     """
     Check content for RSD-triggering phrases without modifying.
 
@@ -237,11 +241,11 @@ def check_content(content: str) -> Dict[str, Any]:
         "success": True,
         "is_safe": len(detections) == 0,
         "detections": detections,
-        "phrase_count": len(detections)
+        "phrase_count": len(detections),
     }
 
 
-def filter_content(content: str) -> Dict[str, Any]:
+def filter_content(content: str) -> dict[str, Any]:
     """
     Filter content by detecting and reframing all RSD-triggering phrases.
 
@@ -268,11 +272,11 @@ def filter_content(content: str) -> Dict[str, Any]:
         "original": content,
         "filtered": filtered,
         "changes": changes,
-        "was_modified": len(changes) > 0
+        "was_modified": len(changes) > 0,
     }
 
 
-def list_blocked_phrases() -> Dict[str, Any]:
+def list_blocked_phrases() -> dict[str, Any]:
     """
     List all currently blocked phrases and their reframes.
 
@@ -283,13 +287,13 @@ def list_blocked_phrases() -> Dict[str, Any]:
 
     return {
         "success": True,
-        "blocked_phrases": config.get('blocked_phrases', []),
-        "reframe_patterns": config.get('reframe_patterns', {}),
-        "count": len(config.get('blocked_phrases', []))
+        "blocked_phrases": config.get("blocked_phrases", []),
+        "reframe_patterns": config.get("reframe_patterns", {}),
+        "count": len(config.get("blocked_phrases", [])),
     }
 
 
-def add_blocked_phrase(phrase: str, reframe: Optional[str] = None) -> Dict[str, Any]:
+def add_blocked_phrase(phrase: str, reframe: str | None = None) -> dict[str, Any]:
     """
     Add a new blocked phrase to the configuration.
 
@@ -310,12 +314,12 @@ def add_blocked_phrase(phrase: str, reframe: Optional[str] = None) -> Dict[str, 
     if not CONFIG_PATH.exists():
         return {"success": False, "error": f"Config file not found: {CONFIG_PATH}"}
 
-    with open(CONFIG_PATH, 'r') as f:
+    with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
 
-    rsd = config.setdefault('adhd_mode', {}).setdefault('rsd_protection', {})
-    blocked = rsd.setdefault('blocked_phrases', [])
-    reframes = rsd.setdefault('reframe_patterns', {})
+    rsd = config.setdefault("adhd_mode", {}).setdefault("rsd_protection", {})
+    blocked = rsd.setdefault("blocked_phrases", [])
+    reframes = rsd.setdefault("reframe_patterns", {})
 
     phrase_lower = phrase.lower()
     if phrase_lower not in [p.lower() for p in blocked]:
@@ -324,17 +328,17 @@ def add_blocked_phrase(phrase: str, reframe: Optional[str] = None) -> Dict[str, 
     if reframe:
         reframes[phrase_lower] = reframe
 
-    with open(CONFIG_PATH, 'w') as f:
+    with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
     return {
         "success": True,
         "message": f"Added blocked phrase: '{phrase}'",
-        "reframe": reframe or "let's (default)"
+        "reframe": reframe or "let's (default)",
     }
 
 
-def batch_filter(contents: List[str]) -> Dict[str, Any]:
+def batch_filter(contents: list[str]) -> dict[str, Any]:
     """
     Filter multiple pieces of content at once.
 
@@ -350,19 +354,19 @@ def batch_filter(contents: List[str]) -> Dict[str, Any]:
     for content in contents:
         result = filter_content(content)
         results.append(result)
-        total_changes += len(result.get('changes', []))
+        total_changes += len(result.get("changes", []))
 
     return {
         "success": True,
         "results": results,
         "total_items": len(contents),
-        "total_changes": total_changes
+        "total_changes": total_changes,
     }
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='RSD-Safe Language Filter for ADHD Communication',
+        description="RSD-Safe Language Filter for ADHD Communication",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -377,42 +381,45 @@ Examples:
 
   # Add new blocked phrase
   python language_filter.py --action add-blocked --phrase "you should have" --reframe "you could"
-        """
+        """,
     )
 
-    parser.add_argument('--action', required=True,
-                       choices=['filter', 'check', 'list-blocked', 'add-blocked', 'batch-filter'],
-                       help='Action to perform')
-    parser.add_argument('--content', help='Text content to filter or check')
-    parser.add_argument('--phrase', help='Phrase to add (for add-blocked action)')
-    parser.add_argument('--reframe', help='Suggested reframe for new phrase')
-    parser.add_argument('--contents', help='JSON array of contents (for batch-filter)')
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=["filter", "check", "list-blocked", "add-blocked", "batch-filter"],
+        help="Action to perform",
+    )
+    parser.add_argument("--content", help="Text content to filter or check")
+    parser.add_argument("--phrase", help="Phrase to add (for add-blocked action)")
+    parser.add_argument("--reframe", help="Suggested reframe for new phrase")
+    parser.add_argument("--contents", help="JSON array of contents (for batch-filter)")
 
     args = parser.parse_args()
     result = None
 
-    if args.action == 'filter':
+    if args.action == "filter":
         if not args.content:
             print("Error: --content required for filter action")
             sys.exit(1)
         result = filter_content(args.content)
 
-    elif args.action == 'check':
+    elif args.action == "check":
         if not args.content:
             print("Error: --content required for check action")
             sys.exit(1)
         result = check_content(args.content)
 
-    elif args.action == 'list-blocked':
+    elif args.action == "list-blocked":
         result = list_blocked_phrases()
 
-    elif args.action == 'add-blocked':
+    elif args.action == "add-blocked":
         if not args.phrase:
             print("Error: --phrase required for add-blocked action")
             sys.exit(1)
         result = add_blocked_phrase(args.phrase, args.reframe)
 
-    elif args.action == 'batch-filter':
+    elif args.action == "batch-filter":
         if not args.contents:
             print("Error: --contents required for batch-filter action (JSON array)")
             sys.exit(1)
@@ -424,9 +431,9 @@ Examples:
             sys.exit(1)
 
     if result:
-        if result.get('success'):
-            status = "SAFE" if result.get('is_safe', True) else "MODIFIED"
-            if args.action == 'check' and not result.get('is_safe'):
+        if result.get("success"):
+            status = "SAFE" if result.get("is_safe", True) else "MODIFIED"
+            if args.action == "check" and not result.get("is_safe"):
                 status = "UNSAFE"
             print(f"OK {status}")
         else:

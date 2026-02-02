@@ -9,11 +9,11 @@ This module provides the foundation data structures that normalize messages
 across different platforms (Telegram, Discord, Slack) into a common format.
 """
 
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from typing import Dict, Any, List, Optional
 import json
 import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -26,20 +26,21 @@ class Attachment:
     - Discord: attachments, embeds
     - Slack: files, images
     """
+
     id: str
-    type: str                    # 'image' | 'audio' | 'video' | 'document'
+    type: str  # 'image' | 'audio' | 'video' | 'document'
     filename: str
     mime_type: str
     size_bytes: int
-    url: Optional[str] = None
-    local_path: Optional[str] = None
+    url: str | None = None
+    local_path: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Attachment':
+    def from_dict(cls, data: dict[str, Any]) -> "Attachment":
         """Create from dict."""
         return cls(**data)
 
@@ -67,38 +68,38 @@ class UnifiedMessage:
         session_id: Associated session ID (if any)
         metadata: Platform-specific metadata
     """
-    id: str
-    channel: str                 # telegram | discord | slack | whatsapp
-    channel_message_id: str
-    channel_user_id: str         # Platform-specific user ID
-    direction: str               # 'inbound' | 'outbound'
-    content: str
-    user_id: Optional[str] = None  # Our user ID (resolved by router)
-    content_type: str = 'text'   # 'text' | 'voice' | 'image' | 'document'
-    attachments: List[Attachment] = field(default_factory=list)
-    reply_to: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
-    session_id: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    id: str
+    channel: str  # telegram | discord | slack | whatsapp
+    channel_message_id: str
+    channel_user_id: str  # Platform-specific user ID
+    direction: str  # 'inbound' | 'outbound'
+    content: str
+    user_id: str | None = None  # Our user ID (resolved by router)
+    content_type: str = "text"  # 'text' | 'voice' | 'image' | 'document'
+    attachments: list[Attachment] = field(default_factory=list)
+    reply_to: str | None = None
+    timestamp: datetime = field(default_factory=datetime.now)
+    session_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         d = asdict(self)
-        d['timestamp'] = self.timestamp.isoformat()
+        d["timestamp"] = self.timestamp.isoformat()
         # Convert attachments to dicts
-        d['attachments'] = [a if isinstance(a, dict) else asdict(a) for a in self.attachments]
+        d["attachments"] = [a if isinstance(a, dict) else asdict(a) for a in self.attachments]
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UnifiedMessage':
+    def from_dict(cls, data: dict[str, Any]) -> "UnifiedMessage":
         """Create from dict."""
         data = data.copy()
-        if isinstance(data.get('timestamp'), str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
-        if data.get('attachments'):
-            data['attachments'] = [
-                Attachment(**a) if isinstance(a, dict) else a
-                for a in data['attachments']
+        if isinstance(data.get("timestamp"), str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
+        if data.get("attachments"):
+            data["attachments"] = [
+                Attachment(**a) if isinstance(a, dict) else a for a in data["attachments"]
             ]
         return cls(**data)
 
@@ -107,7 +108,7 @@ class UnifiedMessage:
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_json(cls, json_str: str) -> 'UnifiedMessage':
+    def from_json(cls, json_str: str) -> "UnifiedMessage":
         """Deserialize from JSON string."""
         return cls.from_dict(json.loads(json_str))
 
@@ -135,30 +136,31 @@ class ChannelUser:
         first_seen: When user was first seen
         metadata: Platform-specific user data
     """
-    id: str                      # Our internal user ID
+
+    id: str  # Our internal user ID
     channel: str
     channel_user_id: str
     display_name: str
-    username: Optional[str] = None
+    username: str | None = None
     is_paired: bool = False
     first_seen: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         d = asdict(self)
-        d['first_seen'] = self.first_seen.isoformat()
+        d["first_seen"] = self.first_seen.isoformat()
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ChannelUser':
+    def from_dict(cls, data: dict[str, Any]) -> "ChannelUser":
         """Create from dict."""
         data = data.copy()
-        if isinstance(data.get('first_seen'), str):
-            data['first_seen'] = datetime.fromisoformat(data['first_seen'])
+        if isinstance(data.get("first_seen"), str):
+            data["first_seen"] = datetime.fromisoformat(data["first_seen"])
         # Handle boolean from SQLite (stored as int)
-        if 'is_paired' in data:
-            data['is_paired'] = bool(data['is_paired'])
+        if "is_paired" in data:
+            data["is_paired"] = bool(data["is_paired"])
         return cls(**data)
 
     @staticmethod
@@ -186,31 +188,32 @@ class Conversation:
         created_at: When conversation started
         last_message_at: Timestamp of most recent message
     """
+
     id: str
     channel: str
     channel_conversation_id: str
-    conversation_type: str       # 'dm' | 'group' | 'channel' | 'thread'
-    participants: List[str] = field(default_factory=list)
+    conversation_type: str  # 'dm' | 'group' | 'channel' | 'thread'
+    participants: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
-    last_message_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    last_message_at: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         d = asdict(self)
-        d['created_at'] = self.created_at.isoformat()
+        d["created_at"] = self.created_at.isoformat()
         if self.last_message_at:
-            d['last_message_at'] = self.last_message_at.isoformat()
+            d["last_message_at"] = self.last_message_at.isoformat()
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Conversation':
+    def from_dict(cls, data: dict[str, Any]) -> "Conversation":
         """Create from dict."""
         data = data.copy()
-        if isinstance(data.get('created_at'), str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if isinstance(data.get('last_message_at'), str):
-            data['last_message_at'] = datetime.fromisoformat(data['last_message_at'])
+        if isinstance(data.get("created_at"), str):
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+        if isinstance(data.get("last_message_at"), str):
+            data["last_message_at"] = datetime.fromisoformat(data["last_message_at"])
         return cls(**data)
 
     @staticmethod
@@ -227,32 +230,33 @@ class PairingCode:
     When a user wants to link their account across channels, they generate
     a pairing code on one channel and enter it on another to link identities.
     """
+
     code: str
     user_id: str
     channel: str
     channel_user_id: str
     created_at: datetime = field(default_factory=datetime.now)
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     used: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
         d = asdict(self)
-        d['created_at'] = self.created_at.isoformat()
+        d["created_at"] = self.created_at.isoformat()
         if self.expires_at:
-            d['expires_at'] = self.expires_at.isoformat()
+            d["expires_at"] = self.expires_at.isoformat()
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PairingCode':
+    def from_dict(cls, data: dict[str, Any]) -> "PairingCode":
         """Create from dict."""
         data = data.copy()
-        if isinstance(data.get('created_at'), str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if isinstance(data.get('expires_at'), str):
-            data['expires_at'] = datetime.fromisoformat(data['expires_at'])
-        if 'used' in data:
-            data['used'] = bool(data['used'])
+        if isinstance(data.get("created_at"), str):
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+        if isinstance(data.get("expires_at"), str):
+            data["expires_at"] = datetime.fromisoformat(data["expires_at"])
+        if "used" in data:
+            data["used"] = bool(data["used"])
         return cls(**data)
 
     def is_expired(self) -> bool:
@@ -268,16 +272,16 @@ class PairingCode:
 
 # Type aliases for clarity
 ChannelName = str  # 'telegram' | 'discord' | 'slack' | 'whatsapp'
-Direction = str    # 'inbound' | 'outbound'
+Direction = str  # 'inbound' | 'outbound'
 ContentType = str  # 'text' | 'voice' | 'image' | 'document'
 ConversationType = str  # 'dm' | 'group' | 'channel' | 'thread'
 
 # Valid values
-VALID_CHANNELS = {'telegram', 'discord', 'slack', 'whatsapp', 'api', 'cli'}
-VALID_DIRECTIONS = {'inbound', 'outbound'}
-VALID_CONTENT_TYPES = {'text', 'voice', 'image', 'document', 'video'}
-VALID_CONVERSATION_TYPES = {'dm', 'group', 'channel', 'thread'}
-VALID_ATTACHMENT_TYPES = {'image', 'audio', 'video', 'document'}
+VALID_CHANNELS = {"telegram", "discord", "slack", "whatsapp", "api", "cli"}
+VALID_DIRECTIONS = {"inbound", "outbound"}
+VALID_CONTENT_TYPES = {"text", "voice", "image", "document", "video"}
+VALID_CONVERSATION_TYPES = {"dm", "group", "channel", "thread"}
+VALID_ATTACHMENT_TYPES = {"image", "audio", "video", "document"}
 
 
 def validate_message(message: UnifiedMessage) -> tuple[bool, str]:
@@ -300,7 +304,7 @@ def validate_message(message: UnifiedMessage) -> tuple[bool, str]:
     return True, ""
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Self-test
     import sys
 
@@ -308,14 +312,14 @@ if __name__ == '__main__':
 
     # Test UnifiedMessage
     msg = UnifiedMessage(
-        id='test-1',
-        channel='telegram',
-        channel_message_id='123',
-        user_id='alice',
-        channel_user_id='tg_123',
-        direction='inbound',
-        content='Hello world',
-        content_type='text'
+        id="test-1",
+        channel="telegram",
+        channel_message_id="123",
+        user_id="alice",
+        channel_user_id="tg_123",
+        direction="inbound",
+        content="Hello world",
+        content_type="text",
     )
 
     # Test serialization round-trip
@@ -331,33 +335,29 @@ if __name__ == '__main__':
 
     # Test with attachment
     attach = Attachment(
-        id='file-1',
-        type='image',
-        filename='photo.jpg',
-        mime_type='image/jpeg',
-        size_bytes=1024
+        id="file-1", type="image", filename="photo.jpg", mime_type="image/jpeg", size_bytes=1024
     )
     msg_with_attach = UnifiedMessage(
-        id='test-2',
-        channel='discord',
-        channel_message_id='456',
-        channel_user_id='dc_456',
-        direction='inbound',
-        content='Check this out',
-        attachments=[attach]
+        id="test-2",
+        channel="discord",
+        channel_message_id="456",
+        channel_user_id="dc_456",
+        direction="inbound",
+        content="Check this out",
+        attachments=[attach],
     )
     d = msg_with_attach.to_dict()
     msg4 = UnifiedMessage.from_dict(d)
     assert len(msg4.attachments) == 1, "Attachment lost"
-    assert msg4.attachments[0].filename == 'photo.jpg', "Attachment data wrong"
+    assert msg4.attachments[0].filename == "photo.jpg", "Attachment data wrong"
 
     # Test ChannelUser
     user = ChannelUser(
-        id='user-1',
-        channel='telegram',
-        channel_user_id='tg_123',
-        display_name='Alice',
-        username='alice_bot'
+        id="user-1",
+        channel="telegram",
+        channel_user_id="tg_123",
+        display_name="Alice",
+        username="alice_bot",
     )
     d = user.to_dict()
     user2 = ChannelUser.from_dict(d)
@@ -365,11 +365,11 @@ if __name__ == '__main__':
 
     # Test Conversation
     conv = Conversation(
-        id='conv-1',
-        channel='slack',
-        channel_conversation_id='C123456',
-        conversation_type='channel',
-        participants=['user-1', 'user-2']
+        id="conv-1",
+        channel="slack",
+        channel_conversation_id="C123456",
+        conversation_type="channel",
+        participants=["user-1", "user-2"],
     )
     d = conv.to_dict()
     conv2 = Conversation.from_dict(d)
@@ -377,21 +377,22 @@ if __name__ == '__main__':
 
     # Test PairingCode
     from datetime import timedelta
+
     code = PairingCode(
-        code='ABC12345',
-        user_id='user-1',
-        channel='telegram',
-        channel_user_id='tg_123',
-        expires_at=datetime.now() + timedelta(minutes=10)
+        code="ABC12345",
+        user_id="user-1",
+        channel="telegram",
+        channel_user_id="tg_123",
+        expires_at=datetime.now() + timedelta(minutes=10),
     )
     assert code.is_valid(), "New code should be valid"
 
     expired_code = PairingCode(
-        code='EXPIRED1',
-        user_id='user-2',
-        channel='discord',
-        channel_user_id='dc_456',
-        expires_at=datetime.now() - timedelta(minutes=1)
+        code="EXPIRED1",
+        user_id="user-2",
+        channel="discord",
+        channel_user_id="dc_456",
+        expires_at=datetime.now() - timedelta(minutes=1),
     )
     assert not expired_code.is_valid(), "Expired code should be invalid"
 
@@ -400,12 +401,12 @@ if __name__ == '__main__':
     assert valid, f"Valid message failed validation: {error}"
 
     invalid_msg = UnifiedMessage(
-        id='test-3',
-        channel='invalid_channel',
-        channel_message_id='789',
-        channel_user_id='xyz',
-        direction='inbound',
-        content='Test'
+        id="test-3",
+        channel="invalid_channel",
+        channel_message_id="789",
+        channel_user_id="xyz",
+        direction="inbound",
+        content="Test",
     )
     valid, error = validate_message(invalid_msg)
     assert not valid, "Invalid message should fail validation"

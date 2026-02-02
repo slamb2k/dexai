@@ -1,0 +1,29 @@
+# Node.js
+node_modules
+.next
+.npm
+npm-debug.log*
+
+# IDE
+.vscode
+.idea
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Tests
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+coverage
+
+# Documentation
+*.md
+
+# Docker
+Dockerfile
+.dockerignore

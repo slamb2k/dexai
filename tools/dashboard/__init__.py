@@ -11,9 +11,10 @@ with real-time monitoring, configuration management, and debugging tools.
 
 from pathlib import Path
 
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DB_PATH = PROJECT_ROOT / 'data' / 'dashboard.db'
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'dashboard.yaml'
+DB_PATH = PROJECT_ROOT / "data" / "dashboard.db"
+CONFIG_PATH = PROJECT_ROOT / "args" / "dashboard.yaml"
 
 # Version
-__version__ = '0.1.0'
+__version__ = "0.1.0"

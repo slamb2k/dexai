@@ -38,11 +38,12 @@ Dependencies:
 
 from pathlib import Path
 
+
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'adhd_mode.yaml'
+CONFIG_PATH = PROJECT_ROOT / "args" / "adhd_mode.yaml"
 
 __all__ = [
-    'PROJECT_ROOT',
-    'CONFIG_PATH',
+    "CONFIG_PATH",
+    "PROJECT_ROOT",
 ]

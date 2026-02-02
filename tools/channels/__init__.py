@@ -4,25 +4,26 @@ Cross-platform messaging adapters and gateway for DexAI.
 """
 
 from .models import (
-    UnifiedMessage,
+    VALID_CHANNELS,
+    VALID_CONTENT_TYPES,
+    VALID_DIRECTIONS,
     Attachment,
     ChannelUser,
     Conversation,
     PairingCode,
-    VALID_CHANNELS,
-    VALID_DIRECTIONS,
-    VALID_CONTENT_TYPES,
+    UnifiedMessage,
     validate_message,
 )
 
+
 __all__ = [
-    'UnifiedMessage',
-    'Attachment',
-    'ChannelUser',
-    'Conversation',
-    'PairingCode',
-    'VALID_CHANNELS',
-    'VALID_DIRECTIONS',
-    'VALID_CONTENT_TYPES',
-    'validate_message',
+    "VALID_CHANNELS",
+    "VALID_CONTENT_TYPES",
+    "VALID_DIRECTIONS",
+    "Attachment",
+    "ChannelUser",
+    "Conversation",
+    "PairingCode",
+    "UnifiedMessage",
+    "validate_message",
 ]

@@ -36,6 +36,7 @@ Usage:
 
 from pathlib import Path
 
+
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "tasks.db"
@@ -76,12 +77,12 @@ ACTION_VERBS = (
 )
 
 __all__ = [
-    "PROJECT_ROOT",
-    "DB_PATH",
+    "ACTION_VERBS",
     "CONFIG_PATH",
-    "TASK_STATUSES",
-    "STEP_STATUSES",
+    "DB_PATH",
     "ENERGY_LEVELS",
     "FRICTION_TYPES",
-    "ACTION_VERBS",
+    "PROJECT_ROOT",
+    "STEP_STATUSES",
+    "TASK_STATUSES",
 ]

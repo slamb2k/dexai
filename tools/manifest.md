@@ -173,6 +173,10 @@ Master list of all available tools. Check here before creating new scripts.
 | `unit/adhd/*.py` | Unit tests for ADHD communication tools (language_filter, response_formatter) |
 | `unit/tasks/*.py` | Unit tests for task engine (manager) |
 | `unit/memory/*.py` | Unit tests for memory tools (commitments) |
+| `integration/conftest.py` | Integration test fixtures (test clients, mock adapters, database isolation) |
+| `integration/test_dashboard_api.py` | Integration tests for FastAPI dashboard routes (/api/status, /tasks, /activity) |
+| `integration/test_message_pipeline.py` | Integration tests for message routing and security pipeline |
+| `integration/test_task_flow.py` | Integration tests for task lifecycle (create -> decompose -> complete) |
 
 ---
 

@@ -11,36 +11,36 @@ Usage:
     python -m tools.dashboard.backend.main
 """
 
-import sys
-import yaml
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
+import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from tools.dashboard.backend.database import get_db_connection, init_db
 from tools.dashboard.backend.models import ErrorResponse, HealthCheck
 from tools.dashboard.backend.routes import api_router
 from tools.dashboard.backend.websocket import ws_router
-from tools.dashboard.backend.database import init_db, get_db_connection
+
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 # Configuration paths
-CONFIG_PATH = PROJECT_ROOT / 'args' / 'dashboard.yaml'
+CONFIG_PATH = PROJECT_ROOT / "args" / "dashboard.yaml"
 
 
 def load_config() -> dict:
@@ -53,10 +53,10 @@ def load_config() -> dict:
 
 # Global config
 config = load_config()
-dashboard_config = config.get('dashboard', {})
+dashboard_config = config.get("dashboard", {})
 
 # Track startup time for uptime calculation
-startup_time: Optional[datetime] = None
+startup_time: datetime | None = None
 
 
 @asynccontextmanager
@@ -86,15 +86,14 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
-security_config = dashboard_config.get('security', {})
-allowed_origins = security_config.get('allowed_origins', [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-])
+security_config = dashboard_config.get("security", {})
+allowed_origins = security_config.get(
+    "allowed_origins", ["http://localhost:3000", "http://127.0.0.1:3000"]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -109,14 +108,15 @@ app.add_middleware(
 # Authentication Dependency
 # =============================================================================
 
-async def get_current_user(request: Request) -> Optional[dict]:
+
+async def get_current_user(request: Request) -> dict | None:
     """
     Validate session and return current user.
 
     Integrates with existing session management from tools/security/session.py
     """
-    require_auth = security_config.get('require_auth', True)
-    cookie_name = security_config.get('session_cookie_name', 'dexai_session')
+    require_auth = security_config.get("require_auth", True)
+    cookie_name = security_config.get("session_cookie_name", "dexai_session")
 
     if not require_auth:
         # Auth disabled - return mock user
@@ -126,33 +126,32 @@ async def get_current_user(request: Request) -> Optional[dict]:
     token = request.cookies.get(cookie_name)
     if not token:
         # Try Authorization header
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.startswith('Bearer '):
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
             token = auth_header[7:]
 
     if not token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
 
     # Validate session using existing session module
     try:
         from tools.security.session import validate_session
+
         result = validate_session(token, update_activity=True)
 
-        if not result.get('valid'):
-            reason = result.get('reason', 'invalid_session')
+        if not result.get("valid"):
+            reason = result.get("reason", "invalid_session")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Session invalid: {reason}"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Session invalid: {reason}"
             )
 
         return {
-            "user_id": result.get('user_id'),
-            "session_id": result.get('session_id'),
-            "channel": result.get('channel'),
-            "role": result.get('metadata', {}).get('role', 'user')
+            "user_id": result.get("user_id"),
+            "session_id": result.get("session_id"),
+            "channel": result.get("channel"),
+            "role": result.get("metadata", {}).get("role", "user"),
         }
     except ImportError:
         # Session module not available - allow anonymous access in dev
@@ -163,25 +162,22 @@ async def get_current_user(request: Request) -> Optional[dict]:
     except Exception as e:
         logger.error(f"Session validation error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session validation failed"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session validation failed"
         )
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     """Require admin or owner role."""
-    admin_roles = security_config.get('admin_roles', ['admin', 'owner'])
-    if user.get('role') not in admin_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
+    admin_roles = security_config.get("admin_roles", ["admin", "owner"])
+    if user.get("role") not in admin_roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
 
 # =============================================================================
 # Health Check Endpoint
 # =============================================================================
+
 
 @app.get("/api/health", response_model=HealthCheck, tags=["health"])
 async def health_check():
@@ -205,6 +201,7 @@ async def health_check():
     # Check session database
     try:
         from tools.security.session import get_connection as get_session_db
+
         conn = get_session_db()
         conn.execute("SELECT 1")
         conn.close()
@@ -215,6 +212,7 @@ async def health_check():
     # Check memory database
     try:
         from tools.memory.memory_db import get_connection as get_memory_db
+
         conn = get_memory_db()
         conn.execute("SELECT 1")
         conn.close()
@@ -225,27 +223,20 @@ async def health_check():
     # Overall status
     overall = "healthy" if services.get("database") == "healthy" else "degraded"
 
-    return HealthCheck(
-        status=overall,
-        version="0.1.0",
-        timestamp=datetime.now(),
-        services=services
-    )
+    return HealthCheck(status=overall, version="0.1.0", timestamp=datetime.now(), services=services)
 
 
 # =============================================================================
 # Error Handlers
 # =============================================================================
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions with consistent format."""
     return JSONResponse(
         status_code=exc.status_code,
-        content=ErrorResponse(
-            error=exc.detail,
-            code=f"HTTP_{exc.status_code}"
-        ).model_dump()
+        content=ErrorResponse(error=exc.detail, code=f"HTTP_{exc.status_code}").model_dump(),
     )
 
 
@@ -255,10 +246,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=ErrorResponse(
-            error="Internal server error",
-            code="INTERNAL_ERROR"
-        ).model_dump()
+        content=ErrorResponse(error="Internal server error", code="INTERNAL_ERROR").model_dump(),
     )
 
 
@@ -276,6 +264,7 @@ app.include_router(ws_router)
 # =============================================================================
 # Utility Functions
 # =============================================================================
+
 
 def get_uptime_seconds() -> int:
     """Get server uptime in seconds."""
@@ -297,13 +286,9 @@ app.state.config = dashboard_config
 if __name__ == "__main__":
     import uvicorn
 
-    host = dashboard_config.get('host', '127.0.0.1')
-    port = dashboard_config.get('api_port', 8080)
+    host = dashboard_config.get("host", "127.0.0.1")
+    port = dashboard_config.get("api_port", 8080)
 
     uvicorn.run(
-        "tools.dashboard.backend.main:app",
-        host=host,
-        port=port,
-        reload=True,
-        log_level="info"
+        "tools.dashboard.backend.main:app", host=host, port=port, reload=True, log_level="info"
     )

@@ -20,9 +20,10 @@ Components:
 
 from pathlib import Path
 
+
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_PATH = PROJECT_ROOT / 'args'
-DATA_PATH = PROJECT_ROOT / 'data'
-SETUP_STATE_PATH = DATA_PATH / 'setup_state.json'
-SETUP_COMPLETE_FLAG = DATA_PATH / 'setup_complete.flag'
+CONFIG_PATH = PROJECT_ROOT / "args"
+DATA_PATH = PROJECT_ROOT / "data"
+SETUP_STATE_PATH = DATA_PATH / "setup_state.json"
+SETUP_COMPLETE_FLAG = DATA_PATH / "setup_complete.flag"

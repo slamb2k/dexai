@@ -29,14 +29,15 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Set, Optional
+from typing import Any
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Configuration defaults
-DEFAULT_HOST = '127.0.0.1'
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18789
 DEFAULT_PING_INTERVAL = 30
 DEFAULT_PING_TIMEOUT = 10
@@ -45,20 +46,20 @@ DEFAULT_MAX_CONNECTIONS = 100
 DEFAULT_SHUTDOWN_TIMEOUT = 30
 
 # Status file for inter-process communication
-STATUS_FILE = PROJECT_ROOT / '.tmp' / 'gateway_status.json'
+STATUS_FILE = PROJECT_ROOT / ".tmp" / "gateway_status.json"
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load gateway configuration from args/channels.yaml."""
-    config_path = PROJECT_ROOT / 'args' / 'channels.yaml'
+    config_path = PROJECT_ROOT / "args" / "channels.yaml"
     defaults = {
-        'host': DEFAULT_HOST,
-        'port': DEFAULT_PORT,
-        'ping_interval': DEFAULT_PING_INTERVAL,
-        'ping_timeout': DEFAULT_PING_TIMEOUT,
-        'max_message_size': DEFAULT_MAX_MESSAGE_SIZE,
-        'max_connections': DEFAULT_MAX_CONNECTIONS,
-        'shutdown_timeout': DEFAULT_SHUTDOWN_TIMEOUT
+        "host": DEFAULT_HOST,
+        "port": DEFAULT_PORT,
+        "ping_interval": DEFAULT_PING_INTERVAL,
+        "ping_timeout": DEFAULT_PING_TIMEOUT,
+        "max_message_size": DEFAULT_MAX_MESSAGE_SIZE,
+        "max_connections": DEFAULT_MAX_CONNECTIONS,
+        "shutdown_timeout": DEFAULT_SHUTDOWN_TIMEOUT,
     }
 
     if not config_path.exists():
@@ -66,9 +67,10 @@ def load_config() -> Dict[str, Any]:
 
     try:
         import yaml
+
         with open(config_path) as f:
             config = yaml.safe_load(f)
-        gateway_config = config.get('gateway', {})
+        gateway_config = config.get("gateway", {})
         return {**defaults, **gateway_config}
     except ImportError:
         return defaults
@@ -90,7 +92,7 @@ class GatewayServer:
         self,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
-        config: Optional[Dict[str, Any]] = None
+        config: dict[str, Any] | None = None,
     ):
         self.host = host
         self.port = port
@@ -98,24 +100,20 @@ class GatewayServer:
 
         # Import router
         from tools.channels.router import get_router
+
         self.router = get_router()
 
         # Connection tracking
-        self.connections: Dict[str, Any] = {}  # conn_id -> websocket
-        self.subscriptions: Dict[str, Set[str]] = {}  # channel -> set of conn_ids
+        self.connections: dict[str, Any] = {}  # conn_id -> websocket
+        self.subscriptions: dict[str, set[str]] = {}  # channel -> set of conn_ids
 
         # Server state
         self.running = False
         self.server = None
-        self.start_time: Optional[datetime] = None
+        self.start_time: datetime | None = None
 
         # Metrics
-        self.metrics = {
-            'messages_in': 0,
-            'messages_out': 0,
-            'connections_total': 0,
-            'errors': 0
-        }
+        self.metrics = {"messages_in": 0, "messages_out": 0, "connections_total": 0, "errors": 0}
 
     async def start(self) -> None:
         """Start the WebSocket server."""
@@ -136,19 +134,20 @@ class GatewayServer:
                 self.handle_connection,
                 self.host,
                 self.port,
-                ping_interval=self.config.get('ping_interval', DEFAULT_PING_INTERVAL),
-                ping_timeout=self.config.get('ping_timeout', DEFAULT_PING_TIMEOUT),
-                max_size=self.config.get('max_message_size', DEFAULT_MAX_MESSAGE_SIZE)
+                ping_interval=self.config.get("ping_interval", DEFAULT_PING_INTERVAL),
+                ping_timeout=self.config.get("ping_timeout", DEFAULT_PING_TIMEOUT),
+                max_size=self.config.get("max_message_size", DEFAULT_MAX_MESSAGE_SIZE),
             )
 
             # Log startup
             try:
                 from tools.security import audit
+
                 audit.log_event(
-                    event_type='system',
-                    action='gateway_started',
-                    status='success',
-                    details={'host': self.host, 'port': self.port}
+                    event_type="system",
+                    action="gateway_started",
+                    status="success",
+                    details={"host": self.host, "port": self.port},
                 )
             except Exception:
                 pass
@@ -171,7 +170,6 @@ class GatewayServer:
         self.running = False
 
         # Close all connections
-        import websockets
         for conn_id, ws in list(self.connections.items()):
             try:
                 await ws.close(1001, "Server shutting down")
@@ -183,17 +181,18 @@ class GatewayServer:
             self.server.close()
             await asyncio.wait_for(
                 self.server.wait_closed(),
-                timeout=self.config.get('shutdown_timeout', DEFAULT_SHUTDOWN_TIMEOUT)
+                timeout=self.config.get("shutdown_timeout", DEFAULT_SHUTDOWN_TIMEOUT),
             )
 
         # Log shutdown
         try:
             from tools.security import audit
+
             audit.log_event(
-                event_type='system',
-                action='gateway_stopped',
-                status='success',
-                details={'uptime_seconds': self._get_uptime()}
+                event_type="system",
+                action="gateway_stopped",
+                status="success",
+                details={"uptime_seconds": self._get_uptime()},
             )
         except Exception:
             pass
@@ -217,21 +216,23 @@ class GatewayServer:
 
         conn_id = str(uuid.uuid4())
         self.connections[conn_id] = websocket
-        self.metrics['connections_total'] += 1
+        self.metrics["connections_total"] += 1
 
         client_info = {
-            'id': conn_id,
-            'remote': str(websocket.remote_address) if hasattr(websocket, 'remote_address') else 'unknown',
-            'connected_at': datetime.now().isoformat()
+            "id": conn_id,
+            "remote": str(websocket.remote_address)
+            if hasattr(websocket, "remote_address")
+            else "unknown",
+            "connected_at": datetime.now().isoformat(),
         }
 
         try:
             # Send welcome message
-            await websocket.send(json.dumps({
-                'type': 'connected',
-                'id': conn_id,
-                'timestamp': datetime.now().isoformat()
-            }))
+            await websocket.send(
+                json.dumps(
+                    {"type": "connected", "id": conn_id, "timestamp": datetime.now().isoformat()}
+                )
+            )
 
             async for raw_message in websocket:
                 await self.handle_message(conn_id, websocket, raw_message)
@@ -239,13 +240,14 @@ class GatewayServer:
         except websockets.exceptions.ConnectionClosed:
             pass
         except Exception as e:
-            self.metrics['errors'] += 1
+            self.metrics["errors"] += 1
             try:
                 from tools.security import audit
+
                 audit.log_event(
-                    event_type='error',
-                    action='connection_error',
-                    details={'error': str(e), 'conn_id': conn_id}
+                    event_type="error",
+                    action="connection_error",
+                    details={"error": str(e), "conn_id": conn_id},
                 )
             except Exception:
                 pass
@@ -271,98 +273,87 @@ class GatewayServer:
         """
         try:
             data = json.loads(raw)
-            msg_type = data.get('type')
-            msg_id = data.get('id', str(uuid.uuid4()))
+            msg_type = data.get("type")
+            msg_id = data.get("id", str(uuid.uuid4()))
 
-            if msg_type == 'ping':
-                await ws.send(json.dumps({
-                    'type': 'pong',
-                    'id': msg_id,
-                    'timestamp': datetime.now().isoformat()
-                }))
+            if msg_type == "ping":
+                await ws.send(
+                    json.dumps(
+                        {"type": "pong", "id": msg_id, "timestamp": datetime.now().isoformat()}
+                    )
+                )
 
-            elif msg_type == 'message':
-                self.metrics['messages_in'] += 1
+            elif msg_type == "message":
+                self.metrics["messages_in"] += 1
 
                 # Parse payload into UnifiedMessage
                 from tools.channels.models import UnifiedMessage
-                payload = data.get('payload', {})
+
+                payload = data.get("payload", {})
                 message = UnifiedMessage.from_dict(payload)
 
                 # Route through message pipeline
                 result = await self.router.route_inbound(message)
 
-                await ws.send(json.dumps({
-                    'type': 'ack',
-                    'id': msg_id,
-                    'result': result
-                }))
+                await ws.send(json.dumps({"type": "ack", "id": msg_id, "result": result}))
 
-            elif msg_type == 'subscribe':
-                channel = data.get('payload', {}).get('channel')
+            elif msg_type == "subscribe":
+                channel = data.get("payload", {}).get("channel")
                 if channel:
                     if channel not in self.subscriptions:
                         self.subscriptions[channel] = set()
                     self.subscriptions[channel].add(conn_id)
 
-                    await ws.send(json.dumps({
-                        'type': 'subscribed',
-                        'id': msg_id,
-                        'channel': channel
-                    }))
+                    await ws.send(
+                        json.dumps({"type": "subscribed", "id": msg_id, "channel": channel})
+                    )
 
-            elif msg_type == 'unsubscribe':
-                channel = data.get('payload', {}).get('channel')
+            elif msg_type == "unsubscribe":
+                channel = data.get("payload", {}).get("channel")
                 if channel and channel in self.subscriptions:
                     self.subscriptions[channel].discard(conn_id)
 
-                    await ws.send(json.dumps({
-                        'type': 'unsubscribed',
-                        'id': msg_id,
-                        'channel': channel
-                    }))
+                    await ws.send(
+                        json.dumps({"type": "unsubscribed", "id": msg_id, "channel": channel})
+                    )
 
-            elif msg_type == 'status':
-                await ws.send(json.dumps({
-                    'type': 'status',
-                    'id': msg_id,
-                    'status': self.health_check()
-                }))
+            elif msg_type == "status":
+                await ws.send(
+                    json.dumps({"type": "status", "id": msg_id, "status": self.health_check()})
+                )
 
-            elif msg_type == 'broadcast':
+            elif msg_type == "broadcast":
                 # Send message to all subscribers of a channel
-                channel = data.get('payload', {}).get('channel')
-                content = data.get('payload', {}).get('content')
+                channel = data.get("payload", {}).get("channel")
+                content = data.get("payload", {}).get("content")
 
                 if channel and content:
                     sent_count = await self.broadcast_to_channel(channel, content)
-                    await ws.send(json.dumps({
-                        'type': 'broadcast_result',
-                        'id': msg_id,
-                        'sent_count': sent_count
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {"type": "broadcast_result", "id": msg_id, "sent_count": sent_count}
+                        )
+                    )
 
             else:
-                await ws.send(json.dumps({
-                    'type': 'error',
-                    'id': msg_id,
-                    'error': f'unknown_message_type: {msg_type}'
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "id": msg_id,
+                            "error": f"unknown_message_type: {msg_type}",
+                        }
+                    )
+                )
 
         except json.JSONDecodeError:
-            self.metrics['errors'] += 1
-            await ws.send(json.dumps({
-                'type': 'error',
-                'error': 'invalid_json'
-            }))
+            self.metrics["errors"] += 1
+            await ws.send(json.dumps({"type": "error", "error": "invalid_json"}))
         except Exception as e:
-            self.metrics['errors'] += 1
-            await ws.send(json.dumps({
-                'type': 'error',
-                'error': str(e)
-            }))
+            self.metrics["errors"] += 1
+            await ws.send(json.dumps({"type": "error", "error": str(e)}))
 
-    async def broadcast_to_channel(self, channel: str, content: Dict[str, Any]) -> int:
+    async def broadcast_to_channel(self, channel: str, content: dict[str, Any]) -> int:
         """
         Broadcast a message to all subscribers of a channel.
 
@@ -380,20 +371,24 @@ class GatewayServer:
             ws = self.connections.get(conn_id)
             if ws:
                 try:
-                    await ws.send(json.dumps({
-                        'type': 'channel_message',
-                        'channel': channel,
-                        'content': content,
-                        'timestamp': datetime.now().isoformat()
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "channel_message",
+                                "channel": channel,
+                                "content": content,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+                    )
                     sent_count += 1
-                    self.metrics['messages_out'] += 1
+                    self.metrics["messages_out"] += 1
                 except Exception:
                     pass
 
         return sent_count
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """
         Return gateway health status.
 
@@ -403,23 +398,19 @@ class GatewayServer:
         uptime = self._get_uptime()
 
         return {
-            'status': 'healthy' if self.running else 'stopped',
-            'uptime_seconds': uptime,
-            'host': self.host,
-            'port': self.port,
-            'connections': {
-                'active': len(self.connections),
-                'total': self.metrics['connections_total']
+            "status": "healthy" if self.running else "stopped",
+            "uptime_seconds": uptime,
+            "host": self.host,
+            "port": self.port,
+            "connections": {
+                "active": len(self.connections),
+                "total": self.metrics["connections_total"],
             },
-            'subscriptions': {
-                channel: len(subscribers)
-                for channel, subscribers in self.subscriptions.items()
+            "subscriptions": {
+                channel: len(subscribers) for channel, subscribers in self.subscriptions.items()
             },
-            'adapters': {
-                name: {'status': 'registered'}
-                for name in self.router.adapters.keys()
-            },
-            'metrics': self.metrics
+            "adapters": {name: {"status": "registered"} for name in self.router.adapters.keys()},
+            "metrics": self.metrics,
         }
 
     def _get_uptime(self) -> int:
@@ -432,23 +423,24 @@ class GatewayServer:
         """Write status file for inter-process communication."""
         STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
         status = {
-            'running': self.running,
-            'host': self.host,
-            'port': self.port,
-            'pid': None,  # Could add os.getpid() if needed
-            'start_time': self.start_time.isoformat() if self.start_time else None
+            "running": self.running,
+            "host": self.host,
+            "port": self.port,
+            "pid": None,  # Could add os.getpid() if needed
+            "start_time": self.start_time.isoformat() if self.start_time else None,
         }
         try:
             import os
-            status['pid'] = os.getpid()
+
+            status["pid"] = os.getpid()
         except Exception:
             pass
 
-        with open(STATUS_FILE, 'w') as f:
+        with open(STATUS_FILE, "w") as f:
             json.dump(status, f)
 
 
-def get_server_status() -> Dict[str, Any]:
+def get_server_status() -> dict[str, Any]:
     """
     Get status of running gateway server.
 
@@ -456,20 +448,14 @@ def get_server_status() -> Dict[str, Any]:
         Dict with server status or error if not running
     """
     if not STATUS_FILE.exists():
-        return {
-            'running': False,
-            'error': 'Status file not found. Server may not be running.'
-        }
+        return {"running": False, "error": "Status file not found. Server may not be running."}
 
     try:
         with open(STATUS_FILE) as f:
             status = json.load(f)
         return status
     except Exception as e:
-        return {
-            'running': False,
-            'error': f'Could not read status: {e}'
-        }
+        return {"running": False, "error": f"Could not read status: {e}"}
 
 
 async def run_server(host: str, port: int) -> None:
@@ -498,33 +484,36 @@ async def run_server(host: str, port: int) -> None:
 # CLI Interface
 # =============================================================================
 
+
 def main():
-    parser = argparse.ArgumentParser(description='WebSocket Gateway Server')
-    parser.add_argument('--start', action='store_true', help='Start the gateway server')
-    parser.add_argument('--status', action='store_true', help='Get server status')
-    parser.add_argument('--health', action='store_true', help='Get health check')
-    parser.add_argument('--host', default=None, help=f'Host to bind to (default: {DEFAULT_HOST})')
-    parser.add_argument('--port', type=int, default=None, help=f'Port to listen on (default: {DEFAULT_PORT})')
+    parser = argparse.ArgumentParser(description="WebSocket Gateway Server")
+    parser.add_argument("--start", action="store_true", help="Start the gateway server")
+    parser.add_argument("--status", action="store_true", help="Get server status")
+    parser.add_argument("--health", action="store_true", help="Get health check")
+    parser.add_argument("--host", default=None, help=f"Host to bind to (default: {DEFAULT_HOST})")
+    parser.add_argument(
+        "--port", type=int, default=None, help=f"Port to listen on (default: {DEFAULT_PORT})"
+    )
 
     args = parser.parse_args()
 
     if args.start:
         config = load_config()
-        host = args.host or config.get('host', DEFAULT_HOST)
-        port = args.port or config.get('port', DEFAULT_PORT)
+        host = args.host or config.get("host", DEFAULT_HOST)
+        port = args.port or config.get("port", DEFAULT_PORT)
 
         print(f"Starting gateway on ws://{host}:{port}")
         asyncio.run(run_server(host, port))
 
     elif args.status:
         status = get_server_status()
-        print("OK" if status.get('running') else "STOPPED")
+        print("OK" if status.get("running") else "STOPPED")
         print(json.dumps(status, indent=2))
 
     elif args.health:
         # For health check, we need to connect to the running server
         status = get_server_status()
-        if not status.get('running'):
+        if not status.get("running"):
             print("ERROR: Server not running")
             print(json.dumps(status, indent=2))
             sys.exit(1)
@@ -533,19 +522,19 @@ def main():
         try:
             import websockets
 
-            host = status.get('host', DEFAULT_HOST)
-            port = status.get('port', DEFAULT_PORT)
+            host = status.get("host", DEFAULT_HOST)
+            port = status.get("port", DEFAULT_PORT)
 
             async def check_health():
                 uri = f"ws://{host}:{port}"
                 async with websockets.connect(uri) as ws:
-                    await ws.send(json.dumps({'type': 'status'}))
+                    await ws.send(json.dumps({"type": "status"}))
                     response = await ws.recv()
                     return json.loads(response)
 
             result = asyncio.run(check_health())
             print("OK")
-            print(json.dumps(result.get('status', result), indent=2))
+            print(json.dumps(result.get("status", result), indent=2))
 
         except ImportError:
             print("ERROR: websockets library required for health check")
@@ -558,5 +547,5 @@ def main():
         parser.print_help()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

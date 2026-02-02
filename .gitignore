@@ -39,6 +39,7 @@ env/lib/
 # Secrets & credentials (NEVER commit these)
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials.json
@@ -63,6 +64,13 @@ Thumbs.db
 
 # Memory logs (may contain sensitive conversation data)
 memory/logs/*.md
+
+# Node.js / Frontend
+node_modules/
+.next/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
 
 # Claude Code
 .claude/

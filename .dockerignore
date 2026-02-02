@@ -1,0 +1,69 @@
+# =============================================================================
+# Docker Ignore File
+# Files and directories to exclude from Docker build context
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+env
+.eggs
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Node.js (frontend has its own Dockerfile)
+node_modules
+.next
+.npm
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Documentation and temporary files
+.tmp
+*.md
+!README.md
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+*.pem
+*.key
+
+# Logs
+*.log
+logs
+
+# Data (mounted as volumes)
+data
+memory
+
+# Tests
+tests
+*_test.py
+test_*.py
+
+# Docker files (don't need inside container)
+Dockerfile*
+docker-compose*.yml
+.dockerignore

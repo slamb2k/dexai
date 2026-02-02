@@ -7,17 +7,18 @@ Provides endpoints for metrics and analytics:
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 from fastapi import APIRouter, Query
 
+from tools.dashboard.backend.database import aggregate_metrics, get_quick_stats
 from tools.dashboard.backend.models import (
-    QuickStats, MetricsSummary, TimeSeriesPoint,
-    TimeSeriesData, TimeSeriesRequest, TimeSeriesResponse
+    MetricsSummary,
+    QuickStats,
+    TimeSeriesData,
+    TimeSeriesPoint,
+    TimeSeriesResponse,
 )
-from tools.dashboard.backend.database import (
-    get_quick_stats, aggregate_metrics, get_metrics
-)
+
 
 router = APIRouter()
 
@@ -68,9 +69,7 @@ def period_to_granularity(period: str) -> str:
 
 
 @router.get("/summary", response_model=MetricsSummary)
-async def get_summary(
-    period: str = Query("24h", description="Summary period: 24h, 7d, 30d")
-):
+async def get_summary(period: str = Query("24h", description="Summary period: 24h, 7d, 30d")):
     """
     Get quick summary statistics for dashboard cards.
 
@@ -80,19 +79,15 @@ async def get_summary(
     stats_data = get_quick_stats()
 
     quick_stats = QuickStats(
-        tasks_today=stats_data.get('tasks_today', 0),
-        messages_today=stats_data.get('messages_today', 0),
-        cost_today_usd=stats_data.get('cost_today_usd', 0.0),
-        active_channels=stats_data.get('active_channels', 0),
-        avg_response_time_ms=stats_data.get('avg_response_time_ms', 0.0),
-        error_rate_percent=stats_data.get('error_rate_percent', 0.0)
+        tasks_today=stats_data.get("tasks_today", 0),
+        messages_today=stats_data.get("messages_today", 0),
+        cost_today_usd=stats_data.get("cost_today_usd", 0.0),
+        active_channels=stats_data.get("active_channels", 0),
+        avg_response_time_ms=stats_data.get("avg_response_time_ms", 0.0),
+        error_rate_percent=stats_data.get("error_rate_percent", 0.0),
     )
 
-    return MetricsSummary(
-        quick_stats=quick_stats,
-        period=period,
-        generated_at=datetime.now()
-    )
+    return MetricsSummary(quick_stats=quick_stats, period=period, generated_at=datetime.now())
 
 
 @router.get("/timeseries", response_model=TimeSeriesResponse)
@@ -100,7 +95,7 @@ async def get_timeseries(
     metrics: str = Query("tasks,messages,cost", description="Comma-separated metric names"),
     period: str = Query("7d", description="Time period: 24h, 7d, 30d, 90d"),
     aggregation: str = Query("sum", description="Aggregation: sum, avg, max, min"),
-    granularity: Optional[str] = Query(None, description="Data granularity: 1h, 1d")
+    granularity: str | None = Query(None, description="Data granularity: 1h, 1d"),
 ):
     """
     Get time series data for charts.
@@ -109,7 +104,7 @@ async def get_timeseries(
     Returns aggregated data points based on the specified period and granularity.
     """
     # Parse metric names
-    metric_names = [m.strip() for m in metrics.split(',')]
+    metric_names = [m.strip() for m in metrics.split(",")]
 
     # Parse period
     start_date, end_date = parse_period(period)
@@ -120,13 +115,13 @@ async def get_timeseries(
 
     # Map friendly metric names to database metric names
     metric_map = {
-        'tasks': 'task_count',
-        'messages': 'message_count',
-        'cost': 'api_cost_usd',
-        'errors': 'error_count',
-        'response_time': 'response_time_ms',
-        'tokens_in': 'tokens_input',
-        'tokens_out': 'tokens_output'
+        "tasks": "task_count",
+        "messages": "message_count",
+        "cost": "api_cost_usd",
+        "errors": "error_count",
+        "response_time": "response_time_ms",
+        "tokens_in": "tokens_input",
+        "tokens_out": "tokens_output",
     }
 
     # Fetch data for each metric
@@ -140,27 +135,29 @@ async def get_timeseries(
             aggregation=aggregation,
             start_date=start_date,
             end_date=end_date,
-            group_by_interval=granularity
+            group_by_interval=granularity,
         )
 
         # Convert to TimeSeriesPoint objects
         points = []
         for point in data_points:
             try:
-                if isinstance(point['timestamp'], str):
+                if isinstance(point["timestamp"], str):
                     # Handle different date formats
-                    if len(point['timestamp']) == 7:  # Week format: YYYY-WW
-                        ts = datetime.strptime(point['timestamp'] + '-1', '%Y-%W-%w')
+                    if len(point["timestamp"]) == 7:  # Week format: YYYY-WW
+                        ts = datetime.strptime(point["timestamp"] + "-1", "%Y-%W-%w")
                     else:
-                        ts = datetime.fromisoformat(point['timestamp'])
+                        ts = datetime.fromisoformat(point["timestamp"])
                 else:
-                    ts = point['timestamp']
+                    ts = point["timestamp"]
 
-                points.append(TimeSeriesPoint(
-                    timestamp=ts,
-                    value=float(point['value']) if point['value'] else 0.0,
-                    label=None
-                ))
+                points.append(
+                    TimeSeriesPoint(
+                        timestamp=ts,
+                        value=float(point["value"]) if point["value"] else 0.0,
+                        label=None,
+                    )
+                )
             except (ValueError, TypeError):
                 continue
 
@@ -169,35 +166,23 @@ async def get_timeseries(
             # Generate empty time points for the period
             current = start_date
             while current <= end_date:
-                points.append(TimeSeriesPoint(
-                    timestamp=current,
-                    value=0.0,
-                    label=None
-                ))
+                points.append(TimeSeriesPoint(timestamp=current, value=0.0, label=None))
                 if granularity == "1h":
                     current += timedelta(hours=1)
                 else:
                     current += timedelta(days=1)
 
-        series_list.append(TimeSeriesData(
-            metric_name=metric_name,
-            points=points,
-            period=period,
-            aggregation=aggregation
-        ))
+        series_list.append(
+            TimeSeriesData(
+                metric_name=metric_name, points=points, period=period, aggregation=aggregation
+            )
+        )
 
-    return TimeSeriesResponse(
-        series=series_list,
-        period=period
-    )
+    return TimeSeriesResponse(series=series_list, period=period)
 
 
 @router.post("/record")
-async def record_metric(
-    metric_name: str,
-    value: float,
-    labels: Optional[str] = None
-):
+async def record_metric(metric_name: str, value: float, labels: str | None = None):
     """
     Record a metric value.
 
@@ -209,26 +194,20 @@ async def record_metric(
     labels_dict = None
     if labels:
         import json
+
         try:
             labels_dict = json.loads(labels)
         except json.JSONDecodeError:
             labels_dict = {"raw": labels}
 
-    metric_id = db_record(
-        metric_name=metric_name,
-        metric_value=value,
-        labels=labels_dict
-    )
+    metric_id = db_record(metric_name=metric_name, metric_value=value, labels=labels_dict)
 
     # Broadcast metrics update via WebSocket
     try:
         from tools.dashboard.backend.websocket import broadcast_metrics_update
+
         await broadcast_metrics_update()
     except Exception:
         pass
 
-    return {
-        "success": True,
-        "metric_id": metric_id,
-        "message": "Metric recorded"
-    }
+    return {"success": True, "metric_id": metric_id, "message": "Metric recorded"}

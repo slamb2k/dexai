@@ -21,15 +21,13 @@ Dependencies:
     - shutil (stdlib)
 """
 
-import os
-import sys
-import json
-import sqlite3
-import shutil
-import hashlib
 import argparse
-from datetime import datetime
+import hashlib
+import shutil
+import sqlite3
+import sys
 from pathlib import Path
+
 
 # Paths
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "memory.db"
@@ -58,17 +56,17 @@ def check_schema_version(conn) -> str:
         WHERE type='table' AND name='memory_entries'
     """)
     if not cursor.fetchone():
-        return 'empty'
+        return "empty"
 
     # Check column count
     cursor.execute("PRAGMA table_info(memory_entries)")
     columns = cursor.fetchall()
     column_names = [col[1] for col in columns]
 
-    if 'content_hash' in column_names and 'is_active' in column_names:
-        return 'new'
+    if "content_hash" in column_names and "is_active" in column_names:
+        return "new"
     else:
-        return 'old'
+        return "old"
 
 
 def backup_database():
@@ -87,7 +85,7 @@ def rollback_database():
         return False
 
     shutil.copy2(BACKUP_PATH, DB_PATH)
-    print(f"✓ Database restored from backup")
+    print("✓ Database restored from backup")
     return True
 
 
@@ -119,7 +117,7 @@ def migrate_old_to_new(conn, dry_run: bool = False):
     print("✓ Renamed old table to memory_entries_old")
 
     # Create new schema
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE memory_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             type TEXT NOT NULL CHECK(type IN ('fact', 'preference', 'event', 'insight', 'task', 'relationship')),
@@ -139,7 +137,7 @@ def migrate_old_to_new(conn, dry_run: bool = False):
             expires_at DATETIME,
             is_active INTEGER DEFAULT 1
         )
-    ''')
+    """)
     print("✓ Created new memory_entries table")
 
     # Migrate data with defaults
@@ -149,14 +147,14 @@ def migrate_old_to_new(conn, dry_run: bool = False):
 
         # Map old entry_type to new type (handle any naming differences)
         type_mapping = {
-            'fact': 'fact',
-            'preference': 'preference',
-            'event': 'event',
-            'insight': 'insight',
-            'task': 'task',
-            'relationship': 'relationship'
+            "fact": "fact",
+            "preference": "preference",
+            "event": "event",
+            "insight": "insight",
+            "task": "task",
+            "relationship": "relationship",
         }
-        new_type = type_mapping.get(entry_type, 'fact')
+        new_type = type_mapping.get(entry_type, "fact")
 
         # Compute content hash
         content_hash = compute_content_hash(content)
@@ -165,14 +163,17 @@ def migrate_old_to_new(conn, dry_run: bool = False):
         importance = max(1, min(10, importance or 5))
 
         try:
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO memory_entries
                 (id, type, content, content_hash, source, confidence, importance,
                  created_at, updated_at, is_active)
                 VALUES (?, ?, ?, ?, 'session', 1.0, ?, ?, ?, 1)
-            ''', (old_id, new_type, content, content_hash, importance, created_at, created_at))
+            """,
+                (old_id, new_type, content, content_hash, importance, created_at, created_at),
+            )
             migrated += 1
-        except sqlite3.IntegrityError as e:
+        except sqlite3.IntegrityError:
             # Handle duplicate content hash (shouldn't happen normally)
             print(f"  Warning: Skipped entry {old_id} due to duplicate content hash")
 
@@ -194,7 +195,7 @@ def create_auxiliary_tables(conn, dry_run: bool = False):
         return
 
     # Daily logs table
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date DATE NOT NULL UNIQUE,
@@ -205,11 +206,11 @@ def create_auxiliary_tables(conn, dry_run: bool = False):
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
     print("✓ Created daily_logs table")
 
     # Memory access log
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS memory_access_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             memory_id INTEGER,
@@ -219,7 +220,7 @@ def create_auxiliary_tables(conn, dry_run: bool = False):
             session_id TEXT,
             FOREIGN KEY (memory_id) REFERENCES memory_entries(id)
         )
-    ''')
+    """)
     print("✓ Created memory_access_log table")
 
     conn.commit()
@@ -230,14 +231,14 @@ def create_indexes(conn, dry_run: bool = False):
     cursor = conn.cursor()
 
     indexes = [
-        ('idx_memory_type', 'memory_entries(type)'),
-        ('idx_memory_source', 'memory_entries(source)'),
-        ('idx_memory_created', 'memory_entries(created_at)'),
-        ('idx_memory_active', 'memory_entries(is_active)'),
-        ('idx_memory_importance', 'memory_entries(importance)'),
-        ('idx_daily_logs_date', 'daily_logs(date)'),
-        ('idx_access_log_memory', 'memory_access_log(memory_id)'),
-        ('idx_access_log_time', 'memory_access_log(accessed_at)')
+        ("idx_memory_type", "memory_entries(type)"),
+        ("idx_memory_source", "memory_entries(source)"),
+        ("idx_memory_created", "memory_entries(created_at)"),
+        ("idx_memory_active", "memory_entries(is_active)"),
+        ("idx_memory_importance", "memory_entries(importance)"),
+        ("idx_daily_logs_date", "daily_logs(date)"),
+        ("idx_access_log_memory", "memory_access_log(memory_id)"),
+        ("idx_access_log_time", "memory_access_log(accessed_at)"),
     ]
 
     if dry_run:
@@ -246,7 +247,7 @@ def create_indexes(conn, dry_run: bool = False):
 
     for idx_name, idx_def in indexes:
         try:
-            cursor.execute(f'CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_def}')
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_def}")
         except sqlite3.OperationalError:
             pass  # Index might already exist
 
@@ -262,9 +263,23 @@ def verify_migration(conn):
     cursor.execute("PRAGMA table_info(memory_entries)")
     columns = cursor.fetchall()
     expected_columns = [
-        'id', 'type', 'content', 'content_hash', 'source', 'confidence',
-        'importance', 'created_at', 'updated_at', 'last_accessed', 'access_count',
-        'embedding', 'embedding_model', 'tags', 'context', 'expires_at', 'is_active'
+        "id",
+        "type",
+        "content",
+        "content_hash",
+        "source",
+        "confidence",
+        "importance",
+        "created_at",
+        "updated_at",
+        "last_accessed",
+        "access_count",
+        "embedding",
+        "embedding_model",
+        "tags",
+        "context",
+        "expires_at",
+        "is_active",
     ]
 
     actual_columns = [col[1] for col in columns]
@@ -283,7 +298,7 @@ def verify_migration(conn):
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = [row[0] for row in cursor.fetchall()]
 
-    for table in ['daily_logs', 'memory_access_log']:
+    for table in ["daily_logs", "memory_access_log"]:
         if table in tables:
             print(f"✓ {table} table exists")
         else:
@@ -294,13 +309,14 @@ def verify_migration(conn):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Memory Database Migration Tool')
-    parser.add_argument('--dry-run', action='store_true',
-                       help='Show what would happen without making changes')
-    parser.add_argument('--rollback', action='store_true',
-                       help='Restore database from backup')
-    parser.add_argument('--force', action='store_true',
-                       help='Force migration even if schema appears current')
+    parser = argparse.ArgumentParser(description="Memory Database Migration Tool")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would happen without making changes"
+    )
+    parser.add_argument("--rollback", action="store_true", help="Restore database from backup")
+    parser.add_argument(
+        "--force", action="store_true", help="Force migration even if schema appears current"
+    )
 
     args = parser.parse_args()
 
@@ -328,7 +344,7 @@ def main():
         cursor = conn.cursor()
 
         # Create new schema directly
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE memory_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('fact', 'preference', 'event', 'insight', 'task', 'relationship')),
@@ -348,7 +364,7 @@ def main():
                 expires_at DATETIME,
                 is_active INTEGER DEFAULT 1
             )
-        ''')
+        """)
         print("✓ Created memory_entries table")
 
         create_auxiliary_tables(conn)
@@ -365,16 +381,16 @@ def main():
     version = check_schema_version(conn)
     print(f"Current schema version: {version}")
 
-    if version == 'new' and not args.force:
+    if version == "new" and not args.force:
         print("Database already has the new schema. Nothing to do.")
         print("Use --force to re-run migration anyway.")
         conn.close()
         return
 
-    if version == 'empty':
+    if version == "empty":
         print("Database has no tables. Creating fresh schema...")
         cursor = conn.cursor()
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE memory_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL CHECK(type IN ('fact', 'preference', 'event', 'insight', 'task', 'relationship')),
@@ -394,7 +410,7 @@ def main():
                 expires_at DATETIME,
                 is_active INTEGER DEFAULT 1
             )
-        ''')
+        """)
         create_auxiliary_tables(conn, args.dry_run)
         create_indexes(conn, args.dry_run)
         conn.commit()

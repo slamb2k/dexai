@@ -22,17 +22,17 @@ Output:
 import argparse
 import json
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from . import DB_PATH, ENERGY_LEVELS
-from .manager import get_connection, get_step, get_task, row_to_dict
+from . import ENERGY_LEVELS
+from .manager import get_connection, row_to_dict
 
 
 def get_current_step(
     user_id: str,
-    task_id: Optional[str] = None,
-    energy_level: Optional[str] = None,
-) -> Dict[str, Any]:
+    task_id: str | None = None,
+    energy_level: str | None = None,
+) -> dict[str, Any]:
     """
     Get the single next action for a user.
 
@@ -55,10 +55,13 @@ def get_current_step(
 
     if task_id:
         # Get specific task
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM tasks
             WHERE id = ? AND user_id = ? AND status IN ('pending', 'in_progress')
-        """, (task_id, user_id))
+        """,
+            (task_id, user_id),
+        )
         task = row_to_dict(cursor.fetchone())
 
         if not task:
@@ -67,7 +70,7 @@ def get_current_step(
     else:
         # Find highest priority active task
         conditions = ["user_id = ?", "status IN ('pending', 'in_progress')"]
-        params: List[Any] = [user_id]
+        params: list[Any] = [user_id]
 
         if energy_level:
             conditions.append("(energy_level = ? OR energy_level IS NULL)")
@@ -75,7 +78,8 @@ def get_current_step(
 
         where_clause = " AND ".join(conditions)
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT * FROM tasks
             WHERE {where_clause}
             ORDER BY
@@ -83,7 +87,9 @@ def get_current_step(
                 priority DESC,
                 created_at ASC
             LIMIT 1
-        """, params)
+        """,
+            params,
+        )
         task = row_to_dict(cursor.fetchone())
 
         if not task:
@@ -102,12 +108,15 @@ def get_current_step(
         step = row_to_dict(cursor.fetchone())
     else:
         # Get first pending step
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM task_steps
             WHERE task_id = ? AND status = 'pending'
             ORDER BY step_number
             LIMIT 1
-        """, (task["id"],))
+        """,
+            (task["id"],),
+        )
         step = row_to_dict(cursor.fetchone())
 
     if not step:
@@ -124,12 +133,15 @@ def get_current_step(
         }
 
     # Get friction for this step (pre-solved info)
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT * FROM task_friction
         WHERE (step_id = ? OR task_id = ?)
         AND resolved = 0
         ORDER BY created_at
-    """, (step["id"], task["id"]))
+    """,
+        (step["id"], task["id"]),
+    )
     friction_points = [row_to_dict(row) for row in cursor.fetchall()]
 
     conn.close()
@@ -174,8 +186,8 @@ def get_current_step(
 
 def format_step_instruction(
     step_description: str,
-    friction_pre_solved: Optional[str] = None,
-    action_verb: Optional[str] = None,
+    friction_pre_solved: str | None = None,
+    action_verb: str | None = None,
 ) -> str:
     """
     Format a step as a clean, actionable instruction.
@@ -202,7 +214,7 @@ def format_step_instruction(
     return instruction
 
 
-def get_next_step_preview(user_id: str, task_id: str) -> Dict[str, Any]:
+def get_next_step_preview(user_id: str, task_id: str) -> dict[str, Any]:
     """
     Preview what the next step will be after current is done.
 
@@ -219,10 +231,13 @@ def get_next_step_preview(user_id: str, task_id: str) -> Dict[str, Any]:
     cursor = conn.cursor()
 
     # Get task and current step
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT * FROM tasks
         WHERE id = ? AND user_id = ?
-    """, (task_id, user_id))
+    """,
+        (task_id, user_id),
+    )
     task = row_to_dict(cursor.fetchone())
 
     if not task:
@@ -232,18 +247,23 @@ def get_next_step_preview(user_id: str, task_id: str) -> Dict[str, Any]:
     # Get current step number
     current_step_num = 0
     if task.get("current_step_id"):
-        cursor.execute("SELECT step_number FROM task_steps WHERE id = ?", (task["current_step_id"],))
+        cursor.execute(
+            "SELECT step_number FROM task_steps WHERE id = ?", (task["current_step_id"],)
+        )
         row = cursor.fetchone()
         if row:
             current_step_num = row["step_number"]
 
     # Get next step
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT * FROM task_steps
         WHERE task_id = ? AND step_number > ? AND status = 'pending'
         ORDER BY step_number
         LIMIT 1
-    """, (task_id, current_step_num))
+    """,
+        (task_id, current_step_num),
+    )
     next_step = row_to_dict(cursor.fetchone())
 
     conn.close()
@@ -270,7 +290,7 @@ def get_next_step_preview(user_id: str, task_id: str) -> Dict[str, Any]:
     }
 
 
-def get_task_progress(user_id: str, task_id: str) -> Dict[str, Any]:
+def get_task_progress(user_id: str, task_id: str) -> dict[str, Any]:
     """
     Get progress on a task (completed vs total steps).
 
@@ -296,13 +316,16 @@ def get_task_progress(user_id: str, task_id: str) -> Dict[str, Any]:
         return {"success": False, "error": "Task not found"}
 
     # Count steps
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT
             COUNT(*) as total,
             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
         FROM task_steps
         WHERE task_id = ?
-    """, (task_id,))
+    """,
+        (task_id,),
+    )
     counts = cursor.fetchone()
 
     conn.close()
