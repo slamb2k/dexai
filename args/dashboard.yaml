@@ -1,0 +1,79 @@
+# Dashboard Configuration
+# Settings for the web-based management interface
+
+# =============================================================================
+# Server Settings
+# =============================================================================
+dashboard:
+  enabled: true
+  port: 3000         # Frontend port (Next.js)
+  api_port: 8080     # Backend port (FastAPI)
+  host: "127.0.0.1"  # Bind address (use 0.0.0.0 for external access)
+
+  # =============================================================================
+  # Feature Flags
+  # =============================================================================
+  features:
+    debug_page: false        # Enable debug tools (admin only)
+    metrics_export: false    # Enable metrics CSV/JSON export
+    audit_export: true       # Enable audit log export
+    real_time_updates: true  # Enable WebSocket live updates
+    task_history: true       # Show task execution history
+    cost_tracking: true      # Display API cost estimates
+
+  # =============================================================================
+  # UI Defaults
+  # =============================================================================
+  defaults:
+    theme: "dark"              # dark | light (light not implemented in v1)
+    sidebar_collapsed: false   # Start with sidebar collapsed
+    activity_limit: 100        # Max activity items to load
+    metrics_timeframe: "7d"    # Default chart period: 24h, 7d, 30d
+    refresh_interval: 30       # Auto-refresh interval (seconds, 0 = disabled)
+    page_size: 20              # Default pagination size
+
+  # =============================================================================
+  # Security
+  # =============================================================================
+  security:
+    require_auth: true                     # Require authentication
+    session_cookie_name: "dexai_session"   # Cookie name for sessions
+    allowed_origins:                        # CORS allowed origins
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+    admin_roles:                           # Roles with debug access
+      - "admin"
+      - "owner"
+    session_check_interval: 60             # Seconds between session validation
+
+  # =============================================================================
+  # WebSocket
+  # =============================================================================
+  websocket:
+    enabled: true
+    ping_interval: 30          # Keep-alive ping interval (seconds)
+    ping_timeout: 10           # Disconnect if no pong within (seconds)
+    max_connections: 100       # Maximum concurrent WebSocket connections
+    broadcast_batch_ms: 100    # Batch events for this duration before broadcast
+
+  # =============================================================================
+  # Data Retention
+  # =============================================================================
+  retention:
+    events_days: 30            # Dashboard events retention
+    metrics_days: 90           # Metrics data retention
+    activity_limit: 10000      # Max activity entries to keep
+
+  # =============================================================================
+  # Avatar States (for reference)
+  # =============================================================================
+  # These are the valid Dex avatar states:
+  # - idle: Waiting for input (blue dim)
+  # - listening: Processing user message (blue medium)
+  # - thinking: LLM inference in progress (cyan rotating)
+  # - working: Executing task/tool (blue bright)
+  # - success: Task completed (green flash)
+  # - error: Something went wrong (red pulse)
+  # - sleeping: Outside active hours (blue very dim)
+  # - hyperfocus: Protecting user flow (purple shield)
+  # - waiting: Waiting for external response (amber)
