@@ -1,0 +1,170 @@
+# =============================================================================
+# System Access Configuration
+# =============================================================================
+# Controls how the agent interacts with the underlying system
+# All changes require restart to take effect
+
+# -----------------------------------------------------------------------------
+# Sandbox Executor
+# Secure command execution with allowlists and resource limits
+# -----------------------------------------------------------------------------
+executor:
+  enabled: true
+  default_timeout: 60          # Default command timeout in seconds
+  max_timeout: 300             # Maximum allowed timeout (5 minutes)
+
+  # Commands allowed to run (extend default list, don't replace)
+  # The base allowlist includes: ls, cat, grep, python3, git, curl, etc.
+  allowed_commands:
+    - python3
+    - node
+    - git
+    - curl
+    - jq                       # JSON processor
+    - yq                       # YAML processor
+
+  # Resource limits for executed processes
+  limits:
+    memory_mb: 512             # Max memory per process
+    cpu_percent: 50            # CPU throttling (nice priority)
+
+  # Default working directory for commands
+  default_working_dir: "~/addulting/workspace"
+
+# -----------------------------------------------------------------------------
+# File Operations
+# Secure file read/write sandboxed to approved directories
+# -----------------------------------------------------------------------------
+fileops:
+  enabled: true
+
+  # Directories where file operations are allowed
+  # Paths are expanded (~ = home directory)
+  approved_dirs:
+    - "~/addulting/workspace"   # Main workspace
+    - "~/addulting/.tmp"        # Temporary/scratch files
+    - "/tmp/addulting"          # System temp area
+
+  # Size limits in bytes
+  max_read_size: 10485760       # 10MB max file read
+  max_write_size: 10485760      # 10MB max file write
+
+  # Allow access to hidden files (starting with .)
+  # WARNING: Enabling this may expose sensitive files
+  allow_hidden: false
+
+  # Permission strings required for each operation
+  permissions:
+    read: "files:read"
+    write: "files:write"
+    delete: "files:delete"
+
+# -----------------------------------------------------------------------------
+# Browser Automation
+# Playwright-based web automation with domain controls
+# -----------------------------------------------------------------------------
+browser:
+  enabled: true
+  headless: true               # Run without visible window
+
+  # Timeouts in milliseconds
+  timeout: 30000               # 30 seconds default
+
+  # Viewport size for screenshots
+  viewport:
+    width: 1280
+    height: 720
+
+  # User agent string
+  user_agent: "AddultingBot/1.0 (Browser Automation)"
+
+  # Domains allowed for navigation
+  # Wildcards supported: *.example.com matches sub.example.com
+  allowed_domains:
+    - "*.google.com"
+    - "*.github.com"
+    - "*.stackoverflow.com"
+    - "*.wikipedia.org"
+    - "*.python.org"
+    - "*.mozilla.org"
+    - "*.w3.org"
+    - "*.readthedocs.io"
+    - "*.pypi.org"
+    - "*.npmjs.com"
+    - "example.com"
+
+  # Domains that are always blocked
+  blocked_domains:
+    - "*.onion"                # Tor hidden services
+    - "localhost"
+    - "127.0.0.1"
+    - "0.0.0.0"
+    - "*.local"
+    - "*.internal"
+
+  # Permission strings
+  permissions:
+    navigate: "browser:navigate"
+    screenshot: "browser:screenshot"
+    pdf: "browser:pdf"
+    extract: "browser:extract"
+
+# -----------------------------------------------------------------------------
+# Network Client
+# HTTP client with domain allowlist and SSL enforcement
+# -----------------------------------------------------------------------------
+network:
+  enabled: true
+
+  # Request settings
+  timeout: 30                  # Seconds
+  max_response_size: 10485760  # 10MB max response
+
+  # SSL verification (ALWAYS true, cannot be disabled)
+  ssl_verify: true
+
+  # Block private/internal IP addresses
+  block_private_ips: true
+
+  # Domains allowed for requests
+  allowed_domains:
+    - "api.github.com"
+    - "api.openai.com"
+    - "api.anthropic.com"
+    - "*.googleapis.com"
+    - "api.together.ai"
+    - "huggingface.co"
+    - "*.huggingface.co"
+
+  # Domains/patterns always blocked
+  blocked_domains:
+    - "localhost"
+    - "127.0.0.1"
+    - "0.0.0.0"
+    - "::1"
+    - "*.local"
+    - "*.internal"
+    - "*.localhost"
+    - "169.254.*"              # AWS/GCP metadata
+    - "metadata.google.internal"
+    - "*.onion"
+    - "*.i2p"
+
+  # Rate limiting per domain
+  rate_limit:
+    requests_per_minute: 60
+    burst: 10
+
+  # Permission strings
+  permissions:
+    request: "network:request"
+
+# -----------------------------------------------------------------------------
+# Security Notes
+# -----------------------------------------------------------------------------
+# - All operations are logged to the audit trail
+# - Path traversal (..) is blocked everywhere
+# - Shell metacharacters are blocked in executor
+# - SSL verification cannot be disabled for network requests
+# - Private IPs (10.x, 172.16-31.x, 192.168.x) are blocked
+# - Sensitive files (.env, *.pem, id_rsa) are always blocked
