@@ -1,0 +1,62 @@
+# =============================================================================
+# Setup Wizard Configuration
+# =============================================================================
+# Controls the installation wizard behavior and defaults.
+
+setup:
+  # Default values for new users (can be overridden during setup)
+  defaults:
+    timezone: "auto"  # "auto" attempts detection, or specify like "America/New_York"
+    active_hours_start: "09:00"
+    active_hours_end: "22:00"
+    notification_style: "gentle"  # gentle, normal, urgent-only
+    model: "claude-sonnet"  # Default LLM model
+
+  # Channel-specific settings
+  channels:
+    telegram:
+      recommended: true  # Show as "(Recommended)" in UI
+      instructions_url: "https://t.me/BotFather"
+      token_prefix: ""  # No validation prefix required
+
+    discord:
+      recommended: false
+      instructions_url: "https://discord.com/developers/applications"
+      token_prefix: ""
+
+    slack:
+      recommended: false
+      instructions_url: "https://api.slack.com/apps"
+      needs_app_token: true  # Slack requires both bot_token and app_token
+      bot_token_prefix: "xoxb-"
+      app_token_prefix: "xapp-"
+
+  # Progress persistence
+  persistence:
+    state_file: "data/setup_state.json"
+    completion_flag: "data/setup_complete.flag"
+    auto_save: true  # Save state after each step
+
+  # UI settings
+  ui:
+    show_skip_option: true  # Allow skipping setup entirely
+    show_progress_bar: true
+    animation_speed: "normal"  # slow, normal, fast
+
+  # Validation settings
+  validation:
+    test_channel_connection: true  # Require successful connection test
+    verify_api_key: true  # Verify API key before accepting
+    allow_skip_api_key: true  # Allow proceeding without API key
+
+  # Post-setup actions
+  completion:
+    send_test_message: true  # Send welcome message through configured channel
+    open_dashboard: false  # Open dashboard after setup (if available)
+    show_tips: true  # Show usage tips on completion
+
+# =============================================================================
+# First-run detection
+# =============================================================================
+# The setup wizard checks for setup_complete.flag to determine if setup is needed.
+# Delete this file to re-trigger setup.
