@@ -1,0 +1,25 @@
+#!/bin/bash
+# Pre-push hook: Prevent direct pushes to main branch
+# Install: git config core.hooksPath .githooks
+
+protected_branch='main'
+current_branch=$(git symbolic-ref HEAD | sed -e 's,.*/\(.*\),\1,')
+
+while read local_ref local_sha remote_ref remote_sha
+do
+    if [[ "$remote_ref" == *"$protected_branch"* ]]; then
+        echo "🚫 Direct push to '$protected_branch' is not allowed."
+        echo ""
+        echo "Please follow the Git workflow:"
+        echo "  1. Create a feature branch: git checkout -b feature/your-feature"
+        echo "  2. Make your changes and commit"
+        echo "  3. Push to feature branch: git push -u origin feature/your-feature"
+        echo "  4. Create a PR on GitHub"
+        echo "  5. Merge via PR after review"
+        echo ""
+        echo "To bypass (emergency only): git push --no-verify"
+        exit 1
+    fi
+done
+
+exit 0
