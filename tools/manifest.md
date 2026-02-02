@@ -45,6 +45,17 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
+## System Tools (`tools/system/`)
+
+| Tool | Description |
+|------|-------------|
+| `executor.py` | Sandboxed command execution with allowlists, timeouts, and resource limits |
+| `fileops.py` | Secure file read/write/delete sandboxed to approved directories |
+| `browser.py` | Playwright-based web automation with domain controls and isolated profiles |
+| `network.py` | HTTP client with domain allowlist, SSL enforcement, and private IP blocking |
+
+---
+
 ## Shell Scripts (`scripts/`)
 
 | Script | Description |
