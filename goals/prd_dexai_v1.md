@@ -247,6 +247,7 @@ Because: It's built around how ADHD brains actually work
 | 6 | Learning | ✅ Complete | Energy patterns, personalization |
 | 7 | Dashboard | ✅ Complete | Web-based management interface |
 | 8 | Installation | ✅ Complete | Guided setup wizard (web + TUI) |
+| 9 | CI/CD & Testing | 🔜 In Progress | GitHub Actions, pytest, Vitest |
 
 ### 6.2 Phase 0: Foundation (COMPLETE)
 
@@ -402,6 +403,33 @@ Because: It's built around how ADHD brains actually work
 
 **Technology Stack:** Textual (TUI), Next.js (web), existing channel adapters
 
+### 6.11 Phase 9: CI/CD & Testing (IN PROGRESS)
+
+**Status:** 🔜 In Progress
+
+**Objective:** Ensure code quality and prevent regressions through automated testing and continuous integration.
+
+> **Full specification:** `goals/phase9_ci_testing.md`
+
+| Feature | Tool | Status |
+|---------|------|--------|
+| Python Project Config | `pyproject.toml` | 🔜 |
+| GitHub Actions CI | `.github/workflows/ci.yml` | 🔜 |
+| Pytest Infrastructure | `tests/conftest.py` | 🔜 |
+| Security Tests | `tests/unit/security/*.py` | 🔜 |
+| ADHD Tool Tests | `tests/unit/adhd/*.py` | 🔜 |
+| Task Engine Tests | `tests/unit/tasks/*.py` | 🔜 |
+| Memory Tests | `tests/unit/memory/*.py` | 🔜 |
+| Frontend Tests | `frontend/__tests__/*.tsx` | 🔜 |
+
+**Design Philosophy:**
+- Test critical paths first (security, ADHD communication, task engine)
+- Use fixtures for database isolation
+- Parallel test execution where possible
+- Coverage targets: >80% for critical modules
+
+**Technology Stack:** pytest, ruff, mypy, Vitest, GitHub Actions
+
 ---
 
 ## 7. Technical Architecture
@@ -510,9 +538,10 @@ class Commitment:
 ├── Feb 02: Phase 5 Complete (Task Engine) ✅
 ├── Feb 02: Phase 6 Complete (Learning) ✅
 ├── Feb 02: Phase 7 Complete (Web Dashboard) ✅
-└── Feb 02: Phase 8 Complete (Guided Installation) ✅
+├── Feb 02: Phase 8 Complete (Guided Installation) ✅
+└── Feb 02: Phase 9 In Progress (CI/CD & Testing) 🔜
 
-ALL PHASES COMPLETE - Ready for integration testing
+Phases 0-8 COMPLETE - Phase 9 adds continuous integration and test coverage
 ```
 
 ### 8.2 Next Steps
