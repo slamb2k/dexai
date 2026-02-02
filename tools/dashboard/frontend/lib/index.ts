@@ -19,7 +19,6 @@ export {
   useActivityStore,
   useMetricsStore,
   useTasksStore,
-  useSettingsStore,
   useToastStore,
   type Toast,
 } from './store';
