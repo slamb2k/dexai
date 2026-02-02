@@ -10,8 +10,7 @@ Tests the complete task lifecycle:
 These tests ensure the ADHD task engine works end-to-end.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -121,9 +120,11 @@ class TestTaskCreationFlow:
         assert result["data"]["total_steps"] >= 1
 
         # Verify the first step was set correctly
-        from tools.tasks.manager import get_task
 
-        with patch("tools.tasks.manager.DB_PATH", task_databases.get_connection().execute("SELECT 1").connection):
+        with patch(
+            "tools.tasks.manager.DB_PATH",
+            task_databases.get_connection().execute("SELECT 1").connection,
+        ):
             pass
 
         task_result = task_databases.get_task(result["data"]["task_id"])
@@ -149,10 +150,10 @@ class TestStepCompletionFlow:
 
         step1 = manager.add_step(task_id, 1, "First step")
         step2 = manager.add_step(task_id, 2, "Second step")
-        step3 = manager.add_step(task_id, 3, "Third step")
+        manager.add_step(task_id, 3, "Third step")
 
         step1_id = step1["data"]["id"]
-        step2_id = step2["data"]["id"]
+        step2["data"]["id"]
 
         # Set current step to first
         manager.update_task(task_id, current_step_id=step1_id)
@@ -271,7 +272,7 @@ class TestTaskCommitmentsIntegration:
 
     def test_create_commitment_from_task_context(self, commitment_database):
         """Commitments can be created alongside tasks."""
-        commitments, db_path = commitment_database
+        commitments, _db_path = commitment_database
 
         # Add a commitment (as might happen when extracting from conversation)
         result = commitments.add_commitment(
@@ -288,7 +289,7 @@ class TestTaskCommitmentsIntegration:
 
     def test_list_commitments_grouped_by_person(self, commitment_database):
         """Commitments should group by target person."""
-        commitments, db_path = commitment_database
+        commitments, _db_path = commitment_database
 
         # Add commitments to different people
         commitments.add_commitment(
@@ -322,7 +323,7 @@ class TestTaskCommitmentsIntegration:
 
     def test_commitment_completion(self, commitment_database):
         """Commitments can be marked as completed."""
-        commitments, db_path = commitment_database
+        commitments, _db_path = commitment_database
 
         # Add a commitment
         add_result = commitments.add_commitment(
@@ -344,7 +345,7 @@ class TestTaskCommitmentsIntegration:
 
     def test_due_soon_commitments(self, commitment_database):
         """Should retrieve commitments due within specified hours."""
-        commitments, db_path = commitment_database
+        commitments, _db_path = commitment_database
 
         # Add commitment due today
         commitments.add_commitment(
@@ -491,12 +492,12 @@ class TestFullTaskFlowIntegration:
         parent_id = parent_result["data"]["task_id"]
 
         # Create subtasks
-        sub1 = manager.create_task(
+        manager.create_task(
             user_id="test_user",
             raw_input="gather documents",
             parent_task_id=parent_id,
         )
-        sub2 = manager.create_task(
+        manager.create_task(
             user_id="test_user",
             raw_input="fill out forms",
             parent_task_id=parent_id,
