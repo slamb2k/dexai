@@ -1,6 +1,6 @@
 """
 Tool: Slack Channel Adapter
-Purpose: Slack app integration for addulting-ai
+Purpose: Slack app integration for DexAI
 
 Connects to Slack using slack-bolt SDK with Socket Mode.
 Handles DMs, mentions, and slash commands (/ask, /pair).
@@ -476,7 +476,7 @@ class SlackAdapter(ChannelAdapter):
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": "addulting-ai Help"
+                        "text": "DexAI Help"
                     }
                 },
                 {

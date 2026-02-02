@@ -1,6 +1,6 @@
 """
 Tool: Telegram Channel Adapter
-Purpose: Telegram bot integration for addulting-ai
+Purpose: Telegram bot integration for DexAI
 
 Connects to Telegram using python-telegram-bot library in polling mode.
 Handles commands (/start, /pair, /help) and various message types.
@@ -305,7 +305,7 @@ class TelegramAdapter(ChannelAdapter):
     async def _handle_start(self, update, context) -> None:
         """Welcome new users."""
         await update.message.reply_text(
-            "Welcome to addulting-ai!\n\n"
+            "Welcome to DexAI!\n\n"
             "I'm your AI assistant for adulting tasks.\n\n"
             "Commands:\n"
             "/pair - Link your account\n"

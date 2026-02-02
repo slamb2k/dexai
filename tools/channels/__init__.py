@@ -1,6 +1,6 @@
 """
 Channel Tools Package
-Cross-platform messaging adapters and gateway for addulting-ai.
+Cross-platform messaging adapters and gateway for DexAI.
 """
 
 from .models import (

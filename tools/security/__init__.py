@@ -2,7 +2,7 @@
 # Provides authentication, authorization, and protection infrastructure
 
 """
-Security tools for the addulting-ai platform.
+Security tools for the DexAI platform.
 
 Components:
 - audit.py      - Immutable security event logging

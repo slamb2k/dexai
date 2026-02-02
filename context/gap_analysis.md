@@ -1,6 +1,6 @@
-# Gap Analysis: addulting-ai vs OpenClaw
+# Gap Analysis: DexAI vs OpenClaw
 
-> **Purpose:** Identify feature gaps between addulting-ai and OpenClaw to inform PRD and roadmap planning.
+> **Purpose:** Identify feature gaps between DexAI and OpenClaw to inform PRD and roadmap planning.
 >
 > **Analysis Date:** 2026-02-02
 > **Security Priority:** HIGH — Security concerns must be addressed in parallel with feature development.
@@ -9,11 +9,11 @@
 
 ## Executive Summary
 
-**addulting-ai** has a **production-ready memory system** that matches OpenClaw's persistent memory architecture. However, it lacks the features that made OpenClaw viral: **messaging integration**, **proactive automation**, **system access**, and **extensibility**.
+**DexAI** has a **production-ready memory system** that matches OpenClaw's persistent memory architecture. However, it lacks the features that made OpenClaw viral: **messaging integration**, **proactive automation**, **system access**, and **extensibility**.
 
 ### Current State Assessment
 
-| Capability Domain | addulting-ai | OpenClaw | Gap Status |
+| Capability Domain | DexAI | OpenClaw | Gap Status |
 |-------------------|--------------|----------|------------|
 | Persistent Memory | ✅ 100% | ✅ 100% | **CLOSED** |
 | Messaging Channels | ❌ 0% | ✅ 100% | **CRITICAL GAP** |
@@ -25,7 +25,7 @@
 | Mobile Support | ❌ 0% | ✅ 100% | **LOW GAP** |
 | Visual Workspace | ❌ 0% | ✅ 100% | **LOW GAP** |
 
-**Bottom line:** addulting-ai is a **memory backend** waiting for an **agent frontend**.
+**Bottom line:** DexAI is a **memory backend** waiting for an **agent frontend**.
 
 ---
 
@@ -35,7 +35,7 @@
 
 **Why Critical:** This is the #1 reason for OpenClaw's viral success. Users access AI where they already are.
 
-| Feature | OpenClaw | addulting-ai | Gap |
+| Feature | OpenClaw | DexAI | Gap |
 |---------|----------|--------------|-----|
 | WhatsApp | ✅ Baileys library | ❌ None | Full |
 | Telegram | ✅ grammY framework | ❌ None | Full |
@@ -78,7 +78,7 @@
 
 **Why Critical:** OpenClaw's biggest criticism is security. We can differentiate by being security-first.
 
-#### Current addulting-ai Security
+#### Current DexAI Security
 
 | Protection | Status | Notes |
 |------------|--------|-------|
@@ -155,7 +155,7 @@
 
 **Why Important:** This is what makes an AI "useful" vs "advisory."
 
-| Capability | OpenClaw | addulting-ai | Gap |
+| Capability | OpenClaw | DexAI | Gap |
 |------------|----------|--------------|-----|
 | Shell commands | ✅ Full | ❌ None | Full |
 | File operations | ✅ Full | ⚠️ Limited (memory only) | Partial |
@@ -222,7 +222,7 @@
 
 **Why Important:** This is the "agent" vs "chatbot" differentiator.
 
-| Feature | OpenClaw | addulting-ai | Gap |
+| Feature | OpenClaw | DexAI | Gap |
 |---------|----------|--------------|-----|
 | Heartbeat engine | ✅ 30-min cycles | ❌ None | Full |
 | Cron scheduling | ✅ Unix cron syntax | ❌ None | Full |
@@ -267,7 +267,7 @@ CRON.yaml
 
 **Status:** ✅ Feature parity achieved
 
-| Feature | OpenClaw | addulting-ai | Match |
+| Feature | OpenClaw | DexAI | Match |
 |---------|----------|--------------|-------|
 | Markdown files (MEMORY.md) | ✅ | ✅ | ✓ |
 | Daily logs | ✅ | ✅ | ✓ |
@@ -282,7 +282,7 @@ CRON.yaml
 
 #### Enhancements to Consider
 
-| Enhancement | OpenClaw | addulting-ai | Priority |
+| Enhancement | OpenClaw | DexAI | Priority |
 |-------------|----------|--------------|----------|
 | Auto-flush before compaction | ✅ | ❌ | P2 |
 | Session transcript indexing | ✅ (experimental) | ❌ | P3 |
@@ -295,7 +295,7 @@ CRON.yaml
 
 **Why Important:** Creates network effects, community moat, feature velocity.
 
-| Feature | OpenClaw | addulting-ai | Gap |
+| Feature | OpenClaw | DexAI | Gap |
 |---------|----------|--------------|-----|
 | Plugin architecture | ✅ Skills system | ❌ None | Full |
 | Skill marketplace | ✅ ClawdHub | ❌ None | Full |
@@ -350,7 +350,7 @@ CRON.yaml
 
 ### Category 7: VOICE & SPEECH (Medium Priority)
 
-| Feature | OpenClaw | addulting-ai | Gap |
+| Feature | OpenClaw | DexAI | Gap |
 |---------|----------|--------------|-----|
 | Voice wake word | ✅ Configurable | ❌ None | Full |
 | Talk mode | ✅ Real-time | ❌ None | Full |
@@ -370,7 +370,7 @@ CRON.yaml
 
 ### Category 8: MOBILE SUPPORT (Low Priority)
 
-| Feature | OpenClaw | addulting-ai | Gap |
+| Feature | OpenClaw | DexAI | Gap |
 |---------|----------|--------------|-----|
 | iOS app | ✅ Native | ❌ None | Full |
 | Android app | ✅ Native | ❌ None | Full |
@@ -385,7 +385,7 @@ CRON.yaml
 
 ### Category 9: VISUAL WORKSPACE (Low Priority)
 
-| Feature | OpenClaw | addulting-ai | Gap |
+| Feature | OpenClaw | DexAI | Gap |
 |---------|----------|--------------|-----|
 | Canvas UI | ✅ A2UI | ❌ None | Full |
 | Agent-driven rendering | ✅ | ❌ None | Full |
@@ -637,9 +637,9 @@ CRON.yaml
 
 ## Conclusion
 
-addulting-ai has a **solid foundation** (GOTCHA framework, production-ready memory system) but needs to close **critical gaps** in messaging integration and system access to compete with OpenClaw.
+DexAI has a **solid foundation** (GOTCHA framework, production-ready memory system) but needs to close **critical gaps** in messaging integration and system access to compete with OpenClaw.
 
-**The key insight:** OpenClaw's security weaknesses are well-documented. By building security-first, addulting-ai can differentiate on trust while achieving feature parity on capabilities.
+**The key insight:** OpenClaw's security weaknesses are well-documented. By building security-first, DexAI can differentiate on trust while achieving feature parity on capabilities.
 
 **Recommended approach:**
 1. Build security infrastructure first (Phase 1)
