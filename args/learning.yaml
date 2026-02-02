@@ -1,0 +1,112 @@
+# Learning & Personalization Configuration
+# Phase 6: Pattern recognition and energy-based task matching
+#
+# Philosophy: Learn from behavior, not configuration forms.
+# ADHD users won't maintain tracking habits - observe and infer.
+
+learning:
+  # Energy tracking configuration
+  energy_tracking:
+    enabled: true
+    min_samples_for_pattern: 10    # Need 10+ observations for reliable pattern
+    confidence_threshold: 0.6       # Minimum confidence to make suggestions
+    decay_factor: 0.95              # Older observations weighted slightly less
+    profile_rebuild_interval: 24h   # How often to rebuild aggregated profiles
+
+    # Signal weights for energy inference (must sum to 1.0)
+    signals:
+      response_time_weight: 0.3    # Faster responses = higher energy
+      message_length_weight: 0.2   # Longer messages = more engaged
+      active_duration_weight: 0.3  # Longer sessions = in flow
+      task_completion_weight: 0.2  # Completing tasks = productive
+
+    # Energy level thresholds (0.0 - 1.0 scale)
+    # User's personal range is normalized, then mapped to these levels
+    thresholds:
+      peak: 0.8    # Top 20% of user's range
+      high: 0.6    # Above average
+      medium: 0.4  # Average
+      low: 0.0     # Below average
+
+    # Response time benchmarks (milliseconds)
+    # Used to normalize response times to 0-1 scale
+    response_time_benchmarks:
+      fast: 2000     # Under 2s = high energy signal (1.0)
+      normal: 5000   # 2-5s = normal (0.5)
+      slow: 10000    # Over 10s = low energy signal (0.0)
+
+    # Message length benchmarks (characters)
+    message_length_benchmarks:
+      short: 20      # Very short responses (0.2)
+      normal: 100    # Typical response (0.5)
+      long: 300      # Detailed response (1.0)
+
+    # Session duration benchmarks (seconds)
+    session_duration_benchmarks:
+      brief: 120     # Under 2 min (0.2)
+      normal: 600    # 2-10 min (0.5)
+      extended: 1800 # Over 30 min (1.0)
+
+  # Pattern detection configuration
+  pattern_detection:
+    enabled: true
+    min_occurrences: 3             # Need 3+ instances to call it a pattern
+    lookback_days: 30              # How far back to analyze
+    avoidance_threshold: 3         # 3+ postponements = avoidance pattern
+    routine_time_tolerance: 30     # Minutes variance for "same time"
+    pattern_decay_days: 14         # Patterns not seen in 14 days start decaying
+
+    # Pattern confidence adjustments
+    confidence_boost_per_occurrence: 0.1  # Each new occurrence adds confidence
+    max_confidence: 0.95                  # Cap confidence at 95%
+
+  # Task matching configuration
+  task_matching:
+    enabled: true
+    match_energy_to_task: true
+    avoid_high_demand_in_low_energy: true
+    suggest_easier_when_tired: true
+
+    # How many suggestions to consider internally (user sees 1)
+    internal_candidate_count: 10
+
+    # Time window preferences (hours)
+    look_ahead_hours: 8            # How far ahead to suggest times
+    min_gap_between_suggestions: 2  # Don't cluster suggestions
+
+    # Default task type -> energy requirement mapping
+    # Users can override per-task, but these are sensible defaults
+    task_energy_requirements:
+      creative: "peak"         # Writing, design, strategy
+      problem_solving: "high"  # Debugging, analysis
+      writing: "medium"        # Documentation, emails
+      admin: "low"             # Filing, organizing
+      organizing: "low"        # Cleanup, sorting
+      communication: "medium"  # Calls, meetings
+      learning: "high"         # New concepts, tutorials
+      review: "medium"         # Code review, feedback
+
+    # Fallback behavior when not enough data
+    # "suggest_any" - provide suggestions without energy matching
+    # "wait_for_data" - acknowledge learning and don't guess
+    fallback_behavior: "suggest_any"
+
+    # Message templates (ADHD-safe language)
+    messages:
+      insufficient_data: "I'm still learning your patterns - give me a few more days of activity."
+      energy_mismatch_warning: "This might be easier during your {optimal_period} when you're usually sharper."
+      avoidance_detected: "I notice {task} keeps getting pushed - want me to find the smallest first step?"
+      good_match: "Good timing - {task_type} work matches your current energy."
+
+# Integration settings
+integrations:
+  # Pull activity data from these sources
+  activity_sources:
+    - channels       # Message activity from channel tools
+    - tasks          # Task completion from task engine
+    - context        # Context switches from working memory
+
+  # Push insights to these systems
+  insight_targets:
+    - notifications  # Influence notification timing
+    - task_engine    # Influence task suggestions

@@ -1,0 +1,121 @@
+# Task Engine Configuration
+# ADHD-friendly task decomposition and tracking
+
+task_engine:
+  decomposition:
+    # Automatically decompose new tasks into steps
+    auto_decompose: true
+
+    # Maximum steps per task (more = project, not task)
+    max_steps: 7
+
+    # Default decomposition depth
+    # "shallow" = first 2-3 steps only (less overwhelming)
+    # "full" = all steps (for planning mode)
+    depth_default: "shallow"
+
+    # LLM model for decomposition
+    # Using fast model for quick responses
+    llm_model: "claude-3-haiku-20240307"
+
+    # Maximum time per step in minutes
+    max_step_minutes: 15
+
+  friction:
+    # Automatically identify friction when creating tasks
+    auto_identify: true
+
+    # Common friction types to detect
+    common_types:
+      - missing_info      # Need information before starting
+      - phone_call        # Dreaded phone tasks
+      - decision_needed   # Unmade choice blocking progress
+      - password_required # Authentication needed
+      - document_needed   # Need to find/create document
+      - appointment_required # Need to schedule something
+
+  presentation:
+    # CRITICAL: Never show full task breakdown by default
+    # A list of five things is actually zero things for ADHD
+    one_step_only: true
+
+    # Include friction pre-solve hints in step display
+    show_friction: true
+
+    # Ensure steps start with action verbs
+    actionable_verbs: true
+
+    # Valid action verbs for steps
+    action_verbs:
+      - find
+      - send
+      - call
+      - open
+      - write
+      - review
+      - submit
+      - wait
+      - book
+      - check
+      - create
+      - download
+      - upload
+      - gather
+      - schedule
+
+  energy_matching:
+    # Match tasks to energy levels
+    enabled: true
+
+    # Task categories by energy requirement
+    levels:
+      low:
+        - admin
+        - filing
+        - organizing
+        - cleanup
+        - sorting
+        - backup
+      medium:
+        - writing
+        - reviewing
+        - planning
+        - email
+        - research
+        - reading
+      high:
+        - creating
+        - problem-solving
+        - learning
+        - calls
+        - presentations
+        - complex-decisions
+
+  priorities:
+    # Default priority for new tasks (1-10)
+    default: 5
+
+    # After this many days, gently re-surface stale tasks
+    # (but never guilt-trip about them being overdue)
+    decay_days: 7
+
+    # Priority boost for tasks with upcoming deadlines
+    deadline_boost: 3
+
+  language:
+    # RSD-safe language settings (see Phase 3)
+    # Never use guilt-inducing phrases
+    avoid_phrases:
+      - "you still haven't"
+      - "overdue"
+      - "you forgot"
+      - "you should have"
+      - "you need to"
+      - "reminder:"
+
+    # Positive reframings for task status
+    reframe:
+      abandoned: "no longer needed"
+      overdue: "ready when you are"
+      incomplete: "in progress"
+      failed: "didn't work out - no big deal"

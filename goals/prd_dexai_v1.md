@@ -244,6 +244,8 @@ Because: It's built around how ADHD brains actually work
 | 4 | Notifications | 4 weeks | Time-blind-aware, hyperfocus protection |
 | 5 | Task Engine | 4 weeks | Decomposition, friction-solving |
 | 6 | Learning | 6 weeks | Energy patterns, personalization |
+| 7 | Dashboard | 4 weeks | Web-based management interface |
+| 8 | Installation | 2 weeks | Guided setup wizard (web + TUI) |
 
 ### 6.2 Phase 0: Foundation (COMPLETE)
 
@@ -334,6 +336,57 @@ Because: It's built around how ADHD brains actually work
 | Communication adaptation | P2 | Learn preferred style |
 | Progress visualization | P2 | Dopamine-friendly metrics (opt-in) |
 | Novelty injection | P2 | Vary phrasing to prevent habituation |
+
+### 6.9 Phase 7: Web Dashboard
+
+**Objective:** Visual management interface for monitoring, configuring, and debugging DexAI.
+
+> **Full specification:** `goals/phase7_dashboard.md`
+
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| Dex Avatar | P0 | Animated visual indicator of agent state (idle, thinking, working, etc.) |
+| Task Timeline | P0 | Real-time view of current and completed task executions |
+| Activity Feed | P0 | Live stream of all Dex actions and events |
+| Quick Stats | P0 | Today's metrics: tasks, messages, cost |
+| Metrics Dashboard | P1 | Usage analytics, cost tracking, performance charts |
+| Audit Viewer | P1 | Searchable security and event logs |
+| Configuration Panel | P1 | Manage settings through UI (no YAML editing) |
+| Debug Console | P2 | Logs, database browser, health checks (admin only) |
+| Memory Inspector | P2 | Browse and search persistent memory |
+
+**Design Philosophy:**
+- Dark, calm aesthetic (Modal.com-inspired)
+- Black/blue color palette with subtle glows
+- Immediate visual feedback reduces ADHD anxiety ("is it working?")
+- Clean, uncluttered — information density without overwhelm
+
+**Technology Stack:** Next.js 14, Tailwind CSS, shadcn/ui, Recharts, Socket.IO
+
+### 6.10 Phase 8: Guided Installation
+
+**Objective:** Zero-friction onboarding that gets users to first successful interaction in minutes.
+
+> **Full specification:** `goals/phase8_installation.md`
+
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| Web Wizard | P0 | Browser-based setup flow with visual guidance |
+| TUI Wizard | P0 | Terminal-based setup for CLI users |
+| Channel Setup | P0 | Guided connection for Telegram, Discord, Slack |
+| Credential Storage | P0 | Secure API key and token management |
+| Progress Persistence | P1 | Resume interrupted setup |
+| Connection Testing | P1 | Verify each channel works before proceeding |
+| First Interaction | P1 | Guided test message to confirm everything works |
+| Setup Guides | P2 | Detailed per-channel documentation with screenshots |
+
+**Design Philosophy:**
+- Progressive disclosure — one thing at a time
+- Smart defaults — configure later, not during setup
+- Immediate feedback — test each step before continuing
+- ADHD-friendly — no walls of text, clear progress indicators
+
+**Technology Stack:** Textual (TUI), Next.js (web), existing channel adapters
 
 ---
 
@@ -441,9 +494,11 @@ class Commitment:
 ├── May: Phase 3 (ADHD Communication Mode)
 ├── Jun: Phase 4 (Smart Notifications)
 ├── Jul: Phase 5 (Task Engine)
-└── Aug-Sep: Phase 6 (Learning)
+├── Aug-Sep: Phase 6 (Learning)
+├── Oct: Phase 7 (Web Dashboard)
+└── Nov: Phase 8 (Guided Installation)
 
-Oct 2026: Public Beta
+Dec 2026: Public Beta
 ```
 
 ### 8.2 Release Criteria
@@ -514,6 +569,8 @@ Oct 2026: Public Beta
 |----------|----------|---------|
 | ADHD Design Principles | `context/adhd_design_principles.md` | Full design philosophy |
 | Technical Architecture | `goals/phase1_security.md` | Security implementation |
+| Web Dashboard | `goals/phase7_dashboard.md` | Dashboard specification |
+| Guided Installation | `goals/phase8_installation.md` | Setup wizard specification |
 | Competitive Analysis | `context/openclaw_research.md` | Market context |
 | Gap Analysis | `context/gap_analysis.md` | Feature comparison |
 | System Handbook | `CLAUDE.md` | Operational guide |

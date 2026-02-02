@@ -15,6 +15,9 @@ Master list of all available tools. Check here before creating new scripts.
 | `semantic_search.py` | Vector-based semantic search across memory |
 | `hybrid_search.py` | Combined keyword + semantic search (best results) |
 | `migrate_db.py` | Database schema migration tool |
+| `context_capture.py` | Auto-snapshot context on task switches for ADHD working memory (Phase 2) |
+| `context_resume.py` | Generate ADHD-friendly "you were here..." resumption prompts (Phase 2) |
+| `commitments.py` | Track promises from conversations to prevent relationship damage (Phase 2) |
 
 ---
 
@@ -62,9 +65,94 @@ Master list of all available tools. Check here before creating new scripts.
 |------|-------------|
 | `scheduler.py` | Cron job scheduling with execution tracking, retry logic, and cost limits |
 | `heartbeat.py` | Periodic background awareness checks parsed from HEARTBEAT.md |
-| `notify.py` | Notification dispatch with priority queuing, DND support, and channel routing |
+| `notify.py` | Notification dispatch with priority queuing, DND support, flow awareness, and channel routing |
 | `triggers.py` | Event triggers for file changes (watchdog) and webhooks with debouncing |
 | `runner.py` | Background daemon that orchestrates all automation components |
+| `flow_detector.py` | Hyperfocus/flow state detection from activity patterns and manual overrides (Phase 4) |
+| `transition_calculator.py` | ADHD-appropriate reminder time calculation with learning from patterns (Phase 4) |
+
+---
+
+## ADHD Communication Tools (`tools/adhd/`)
+
+| Tool | Description |
+|------|-------------|
+| `response_formatter.py` | Brevity-first formatting, preamble stripping, and one-thing mode extraction |
+| `language_filter.py` | RSD-safe language detection and reframing (no guilt-inducing phrases) |
+
+---
+
+## Task Engine Tools (`tools/tasks/`)
+
+| Tool | Description |
+|------|-------------|
+| `manager.py` | Task CRUD operations with parent/subtask relationships and step tracking (Phase 5) |
+| `decompose.py` | Break vague tasks into concrete steps using LLM or rule-based fallback (Phase 5) |
+| `friction_solver.py` | Identify and pre-solve hidden blockers (passwords, documents, phone calls) (Phase 5) |
+| `current_step.py` | Return ONLY the single next action - core ADHD-friendly interface (Phase 5) |
+
+---
+
+## Learning Tools (`tools/learning/`)
+
+| Tool | Description |
+|------|-------------|
+| `energy_tracker.py` | Infer energy levels from activity signals (response time, message length, session duration) (Phase 6) |
+| `pattern_analyzer.py` | Detect behavioral patterns (daily routines, weekly cycles, avoidance, productive bursts) (Phase 6) |
+| `task_matcher.py` | Match tasks to optimal times based on energy profiles and patterns (Phase 6) |
+
+---
+
+## Dashboard Tools (`tools/dashboard/`)
+
+### Backend (FastAPI)
+
+| Tool | Description |
+|------|-------------|
+| `backend/main.py` | FastAPI application with CORS, session auth, health checks, and router registration |
+| `backend/database.py` | SQLite database operations for events, metrics, state, and preferences |
+| `backend/models.py` | Pydantic models for all API request/response types |
+| `backend/websocket.py` | WebSocket server for real-time event streaming (state, activity, tasks, metrics) |
+| `backend/routes/status.py` | GET/PUT /api/status — Dex avatar state for monitoring |
+| `backend/routes/tasks.py` | GET /api/tasks — Task list with filters and detail view |
+| `backend/routes/activity.py` | GET/POST /api/activity — Activity feed with pagination |
+| `backend/routes/metrics.py` | GET /api/metrics/summary, /timeseries — Usage stats and charts |
+| `backend/routes/settings.py` | GET/PATCH /api/settings — Configuration management |
+
+### Frontend (Next.js 14)
+
+| File | Description |
+|------|-------------|
+| `frontend/app/layout.tsx` | Root layout with sidebar, top bar, and toast container |
+| `frontend/app/page.tsx` | Home/overview page with avatar, stats, and activity feed |
+| `frontend/app/tasks/page.tsx` | Task list with filters and detail modal |
+| `frontend/app/activity/page.tsx` | Real-time activity stream with WebSocket support |
+| `frontend/app/metrics/page.tsx` | Usage statistics with Recharts visualizations |
+| `frontend/app/settings/page.tsx` | Configuration UI with collapsible sections |
+| `frontend/app/audit/page.tsx` | Security audit log viewer with filters |
+| `frontend/app/debug/page.tsx` | Admin debug tools (health, logs, database) |
+| `frontend/components/dex-avatar.tsx` | Animated Dex avatar with 9 states (idle, thinking, working, etc.) |
+| `frontend/components/sidebar.tsx` | Navigation sidebar with collapsible state |
+| `frontend/components/stat-card.tsx` | Metric display cards with sparklines |
+| `frontend/components/activity-feed.tsx` | Activity event list component |
+| `frontend/components/task-card.tsx` | Task display card with status indicators |
+| `frontend/components/toast.tsx` | Toast notification system |
+| `frontend/lib/api.ts` | Typed fetch wrapper for all API endpoints |
+| `frontend/lib/socket.ts` | WebSocket client for real-time updates |
+| `frontend/lib/store.ts` | Zustand stores for client state management |
+| `frontend/lib/utils.ts` | Utility functions (cn, formatters, debounce) |
+
+---
+
+## Setup Tools (`tools/setup/`)
+
+| Tool | Description |
+|------|-------------|
+| `wizard.py` | Core setup state management, channel validation, and configuration generation (Phase 8) |
+| `tui/main.py` | Textual-based terminal UI wizard with all setup screens (Phase 8) |
+| `guides/telegram.md` | Step-by-step Telegram bot setup instructions |
+| `guides/discord.md` | Step-by-step Discord bot setup instructions |
+| `guides/slack.md` | Step-by-step Slack app setup instructions |
 
 ---
 

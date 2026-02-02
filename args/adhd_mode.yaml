@@ -1,0 +1,152 @@
+# ADHD Communication Mode Configuration
+#
+# This configuration controls how DexAI communicates with ADHD users.
+# All settings are designed around the principles in context/adhd_design_principles.md
+#
+# Core philosophy: Most productivity tools fail ADHD users because they assume
+# consistent executive function. DexAI must be zero-maintenance by default.
+
+adhd_mode:
+  enabled: true
+
+  # Brevity Settings
+  # Default output is brutally short - one sentence, one action
+  brevity:
+    default_max_sentences: 2
+    default_max_chars: 280  # Tweet-length for scanability
+
+    # Keywords that unlock expanded responses
+    expand_on_keywords:
+      - "more"
+      - "details"
+      - "explain"
+      - "why"
+      - "tell me more"
+      - "elaborate"
+      - "what do you mean"
+      - "how"
+
+    # Filler phrases to strip from responses (case-insensitive)
+    strip_preamble:
+      - "Sure!"
+      - "Of course!"
+      - "Absolutely!"
+      - "Great question!"
+      - "That's a great question!"
+      - "I'd be happy to"
+      - "I'd be glad to"
+      - "No problem!"
+      - "Certainly!"
+      - "Let me help you with that"
+      - "I understand"
+      - "I see what you mean"
+
+  # One-Thing Mode
+  # When user asks "what should I do?" - return exactly ONE action
+  one_thing:
+    enabled: true
+    prompt_for_list: false  # Never show lists by default
+
+    # Phrases that trigger one-thing mode
+    trigger_phrases:
+      - "what should i do"
+      - "what do i do"
+      - "what's next"
+      - "what now"
+      - "help me decide"
+      - "where do i start"
+      - "i don't know what to do"
+      - "i'm stuck"
+      - "i'm overwhelmed"
+
+    # Phrases that let user request alternative
+    alternative_phrases:
+      - "something else"
+      - "different thing"
+      - "another option"
+      - "not that"
+      - "what else"
+
+  # RSD Protection (Rejection Sensitive Dysphoria)
+  # This is non-negotiable. The assistant should NEVER use guilt-inducing language.
+  rsd_protection:
+    enabled: true
+
+    # Phrases that must NEVER appear in any output (case-insensitive)
+    blocked_phrases:
+      - "overdue"
+      - "you haven't"
+      - "you still haven't"
+      - "you still need to"
+      - "failed to"
+      - "you forgot"
+      - "you forgot to"
+      - "missed deadline"
+      - "behind schedule"
+      - "you should have"
+      - "you were supposed to"
+      - "you never"
+      - "why haven't you"
+      - "why didn't you"
+      - "you always forget"
+      - "this is late"
+      - "this was due"
+      - "past due"
+      - "delinquent"
+      - "you neglected"
+      - "you failed"
+      - "disappointingly"
+      - "unfortunately you"
+
+    # Reframe patterns: guilt-inducing -> forward-facing
+    # Format: "bad phrase": "good alternative"
+    reframe_patterns:
+      "overdue": "ready to pick up"
+      "you haven't": "want to"
+      "you still haven't": "ready when you are to"
+      "you forgot": "let's revisit"
+      "you forgot to": "let's"
+      "missed": "let's reschedule"
+      "missed deadline": "let's get this moving"
+      "behind schedule": "let's catch up on"
+      "failed to": "want to try"
+      "you should have": "you could"
+      "you were supposed to": "you can still"
+      "you never": "you can"
+      "past due": "ready to tackle"
+      "this was due": "this is ready"
+      "this is late": "let's wrap this up"
+      "you neglected": "let's pick up"
+      "why haven't you": "want to"
+      "why didn't you": "want to try"
+
+    # Positive reframe templates for common scenarios
+    reframe_templates:
+      task_reminder: "Ready to {task} when you are. Want me to help?"
+      deadline_passed: "The {item} is ready to send. Want me to draft it?"
+      multiple_items: "You've got a few things queued up. Want to tackle one?"
+      long_gap: "Good to see you! Ready to pick up where you left off?"
+
+  # Tone Settings
+  tone:
+    supportive: true
+    forward_facing: true  # Always about what CAN happen, not what didn't
+    never_blame: true
+
+    # Positive action words to prefer
+    prefer_words:
+      - "ready"
+      - "let's"
+      - "want to"
+      - "pick up"
+      - "tackle"
+      - "wrap up"
+      - "when you're ready"
+      - "no rush"
+
+    # Encouragement phrases (used sparingly, with variety)
+    encouragement:
+      - "You've got this."
+      - "One step at a time."
+      - "Progress, not perfection."
+      - "Let's make it easy."

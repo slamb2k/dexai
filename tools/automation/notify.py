@@ -8,16 +8,24 @@ Features:
 - Channel preference routing
 - Notification aggregation to reduce noise
 - Integration with channels router
+- Flow state awareness (suppress during hyperfocus)
+- ADHD-friendly batching of suppressed notifications
 
 Usage:
     python tools/automation/notify.py --action send --user alice --content "Your task completed"
     python tools/automation/notify.py --action queue --user alice --content "Reminder" --priority normal
     python tools/automation/notify.py --action list --status pending
     python tools/automation/notify.py --action process
+    python tools/automation/notify.py --action send --user alice --content "FYI" --priority low --flow-aware
+    python tools/automation/notify.py --action check-flow --user alice --priority normal
+    python tools/automation/notify.py --action suppressed-count --user alice
+    python tools/automation/notify.py --action list-suppressed --user alice
+    python tools/automation/notify.py --action release-suppressed --user alice
 
 Dependencies:
     - pyyaml
     - tools.channels.router (for sending)
+    - tools.automation.flow_detector (for flow state)
 """
 
 import os
@@ -39,7 +47,10 @@ from tools.automation import DB_PATH, CONFIG_PATH
 
 # Valid priorities
 VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent']
-VALID_STATUSES = ['pending', 'sent', 'failed', 'queued_dnd']
+VALID_STATUSES = ['pending', 'sent', 'failed', 'queued_dnd', 'suppressed']
+
+# Smart notifications config path
+SMART_NOTIFICATIONS_CONFIG = PROJECT_ROOT / 'args' / 'smart_notifications.yaml'
 
 
 def load_config() -> Dict[str, Any]:
@@ -81,6 +92,40 @@ def load_config() -> Dict[str, Any]:
         return default_config
 
 
+def load_smart_notifications_config() -> Dict[str, Any]:
+    """Load smart notifications configuration."""
+    default_config = {
+        'smart_notifications': {
+            'flow_protection': {
+                'enabled': True,
+                'detection_window_minutes': 15,
+                'min_activity_for_flow': 3,
+                'flow_score_threshold': 60,
+                'suppress_low_priority': True,
+                'suppress_medium_during_deep_flow': True,
+                'deep_flow_threshold': 80
+            },
+            'priority_tiers': {
+                'low': {'suppress_during_flow': True},
+                'medium': {'suppress_during_deep_flow': True},
+                'high': {'suppress_during_flow': False, 'use_gentle_during_focus': True},
+                'urgent': {'suppress_during_flow': False, 'always_deliver': True}
+            }
+        }
+    }
+
+    if not SMART_NOTIFICATIONS_CONFIG.exists():
+        return default_config
+
+    try:
+        import yaml
+        with open(SMART_NOTIFICATIONS_CONFIG) as f:
+            config = yaml.safe_load(f)
+        return config if config else default_config
+    except Exception:
+        return default_config
+
+
 def get_connection() -> sqlite3.Connection:
     """Get database connection, creating tables if needed."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +156,25 @@ def get_connection() -> sqlite3.Connection:
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_priority ON notifications(priority)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)')
+
+    # Suppressed notifications table - for flow state queuing
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS suppressed_notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            priority TEXT DEFAULT 'normal',
+            original_channel TEXT,
+            suppression_reason TEXT,
+            suppressed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            release_after DATETIME,
+            released INTEGER DEFAULT 0,
+            released_at DATETIME
+        )
+    ''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_suppressed_user ON suppressed_notifications(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_suppressed_released ON suppressed_notifications(released)')
 
     conn.commit()
     return conn
@@ -583,10 +647,418 @@ def get_stats() -> Dict[str, Any]:
     }
 
 
+# =============================================================================
+# Flow Awareness Functions (Phase 4: Smart Notifications)
+# =============================================================================
+
+def should_suppress(user_id: str, priority: str) -> Dict[str, Any]:
+    """
+    Check if a notification should be suppressed based on flow state.
+
+    Uses flow_detector to check user's current state and applies
+    priority-based suppression rules from smart_notifications.yaml.
+
+    Args:
+        user_id: User identifier
+        priority: Notification priority ('low', 'normal', 'high', 'urgent')
+
+    Returns:
+        dict with should_suppress flag and reason
+    """
+    config = load_smart_notifications_config()
+    flow_config = config.get('smart_notifications', {}).get('flow_protection', {})
+    priority_tiers = config.get('smart_notifications', {}).get('priority_tiers', {})
+
+    # Check if flow protection is enabled
+    if not flow_config.get('enabled', True):
+        return {
+            "success": True,
+            "should_suppress": False,
+            "reason": "Flow protection disabled"
+        }
+
+    # Urgent always gets through
+    if priority == 'urgent':
+        return {
+            "success": True,
+            "should_suppress": False,
+            "reason": "Urgent priority always delivered"
+        }
+
+    # Get flow state from detector
+    try:
+        from tools.automation.flow_detector import detect_flow
+        flow_result = detect_flow(user_id)
+
+        if not flow_result.get('success'):
+            # If flow detection fails, allow notification through
+            return {
+                "success": True,
+                "should_suppress": False,
+                "reason": "Flow detection unavailable"
+            }
+
+        in_flow = flow_result.get('in_flow', False)
+        deep_flow = flow_result.get('deep_flow', False)
+        flow_score = flow_result.get('score', 0)
+
+        if not in_flow:
+            return {
+                "success": True,
+                "should_suppress": False,
+                "reason": "User not in flow state",
+                "flow_score": flow_score
+            }
+
+        # Apply priority-based rules
+        tier_config = priority_tiers.get(priority, {})
+
+        # Map 'normal' priority to 'medium' tier if needed
+        if priority == 'normal' and not tier_config:
+            tier_config = priority_tiers.get('medium', {})
+
+        # Low priority: suppress during any flow
+        if priority == 'low' and (tier_config.get('suppress_during_flow', True) or flow_config.get('suppress_low_priority', True)):
+            return {
+                "success": True,
+                "should_suppress": True,
+                "reason": "Low priority suppressed during flow",
+                "flow_score": flow_score,
+                "deep_flow": deep_flow
+            }
+
+        # Normal/medium priority: suppress during deep flow only
+        if priority == 'normal':
+            if deep_flow and (tier_config.get('suppress_during_deep_flow', True) or flow_config.get('suppress_medium_during_deep_flow', True)):
+                return {
+                    "success": True,
+                    "should_suppress": True,
+                    "reason": "Medium priority suppressed during deep flow",
+                    "flow_score": flow_score,
+                    "deep_flow": deep_flow
+                }
+            else:
+                return {
+                    "success": True,
+                    "should_suppress": False,
+                    "reason": "Medium priority allowed during light flow",
+                    "flow_score": flow_score
+                }
+
+        # High priority: never suppress (but may use gentler channel)
+        if priority == 'high':
+            return {
+                "success": True,
+                "should_suppress": False,
+                "reason": "High priority not suppressed",
+                "flow_score": flow_score,
+                "use_gentle_channel": tier_config.get('use_gentle_during_focus', True) and in_flow
+            }
+
+        # Default: don't suppress
+        return {
+            "success": True,
+            "should_suppress": False,
+            "reason": "Default: notification allowed",
+            "flow_score": flow_score
+        }
+
+    except ImportError:
+        return {
+            "success": True,
+            "should_suppress": False,
+            "reason": "Flow detector not available"
+        }
+    except Exception as e:
+        return {
+            "success": True,
+            "should_suppress": False,
+            "reason": f"Flow check error: {str(e)}"
+        }
+
+
+def queue_for_later(
+    user_id: str,
+    content: str,
+    priority: str = 'normal',
+    channel: Optional[str] = None,
+    release_after: Optional[str] = None,
+    suppression_reason: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Queue a notification for delivery after flow state ends.
+
+    Args:
+        user_id: Target user ID
+        content: Notification content
+        priority: Notification priority
+        channel: Original intended channel
+        release_after: Optional datetime to release (ISO format)
+        suppression_reason: Why the notification was suppressed
+
+    Returns:
+        dict with success status and suppression ID
+    """
+    suppression_id = str(uuid.uuid4())
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO suppressed_notifications
+        (id, user_id, content, priority, original_channel, suppression_reason, release_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (suppression_id, user_id, content, priority, channel,
+          suppression_reason or 'flow_state', release_after))
+
+    conn.commit()
+    conn.close()
+
+    # Log to audit
+    try:
+        from tools.security import audit
+        audit.log_event(
+            event_type='system',
+            action='notification_suppressed',
+            user_id=user_id,
+            resource=f"suppressed:{suppression_id}",
+            status='success',
+            details={'priority': priority, 'reason': suppression_reason}
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "suppression_id": suppression_id,
+        "message": "Notification queued for later delivery",
+        "queued_until": "flow_ends" if not release_after else release_after
+    }
+
+
+def get_suppressed_count(user_id: str) -> Dict[str, Any]:
+    """
+    Get count of suppressed notifications for a user.
+
+    Args:
+        user_id: User identifier
+
+    Returns:
+        dict with count by priority
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT priority, COUNT(*) as count
+        FROM suppressed_notifications
+        WHERE user_id = ? AND released = 0
+        GROUP BY priority
+    ''', (user_id,))
+
+    priorities = {}
+    total = 0
+    for row in cursor.fetchall():
+        priorities[row['priority']] = row['count']
+        total += row['count']
+
+    conn.close()
+
+    return {
+        "success": True,
+        "count": total,
+        "priorities": priorities
+    }
+
+
+def list_suppressed(user_id: str, limit: int = 50) -> Dict[str, Any]:
+    """
+    List suppressed notifications for a user.
+
+    Args:
+        user_id: User identifier
+        limit: Maximum results
+
+    Returns:
+        dict with suppressed notifications list
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, content, priority, suppression_reason, suppressed_at
+        FROM suppressed_notifications
+        WHERE user_id = ? AND released = 0
+        ORDER BY suppressed_at ASC
+        LIMIT ?
+    ''', (user_id, limit))
+
+    notifications = []
+    for row in cursor.fetchall():
+        notifications.append({
+            'id': row['id'],
+            'content': row['content'][:100] + '...' if len(row['content']) > 100 else row['content'],
+            'priority': row['priority'],
+            'reason': row['suppression_reason'],
+            'suppressed_at': row['suppressed_at']
+        })
+
+    conn.close()
+
+    return {
+        "success": True,
+        "notifications": notifications,
+        "count": len(notifications)
+    }
+
+
+def release_suppressed(user_id: str, send_immediately: bool = False) -> Dict[str, Any]:
+    """
+    Release all suppressed notifications for a user.
+
+    Args:
+        user_id: User identifier
+        send_immediately: If True, send notifications now; otherwise just mark as released
+
+    Returns:
+        dict with release count
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Get suppressed notifications
+    cursor.execute('''
+        SELECT id, content, priority, original_channel
+        FROM suppressed_notifications
+        WHERE user_id = ? AND released = 0
+        ORDER BY suppressed_at ASC
+    ''', (user_id,))
+
+    to_release = cursor.fetchall()
+
+    if not to_release:
+        conn.close()
+        return {
+            "success": True,
+            "released": 0,
+            "message": "No suppressed notifications to release"
+        }
+
+    released_count = 0
+    sent_count = 0
+    now = datetime.now().isoformat()
+
+    for row in to_release:
+        # Mark as released
+        cursor.execute('''
+            UPDATE suppressed_notifications
+            SET released = 1, released_at = ?
+            WHERE id = ?
+        ''', (now, row['id']))
+        released_count += 1
+
+        # Optionally send immediately
+        if send_immediately:
+            try:
+                notification_id = queue_notification(
+                    user_id=user_id,
+                    content=row['content'],
+                    priority=row['priority'],
+                    channel=row['original_channel'],
+                    source='released_suppression'
+                )
+                sent_count += 1
+            except Exception:
+                pass
+
+    conn.commit()
+    conn.close()
+
+    # Log to audit
+    try:
+        from tools.security import audit
+        audit.log_event(
+            event_type='system',
+            action='notifications_released',
+            user_id=user_id,
+            status='success',
+            details={'released': released_count, 'sent': sent_count}
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "released": released_count,
+        "sent": sent_count if send_immediately else 0,
+        "message": f"{released_count} notifications released"
+    }
+
+
+async def send_with_flow_awareness(
+    user_id: str,
+    content: str,
+    priority: str = 'normal',
+    channel: Optional[str] = None,
+    source: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Send a notification with flow state awareness.
+
+    If user is in flow and priority allows suppression, queues for later.
+    Otherwise sends immediately.
+
+    Args:
+        user_id: Target user ID
+        content: Notification content
+        priority: Notification priority
+        channel: Specific channel to use
+        source: Source of notification
+
+    Returns:
+        dict with result (sent or suppressed)
+    """
+    # Check if we should suppress
+    suppress_check = should_suppress(user_id, priority)
+
+    if suppress_check.get('should_suppress'):
+        # Queue for later
+        result = queue_for_later(
+            user_id=user_id,
+            content=content,
+            priority=priority,
+            channel=channel,
+            suppression_reason=suppress_check.get('reason')
+        )
+        result['suppressed'] = True
+        result['flow_score'] = suppress_check.get('flow_score')
+        return result
+
+    # Send immediately
+    notification_id = queue_notification(
+        user_id=user_id,
+        content=content,
+        priority=priority,
+        channel=channel,
+        source=source
+    )
+
+    send_result = await send_notification(notification_id)
+    send_result['suppressed'] = False
+    send_result['flow_score'] = suppress_check.get('flow_score')
+
+    # If high priority during focus, note the gentle channel suggestion
+    if suppress_check.get('use_gentle_channel'):
+        send_result['used_gentle_channel'] = True
+
+    return send_result
+
+
 def main():
     parser = argparse.ArgumentParser(description='Notification Dispatch')
     parser.add_argument('--action', required=True,
-                       choices=['queue', 'send', 'list', 'process', 'get', 'stats'],
+                       choices=['queue', 'send', 'list', 'process', 'get', 'stats',
+                               'check-flow', 'suppressed-count', 'list-suppressed', 'release-suppressed'],
                        help='Action to perform')
 
     parser.add_argument('--user', help='User ID')
@@ -598,6 +1070,10 @@ def main():
     parser.add_argument('--id', help='Notification ID')
     parser.add_argument('--status', help='Filter by status')
     parser.add_argument('--limit', type=int, default=50, help='Result limit')
+    parser.add_argument('--flow-aware', dest='flow_aware', action='store_true',
+                       help='Check flow state before sending (suppress if in flow)')
+    parser.add_argument('--send-on-release', dest='send_on_release', action='store_true',
+                       help='Send notifications immediately when releasing suppressed')
 
     args = parser.parse_args()
     result = None
@@ -623,14 +1099,24 @@ def main():
         if not args.id:
             # If no ID but user/content provided, queue and send immediately
             if args.user and args.content:
-                notification_id = queue_notification(
-                    user_id=args.user,
-                    content=args.content,
-                    priority=args.priority,
-                    channel=args.channel,
-                    source=args.source
-                )
-                result = asyncio.run(send_notification(notification_id))
+                if args.flow_aware:
+                    # Use flow-aware sending
+                    result = asyncio.run(send_with_flow_awareness(
+                        user_id=args.user,
+                        content=args.content,
+                        priority=args.priority,
+                        channel=args.channel,
+                        source=args.source
+                    ))
+                else:
+                    notification_id = queue_notification(
+                        user_id=args.user,
+                        content=args.content,
+                        priority=args.priority,
+                        channel=args.channel,
+                        source=args.source
+                    )
+                    result = asyncio.run(send_notification(notification_id))
             else:
                 print("Error: --id or (--user and --content) required for send")
                 sys.exit(1)
@@ -658,6 +1144,30 @@ def main():
 
     elif args.action == 'stats':
         result = get_stats()
+
+    elif args.action == 'check-flow':
+        if not args.user:
+            print("Error: --user required for check-flow")
+            sys.exit(1)
+        result = should_suppress(args.user, args.priority)
+
+    elif args.action == 'suppressed-count':
+        if not args.user:
+            print("Error: --user required for suppressed-count")
+            sys.exit(1)
+        result = get_suppressed_count(args.user)
+
+    elif args.action == 'list-suppressed':
+        if not args.user:
+            print("Error: --user required for list-suppressed")
+            sys.exit(1)
+        result = list_suppressed(args.user, args.limit)
+
+    elif args.action == 'release-suppressed':
+        if not args.user:
+            print("Error: --user required for release-suppressed")
+            sys.exit(1)
+        result = release_suppressed(args.user, send_immediately=args.send_on_release)
 
     # Output
     if result.get('success'):

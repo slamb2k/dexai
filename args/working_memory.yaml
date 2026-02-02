@@ -1,0 +1,94 @@
+# Working Memory Configuration
+# Phase 2: External Working Memory for ADHD support
+#
+# This configuration controls how DexAI captures context and tracks commitments.
+# The goal is to function as an external working memory, reducing the cognitive
+# load of context-switching for ADHD users.
+
+working_memory:
+  # Auto-capture settings
+  # Automatically capture context when user switches tasks or goes idle
+  auto_capture:
+    enabled: true
+    # Capture context after this many seconds of inactivity
+    idle_timeout_seconds: 300    # 5 minutes
+    # Minimum time between captures (prevent spam)
+    min_context_age_seconds: 60  # 1 minute
+    # Triggers that activate auto-capture
+    triggers:
+      - switch    # User switches to different task/channel
+      - timeout   # User goes idle
+      # - manual  # Always available, not auto-triggered
+
+  # Resumption prompt settings
+  # How "you were here..." prompts are generated
+  resumption:
+    # Include recent commitments when resuming
+    include_recent_commits: true
+    # Max commitments to show in resumption
+    max_commits_shown: 3
+    # Context older than this is considered "stale"
+    max_context_age_hours: 168   # 7 days
+    # Message shown for stale contexts (ADHD-friendly, no guilt)
+    stale_context_message: "This is from a while ago - still want to pick it up?"
+    # Template for resumption prompts (uses hardprompts/memory/resumption_prompt.md)
+    use_llm_generation: false    # Set true to use LLM for more natural prompts
+
+  # Commitment tracking settings
+  # Track promises made in conversations
+  commitments:
+    # Automatically extract commitments from messages
+    auto_extract: true
+    # Extraction confidence threshold (0.0-1.0)
+    # Only store commitments above this confidence
+    extraction_confidence_threshold: 0.7
+    # Hours before first gentle reminder
+    reminder_after_hours: 24
+    # Max reminders before giving up (ADHD-friendly: don't nag forever)
+    max_reminders: 3
+    # Archive unfulfilled commitments after this many days
+    # (They become "cancelled" with a note, not deleted)
+    max_age_days: 30
+    # Surface commitments as opportunities, not obligations
+    # This affects the tone of commitment-related messages
+    adhd_friendly_surfacing: true
+
+  # Cleanup and retention settings
+  cleanup:
+    # Delete context snapshots after this many days
+    snapshot_retention_days: 7
+    # Run cleanup on daemon startup
+    run_on_startup: true
+    # Run cleanup daily at this hour (24h format)
+    cleanup_hour: 3  # 3 AM
+
+  # Integration settings
+  integrations:
+    # Channels that trigger auto-capture
+    capture_channels:
+      - discord
+      - telegram
+      - slack
+      - api
+    # Store which file was being edited (requires editor integration)
+    track_active_file: true
+    # Track browser tab (requires extension)
+    track_browser_tab: false
+
+# ADHD-specific design notes (for developers):
+#
+# 1. NEVER surface commitments as guilt lists
+#    - "Sarah's waiting on those docs - want to send them now?" (good)
+#    - "You still haven't sent Sarah the docs (3 days overdue)" (bad)
+#
+# 2. Context resumption should feel like a helpful friend
+#    - "You were working on the auth flow..." (good)
+#    - "You abandoned work on the auth flow..." (bad)
+#
+# 3. Don't overwhelm with options
+#    - One suggested action, not a list of 5 things
+#    - User can always ask for alternatives
+#
+# 4. Graceful degradation
+#    - If user hasn't engaged in a week, don't guilt them
+#    - Make re-engagement feel fresh, not like catching up

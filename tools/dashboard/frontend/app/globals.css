@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Variables for Design System */
+:root {
+  /* Core Colors */
+  --bg-primary: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-elevated: #1a1a2e;
+  --bg-input: #0f0f16;
+
+  /* Accent Colors */
+  --accent-primary: #3b82f6;
+  --accent-glow: #60a5fa;
+  --accent-secondary: #06b6d4;
+
+  /* Status Colors */
+  --status-success: #10b981;
+  --status-warning: #f59e0b;
+  --status-error: #ef4444;
+  --status-info: #3b82f6;
+
+  /* Text Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-disabled: #475569;
+
+  /* Border Colors */
+  --border-default: #1e293b;
+  --border-focus: #3b82f6;
+}
+
+/* Base styles */
+html,
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Utility classes */
+@layer components {
+  /* Card component */
+  .card {
+    @apply bg-bg-surface border border-border-default rounded-card shadow-card;
+    @apply transition-all duration-200;
+  }
+
+  .card:hover {
+    @apply shadow-glow-blue;
+  }
+
+  /* Button variants */
+  .btn {
+    @apply px-4 py-2 rounded-button font-medium transition-all duration-200;
+    @apply focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary;
+  }
+
+  .btn-primary {
+    @apply bg-accent-primary text-white hover:bg-accent-glow;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent border border-accent-primary text-accent-primary;
+    @apply hover:bg-accent-primary hover:text-white;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated;
+  }
+
+  /* Input styles */
+  .input {
+    @apply bg-bg-input border border-border-default rounded-button px-3 py-2;
+    @apply text-text-primary placeholder:text-text-muted;
+    @apply focus:border-border-focus focus:shadow-glow-blue;
+    @apply transition-all duration-200;
+  }
+
+  /* Badge variants */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-caption font-medium;
+  }
+
+  .badge-success {
+    @apply bg-status-success/20 text-status-success;
+  }
+
+  .badge-warning {
+    @apply bg-status-warning/20 text-status-warning;
+  }
+
+  .badge-error {
+    @apply bg-status-error/20 text-status-error;
+  }
+
+  .badge-info {
+    @apply bg-status-info/20 text-status-info;
+  }
+
+  /* Status indicator dot */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot-success {
+    @apply bg-status-success shadow-glow-green;
+  }
+
+  .status-dot-warning {
+    @apply bg-status-warning shadow-glow-amber;
+  }
+
+  .status-dot-error {
+    @apply bg-status-error shadow-glow-red;
+  }
+
+  .status-dot-info {
+    @apply bg-status-info shadow-glow-blue;
+  }
+}
+
+/* Animation utilities */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
