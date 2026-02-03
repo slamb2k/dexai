@@ -21,14 +21,59 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch",
-          "remote-notification"
+          "remote-notification",
+          "processing"
         ],
         "NSCameraUsageDescription": "DexAI needs camera access for scanning documents and QR codes.",
-        "NSPhotoLibraryUsageDescription": "DexAI needs photo library access to attach images to tasks."
+        "NSPhotoLibraryUsageDescription": "DexAI needs photo library access to attach images to tasks.",
+        "NSSiriUsageDescription": "DexAI uses Siri to help you manage tasks with voice commands.",
+        "NSUserActivityTypes": [
+          "app.dexai.shortcut.next_task",
+          "app.dexai.shortcut.start_task",
+          "app.dexai.shortcut.complete_step",
+          "app.dexai.shortcut.snooze_reminders",
+          "app.dexai.shortcut.start_focus",
+          "app.dexai.shortcut.end_focus",
+          "app.dexai.shortcut.check_in",
+          "app.dexai.shortcut.add_task"
+        ],
+        "UIApplicationShortcutItems": [
+          {
+            "UIApplicationShortcutItemType": "next_task",
+            "UIApplicationShortcutItemTitle": "Next Task",
+            "UIApplicationShortcutItemSubtitle": "See what to do next",
+            "UIApplicationShortcutItemIconType": "UIApplicationShortcutIconTypeTask"
+          },
+          {
+            "UIApplicationShortcutItemType": "quick_capture",
+            "UIApplicationShortcutItemTitle": "Quick Capture",
+            "UIApplicationShortcutItemSubtitle": "Add a task",
+            "UIApplicationShortcutItemIconType": "UIApplicationShortcutIconTypeAdd"
+          },
+          {
+            "UIApplicationShortcutItemType": "focus_mode",
+            "UIApplicationShortcutItemTitle": "Focus Mode",
+            "UIApplicationShortcutItemSubtitle": "Start focusing",
+            "UIApplicationShortcutItemIconType": "UIApplicationShortcutIconTypeFavorite"
+          }
+        ],
+        "BGTaskSchedulerPermittedIdentifiers": [
+          "app.dexai.background-sync",
+          "app.dexai.background-fetch"
+        ]
       },
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "entitlements": {
+        "com.apple.developer.siri": true,
+        "com.apple.developer.healthkit": false,
+        "com.apple.developer.default-data-protection": "NSFileProtectionComplete"
+      },
+      "associatedDomains": [
+        "applinks:dexai.app",
+        "activitycontinuation:dexai.app"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -39,9 +84,25 @@
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ],
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "dexai.app",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -57,11 +118,77 @@
           "mode": "production"
         }
       ],
-      "expo-background-fetch"
+      "expo-background-fetch",
+      [
+        "expo-quick-actions",
+        {
+          "iosActions": [
+            {
+              "id": "next_task",
+              "title": "Next Task",
+              "subtitle": "See what to do next",
+              "icon": "symbol:checklist"
+            },
+            {
+              "id": "quick_capture",
+              "title": "Quick Capture",
+              "subtitle": "Add a task",
+              "icon": "symbol:plus.circle.fill"
+            },
+            {
+              "id": "focus_mode",
+              "title": "Focus Mode",
+              "subtitle": "Start focusing",
+              "icon": "symbol:scope"
+            }
+          ],
+          "androidActions": [
+            {
+              "id": "next_task",
+              "title": "Next Task",
+              "shortcutShortLabel": "Next Task",
+              "icon": "task"
+            },
+            {
+              "id": "quick_capture",
+              "title": "Quick Capture",
+              "shortcutShortLabel": "Add Task",
+              "icon": "add"
+            },
+            {
+              "id": "focus_mode",
+              "title": "Focus Mode",
+              "shortcutShortLabel": "Focus",
+              "icon": "focus"
+            }
+          ]
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "your-eas-project-id"
+      },
+      "nativeFeatures": {
+        "widgets": {
+          "enabled": true,
+          "refreshIntervalMinutes": 60
+        },
+        "watch": {
+          "enabled": true,
+          "complications": ["current_task", "next_reminder"]
+        },
+        "shortcuts": {
+          "enabled": true,
+          "suggestedLimit": 5
+        },
+        "quickActions": {
+          "enabled": true
+        },
+        "backgroundSync": {
+          "enabled": true,
+          "intervalMinutes": 15
+        }
       }
     },
     "owner": "dexai",
