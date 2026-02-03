@@ -9,8 +9,9 @@ Index of all available goal workflows. Check here before creating new goals.
 | Goal | Description |
 |------|-------------|
 | `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
-| `future_roadmap.md` | **Roadmap** — Phases 10-14 future development plans (mobile, voice, calendar, collaboration, analytics) |
+| `future_roadmap.md` | **Roadmap** — Phases 10-14 future development plans (mobile, voice, office, collaboration, analytics) |
 | `phase9_ci_testing.md` | Phase 9 tactical implementation guide — CI/CD, pytest, Vitest, GitHub Actions |
+| `phase12_office_integration.md` | Phase 12 tactical implementation guide — Office integration with 5 levels (Google, Microsoft) |
 | `build_app.md` | ATLAS workflow for building full-stack applications with AI assistance |
 | `phase1_security.md` | Phase 1 tactical implementation guide — security tools (vault, audit, sanitizer, etc.) |
 | `phase2_working_memory.md` | Phase 2 tactical implementation guide — external working memory (context capture, commitments) |
@@ -51,7 +52,10 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 9 | CI/CD & Testing (GitHub Actions, pytest, Vitest) | ✅ Complete |
 | Phase 10 | Mobile Push Notifications (FCM, APNs) | 📋 Planned |
 | Phase 11 | Voice Interface (Speech-to-text, commands) | 📋 Planned |
-| Phase 12 | Calendar Integration (Google, Outlook sync) | 📋 Planned |
+| Phase 12a | Office Integration: Foundation (OAuth, read-only) | 🔄 In Progress |
+| Phase 12b | Office Integration: Collaborative (drafts, scheduling) | 📋 Planned |
+| Phase 12c | Office Integration: Managed Proxy (send with undo) | 📋 Planned |
+| Phase 12d | Office Integration: Autonomous (policy-based) | 📋 Planned |
 | Phase 13 | Collaborative Features (Accountability partners) | 📋 Planned |
 | Phase 14 | Analytics & Insights (Patterns, reports) | 📋 Planned |
 
