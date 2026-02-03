@@ -194,14 +194,17 @@ export default function SetupPage() {
     setIsSubmitting(true);
 
     try {
-      const channelConfig =
-        selectedChannel === 'slack'
-          ? { bot_token: slackBotToken, app_token: slackAppToken }
-          : { token: channelToken };
+      // Build channel config based on selected channel type
+      let channelConfig: Record<string, string> | undefined;
+      if (selectedChannel === 'slack') {
+        channelConfig = { bot_token: slackBotToken, app_token: slackAppToken };
+      } else if (selectedChannel) {
+        channelConfig = { token: channelToken };
+      }
 
       const res = await api.completeSetup({
         channel: selectedChannel || undefined,
-        channel_config: selectedChannel ? channelConfig : undefined,
+        channel_config: channelConfig,
         preferences,
         api_key: apiKeyValid ? apiKey : undefined,
         skip_api_key: skipApiKey,
