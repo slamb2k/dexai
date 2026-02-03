@@ -157,6 +157,55 @@ def get_connection() -> sqlite3.Connection:
         )
     """)
 
+    # Local draft tracking (Phase 12b - Level 3)
+    # Tracks Dex-created drafts with sentiment analysis
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS office_drafts (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            provider_draft_id TEXT,
+            subject TEXT,
+            recipients TEXT,
+            cc TEXT,
+            bcc TEXT,
+            body_text TEXT,
+            body_html TEXT,
+            reply_to_message_id TEXT,
+            status TEXT DEFAULT 'pending',
+            created_by TEXT DEFAULT 'dex',
+            sentiment_score REAL,
+            sentiment_flags TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            approved_at DATETIME,
+            FOREIGN KEY (account_id) REFERENCES office_accounts(id)
+        )
+    """)
+
+    # Meeting proposals (Phase 12b - Level 3)
+    # Tracks Dex-proposed meetings before confirmation
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS office_meeting_drafts (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            provider_event_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            location TEXT,
+            start_time DATETIME NOT NULL,
+            end_time DATETIME NOT NULL,
+            timezone TEXT DEFAULT 'UTC',
+            attendees TEXT,
+            organizer_email TEXT,
+            status TEXT DEFAULT 'proposed',
+            created_by TEXT DEFAULT 'dex',
+            conflicts TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at DATETIME,
+            FOREIGN KEY (account_id) REFERENCES office_accounts(id)
+        )
+    """)
+
     # Indexes
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_email_account_date "
@@ -173,6 +222,23 @@ def get_connection() -> sqlite3.Connection:
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_audit_account_date "
         "ON office_audit_log(account_id, created_at)"
+    )
+    # Phase 12b indexes
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drafts_account_status "
+        "ON office_drafts(account_id, status)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drafts_created "
+        "ON office_drafts(created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meeting_drafts_account_status "
+        "ON office_meeting_drafts(account_id, status)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meeting_drafts_start "
+        "ON office_meeting_drafts(start_time)"
     )
 
     conn.commit()
