@@ -3,7 +3,7 @@ name = "dexai"
 version = "0.1.0"
 description = "Personal AI assistant for ADHD users - zero-maintenance, emotionally safe, one-thing focus"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
     { name = "DexAI Team" }
 ]
@@ -11,7 +11,6 @@ keywords = ["ai", "assistant", "adhd", "productivity", "automation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business :: Scheduling",
@@ -52,11 +51,20 @@ channels = [
     "slack-bolt>=1.20.0",
 ]
 
-[project.urls]
-Repository = "https://github.com/dexai/dexai"
+[project.scripts]
+dexai = "tools.cli:main"
 
-# Note: This is an application, not an installable package
-# The build-system section is omitted intentionally
+[project.urls]
+Repository = "https://github.com/slamb2k/dexai"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tools*"]
+exclude = ["tests*"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # pytest configuration

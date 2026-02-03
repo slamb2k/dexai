@@ -144,15 +144,36 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
+## CLI Entry Point (`tools/cli.py`)
+
+| Tool | Description |
+|------|-------------|
+| `cli.py` | Main CLI entry point — `dexai setup`, `dexai dashboard`, `dexai --version` |
+
+---
+
 ## Setup Tools (`tools/setup/`)
 
 | Tool | Description |
 |------|-------------|
-| `wizard.py` | Core setup state management, channel validation, and configuration generation (Phase 8) |
+| `wizard.py` | Core setup state management, channel validation, test messaging, and configuration generation (Phase 8) |
 | `tui/main.py` | Textual-based terminal UI wizard with all setup screens (Phase 8) |
 | `guides/telegram.md` | Step-by-step Telegram bot setup instructions |
 | `guides/discord.md` | Step-by-step Discord bot setup instructions |
 | `guides/slack.md` | Step-by-step Slack app setup instructions |
+
+---
+
+## Dashboard Setup API (`tools/dashboard/backend/routes/setup.py`)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/setup/state` | Get current setup wizard state |
+| `POST /api/setup/channel/validate` | Validate channel credentials |
+| `POST /api/setup/channel/test` | Send test message to channel |
+| `POST /api/setup/apikey/validate` | Validate Anthropic API key |
+| `POST /api/setup/complete` | Finalize setup and apply configuration |
+| `POST /api/setup/reset` | Reset setup state |
 
 ---
 
