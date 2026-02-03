@@ -241,6 +241,7 @@ Master list of all available tools. Check here before creating new scripts.
 | `summarizer.py` | ADHD-friendly inbox summaries, priority detection, "one thing" mode |
 | `draft_manager.py` | Draft creation, approval workflow, sentiment analysis integration (Phase 12b) |
 | `sentiment.py` | Email sentiment analysis for ADHD-safe sending (Phase 12b) |
+| `sender.py` | Email sending with undo window, sentiment gating, bulk operations (Phase 12c) |
 
 ### Calendar Tools (`tools/office/calendar/`)
 
@@ -248,6 +249,29 @@ Master list of all available tools. Check here before creating new scripts.
 |------|-------------|
 | `reader.py` | Event retrieval, availability checking, free slot finding |
 | `scheduler.py` | Meeting proposal, confirmation, time suggestion with conflict checking (Phase 12b) |
+
+### Action Queue Tools (`tools/office/actions/`) — Phase 12c
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Action types, statuses, priorities, and database index management |
+| `queue.py` | Action queue management (queue, cancel, expedite, stats) |
+| `validator.py` | Pre-queue validation (level check, rate limits, recipient safety) |
+| `undo_manager.py` | Undo window calculation, action undo, window extension |
+| `executor.py` | Action execution engine with provider dispatch |
+| `audit_logger.py` | Append-only audit logging for all office actions |
+| `digest.py` | Daily digest generation for action summaries |
+
+### Automation Tools (`tools/office/automation/`) — Phase 12d
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Automation module exports and lazy loading |
+| `emergency.py` | Emergency pause/resume system for instant automation control |
+| `contact_manager.py` | VIP contact management with priority levels |
+| `inbox_processor.py` | Automated email processing against policies (Phase 12d) |
+| `calendar_guardian.py` | Calendar protection, focus block defense, meeting auto-response (Phase 12d) |
+| `auto_responder.py` | Template-based automatic email responses (Phase 12d) |
 
 ### Configuration
 

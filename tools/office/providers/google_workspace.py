@@ -549,6 +549,40 @@ class GoogleWorkspaceProvider(OfficeProvider):
             return {"success": True, "message_id": message_id}
         return result
 
+    async def trash_email(self, message_id: str) -> dict[str, Any]:
+        """Move an email to trash via Gmail API messages.trash()."""
+        if self.integration_level < IntegrationLevel.MANAGED_PROXY:
+            return {"success": False, "error": "Trashing email requires Level 4+"}
+
+        url = f"{GMAIL_API_BASE}/users/me/messages/{message_id}/trash"
+        result = await self._make_request("POST", url)
+
+        if result.get("success"):
+            return {"success": True, "message_id": message_id}
+        return result
+
+    async def delete_email(self, message_id: str) -> dict[str, Any]:
+        """Permanently delete an email via Gmail API messages.delete()."""
+        if self.integration_level < IntegrationLevel.MANAGED_PROXY:
+            return {"success": False, "error": "Deleting email requires Level 4+"}
+
+        url = f"{GMAIL_API_BASE}/users/me/messages/{message_id}"
+        return await self._make_request("DELETE", url)
+
+    async def archive_email(self, message_id: str) -> dict[str, Any]:
+        """Archive an email by removing the INBOX label."""
+        if self.integration_level < IntegrationLevel.MANAGED_PROXY:
+            return {"success": False, "error": "Archiving email requires Level 4+"}
+
+        url = f"{GMAIL_API_BASE}/users/me/messages/{message_id}/modify"
+        data = {"removeLabelIds": ["INBOX"]}
+
+        result = await self._make_request("POST", url, data=data)
+
+        if result.get("success"):
+            return {"success": True, "message_id": message_id}
+        return result
+
     # =========================================================================
     # Calendar Write Operations (Level 3+)
     # =========================================================================

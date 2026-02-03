@@ -203,6 +203,88 @@ office_integration:
     revoke_command: "!revoke office"
 
   # =============================================================================
+  # Level 4: Managed Proxy Settings
+  # =============================================================================
+  # Configuration specific to Level 4 (Managed Proxy) operation mode
+
+  level_4:
+    # Undo window defaults (seconds)
+    undo_windows:
+      send_email: 60
+      send_email_high_sentiment: 300
+      delete_email: 30
+      archive_email: 15
+      schedule_meeting: 60
+      cancel_meeting: 60
+
+    # Rate limits (per hour)
+    rate_limits:
+      send_email: 50
+      delete_email: 100
+      archive_email: 200
+
+    # Confirmation requirements
+    require_confirmation:
+      - permanent_delete
+      - send_to_large_group  # >10 recipients
+      - external_domain_first_contact
+
+    # Daily digest
+    digest:
+      enabled: true
+      send_time: "20:00"
+      timezone: "user"  # Use user's timezone
+      channel: "primary"
+
+    # Audit settings
+    audit:
+      retention_days: 365
+      include_body_preview: true
+      redact_after_days: 90  # Redact full content after 90 days
+
+  # =============================================================================
+  # Level 5: Autonomous Settings
+  # =============================================================================
+  # Configuration specific to Level 5 (Autonomous) operation mode
+
+  level_5:
+    # Progressive trust requirements
+    progressive_trust:
+      required_days_at_level_4: 90
+      max_undo_rate: 0.05  # 5%
+      min_actions_executed: 50
+
+    # Policy limits
+    policy_limits:
+      max_policies_per_account: 50
+      max_conditions_per_policy: 10
+      max_actions_per_policy: 5
+      max_executions_per_day_per_policy: 100
+
+    # Automation settings
+    automation:
+      inbox_poll_interval_seconds: 60
+      calendar_poll_interval_seconds: 300
+      batch_size: 50
+
+    # Safety settings
+    safety:
+      novel_situation_threshold: 0.7  # Confidence below this = prompt user
+      require_undo_window: true       # Even autonomous actions get undo window
+      vip_always_notify: true         # VIPs bypass notification suppression
+      emergency_pause_default_hours: null  # Until manual resume
+
+    # Default policy settings
+    default_policies:
+      auto_enable: false              # User must enable each policy
+      show_suggestions: true          # Suggest policies based on behavior
+
+    # Response templates
+    templates:
+      max_templates: 20
+      max_template_length: 5000       # Characters
+
+  # =============================================================================
   # Integration Level Descriptions
   # =============================================================================
   # For display in UI
