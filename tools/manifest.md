@@ -297,4 +297,77 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
+## Mobile Push Tools (`tools/mobile/`) — Phase 10a
+
+### Core Modules
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Database schema (subscriptions, queue, preferences), path constants |
+| `models.py` | Data models (PushSubscription, Notification, NotificationCategory, DeliveryStatus) |
+
+### Push Delivery (`tools/mobile/push/`)
+
+| Tool | Description |
+|------|-------------|
+| `web_push.py` | VAPID key generation, Web Push sending via pywebpush, CLI for testing |
+| `subscription_manager.py` | Subscription CRUD, stale subscription pruning, device management |
+| `delivery.py` | Notification delivery with retry logic, 410 Gone handling, delivery logging |
+
+### Queue Management (`tools/mobile/queue/`)
+
+| Tool | Description |
+|------|-------------|
+| `notification_queue.py` | Priority queue for notifications, enqueue/process/cancel operations |
+| `batcher.py` | Batch related notifications to reduce interruptions, ADHD-friendly summaries |
+| `scheduler.py` | Quiet hours, flow state protection, rate limiting (ADHD-specific 6/hour max) |
+
+### Preferences (`tools/mobile/preferences/`)
+
+| Tool | Description |
+|------|-------------|
+| `user_preferences.py` | Per-user notification settings, quiet hours, category preferences |
+| `category_manager.py` | Notification category definitions, default seeding |
+
+### Analytics (`tools/mobile/analytics/`)
+
+| Tool | Description |
+|------|-------------|
+| `delivery_tracker.py` | Track sent/delivered/clicked/dismissed events, aggregate statistics |
+
+### Dashboard Routes (Phase 10a)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/push/vapid-key` | Get VAPID public key for client subscription |
+| `POST /api/push/subscribe` | Register push subscription |
+| `DELETE /api/push/subscribe/{id}` | Unsubscribe device |
+| `GET /api/push/subscriptions` | List user's subscriptions |
+| `POST /api/push/test` | Send test notification |
+| `GET /api/push/preferences` | Get notification preferences |
+| `PUT /api/push/preferences` | Update preferences |
+| `GET /api/push/categories` | List notification categories |
+| `PUT /api/push/categories/{id}` | Update category preferences |
+| `GET /api/push/history` | Get notification history |
+| `GET /api/push/stats` | Get delivery statistics |
+| `POST /api/push/track/delivered` | Track notification delivery |
+| `POST /api/push/track/clicked` | Track notification click |
+| `POST /api/push/track/dismissed` | Track notification dismissal |
+
+### Frontend Components (Phase 10a)
+
+| File | Description |
+|------|-------------|
+| `frontend/public/sw.js` | Service worker for push event handling, click/dismiss tracking |
+| `frontend/components/push/PushSubscription.tsx` | Push permission request UI, VAPID key fetch, subscription creation |
+| `frontend/app/settings/push/page.tsx` | Push notification settings page (quiet hours, categories, test) |
+
+### Configuration
+
+| File | Description |
+|------|-------------|
+| `args/mobile_push.yaml` | VAPID config, rate limits, batching, categories, ADHD settings |
+
+---
+
 *Update this manifest when adding new tools.*

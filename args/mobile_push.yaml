@@ -1,0 +1,140 @@
+# Mobile Push Notification Configuration
+# Phase 10a: Web Push + PWA
+
+# VAPID (Voluntary Application Server Identification)
+# Used for Web Push authentication
+vapid:
+  # Generate keys with: python -m tools.mobile.push.web_push generate-keys
+  # Store keys in environment variables (NOT in this file):
+  #   VAPID_PUBLIC_KEY=<public_key>
+  #   VAPID_PRIVATE_KEY=<private_key>
+  public_key: ""   # Set via VAPID_PUBLIC_KEY env var
+  private_key: ""  # Set via VAPID_PRIVATE_KEY env var
+  subject: "mailto:notifications@dexai.app"
+
+# Default settings for new users
+defaults:
+  # Rate limiting (ADHD-specific: prevents notification fatigue)
+  max_notifications_per_hour: 6
+  cooldown_after_burst_minutes: 30
+
+  # Batching (groups related notifications)
+  batch_window_seconds: 300  # 5 minutes
+  max_batch_size: 10
+
+  # Flow protection (respect hyperfocus states)
+  respect_flow_state: true
+  flow_interrupt_threshold: 8  # Priority 8+ can interrupt flow
+
+  # Quiet hours (automatic DND)
+  default_quiet_hours:
+    start: "22:00"
+    end: "08:00"
+    timezone: "local"  # Uses user's timezone
+
+# Notification categories with defaults
+categories:
+  task_reminder:
+    name: "Task Reminder"
+    description: "Reminders about upcoming or pending tasks"
+    default_priority: 6
+    can_batch: true
+    can_suppress: true
+    icon: "task"
+    color: "#4F46E5"  # Indigo
+
+  commitment_due:
+    name: "Commitment Due"
+    description: "Important deadlines and commitments"
+    default_priority: 8
+    can_batch: false
+    can_suppress: false  # Always deliver - these are important
+    icon: "commitment"
+    color: "#DC2626"  # Red
+
+  message_received:
+    name: "Message Received"
+    description: "New messages from connected channels"
+    default_priority: 5
+    can_batch: true
+    can_suppress: true
+    icon: "message"
+    color: "#059669"  # Green
+
+  flow_state_ended:
+    name: "Flow State Ended"
+    description: "Notification when focus session completes"
+    default_priority: 4
+    can_batch: false
+    can_suppress: false  # User wants to know when flow ends
+    icon: "flow"
+    color: "#8B5CF6"  # Purple
+
+  daily_summary:
+    name: "Daily Summary"
+    description: "Daily progress and upcoming tasks summary"
+    default_priority: 3
+    can_batch: false
+    can_suppress: true
+    icon: "summary"
+    color: "#6B7280"  # Gray
+
+# ADHD-specific settings
+adhd:
+  # Notification language
+  use_supportive_language: true
+  avoid_guilt_phrases: true
+
+  # Examples of phrases to avoid:
+  # - "You missed..."
+  # - "Overdue"
+  # - "You forgot..."
+  # - "You should have..."
+
+  # Examples of supportive alternatives:
+  # - "Ready when you are"
+  # - "Waiting for you"
+  # - "Still available"
+  # - "Your next step"
+
+  # Timing protection
+  transition_buffer_minutes: 5  # Don't notify right after task switch
+
+  # Content guidelines
+  max_title_length: 50
+  max_body_length: 100
+  include_single_action: true  # Each notification has ONE clear action
+
+# Web Push settings
+web_push:
+  # Time to live for push messages (in seconds)
+  default_ttl: 86400  # 24 hours
+
+  # Retry settings
+  max_retries: 3
+  retry_delay_seconds: 1
+  retry_backoff_multiplier: 2
+
+  # Cleanup
+  prune_inactive_subscriptions_days: 30
+
+# Queue processing
+queue:
+  # How often to process the queue (in seconds)
+  process_interval: 30
+
+  # Maximum notifications to process per run
+  batch_size: 100
+
+  # Expired notification handling
+  expire_after_hours: 24
+
+# Analytics
+analytics:
+  # Data retention
+  retain_delivery_logs_days: 90
+
+  # Metrics collection
+  track_delivery_rate: true
+  track_click_rate: true
+  track_dismiss_rate: true
