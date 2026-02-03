@@ -55,7 +55,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 8 | Guided Installation (Setup wizard) | ✅ Complete |
 | Phase 9 | CI/CD & Testing (GitHub Actions, pytest, Vitest) | ✅ Complete |
 | Phase 10a | Mobile Push: Web Push + PWA | ✅ Complete |
-| Phase 10b | Mobile Push: Expo Mobile Wrapper (iOS) | 📋 Planned |
+| Phase 10b | Mobile Push: Expo Mobile Wrapper (iOS) | ✅ Complete |
 | Phase 10c | Mobile Push: Native Enhancements | 📋 Planned |
 | Phase 11 | Voice Interface (Speech-to-text, commands) | 📋 Planned |
 | Phase 12a | Office Integration: Foundation (OAuth, read-only) | ✅ Complete |

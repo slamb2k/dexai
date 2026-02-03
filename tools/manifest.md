@@ -297,7 +297,7 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
-## Mobile Push Tools (`tools/mobile/`) — Phase 10a
+## Mobile Push Tools (`tools/mobile/`) — Phase 10a/10b
 
 ### Core Modules
 
@@ -313,6 +313,7 @@ Master list of all available tools. Check here before creating new scripts.
 | `web_push.py` | VAPID key generation, Web Push sending via pywebpush, CLI for testing |
 | `subscription_manager.py` | Subscription CRUD, stale subscription pruning, device management |
 | `delivery.py` | Notification delivery with retry logic, 410 Gone handling, delivery logging |
+| `native_tokens.py` | Expo/FCM/APNs token registration and native push sending (Phase 10b) |
 
 ### Queue Management (`tools/mobile/queue/`)
 
@@ -335,7 +336,7 @@ Master list of all available tools. Check here before creating new scripts.
 |------|-------------|
 | `delivery_tracker.py` | Track sent/delivered/clicked/dismissed events, aggregate statistics |
 
-### Dashboard Routes (Phase 10a)
+### Dashboard Routes (Phase 10a/10b)
 
 | Endpoint | Description |
 |----------|-------------|
@@ -353,6 +354,11 @@ Master list of all available tools. Check here before creating new scripts.
 | `POST /api/push/track/delivered` | Track notification delivery |
 | `POST /api/push/track/clicked` | Track notification click |
 | `POST /api/push/track/dismissed` | Track notification dismissal |
+| `POST /api/push/native-token` | Register native push token (Expo/FCM/APNs) (Phase 10b) |
+| `DELETE /api/push/native-token/{token}` | Unregister native push token (Phase 10b) |
+| `GET /api/push/native-tokens` | List user's native tokens (Phase 10b) |
+| `POST /api/push/native-test` | Send test notification to native tokens (Phase 10b) |
+| `GET /api/push/sync` | Get sync status for background fetch (Phase 10b) |
 
 ### Frontend Components (Phase 10a)
 
@@ -367,6 +373,63 @@ Master list of all available tools. Check here before creating new scripts.
 | File | Description |
 |------|-------------|
 | `args/mobile_push.yaml` | VAPID config, rate limits, batching, categories, ADHD settings |
+
+---
+
+## Expo Mobile App (`mobile/`) — Phase 10b
+
+Expo React Native wrapper for iOS push notifications and native app experience.
+
+### Configuration Files
+
+| File | Description |
+|------|-------------|
+| `app.json` | Expo configuration (app name, icons, splash, notification settings) |
+| `package.json` | Dependencies (expo, expo-notifications, react-native-webview) |
+| `tsconfig.json` | TypeScript configuration with path aliases |
+| `babel.config.js` | Babel configuration for Expo |
+
+### App Entry
+
+| File | Description |
+|------|-------------|
+| `App.tsx` | Main entry point (push init, WebView wrapper, deep linking) |
+
+### Components (`mobile/src/components/`)
+
+| File | Description |
+|------|-------------|
+| `WebViewContainer.tsx` | WebView wrapper with auth injection, JS bridge, pull-to-refresh, error handling |
+
+### Services (`mobile/src/services/`)
+
+| File | Description |
+|------|-------------|
+| `push.ts` | Expo push token handling, permission requests, notification listeners |
+| `background.ts` | Background fetch task, silent push handling, badge management |
+
+### Utils (`mobile/src/utils/`)
+
+| File | Description |
+|------|-------------|
+| `bridge.ts` | WebView JS bridge for native-to-web communication |
+| `config.ts` | App configuration (API URLs, feature flags, debug settings) |
+
+### Types (`mobile/src/types/`)
+
+| File | Description |
+|------|-------------|
+| `index.ts` | TypeScript types (NotificationData, BridgeMessage, PushToken, etc.) |
+
+### Assets (`mobile/assets/`)
+
+| File | Description |
+|------|-------------|
+| `icon.png` | App store icon (placeholder - replace before production) |
+| `splash.png` | Splash screen image (placeholder) |
+| `adaptive-icon.png` | Android adaptive icon (placeholder) |
+| `notification-icon.png` | Android notification icon (placeholder) |
+| `README.md` | Asset requirements and design guidelines |
 
 ---
 
