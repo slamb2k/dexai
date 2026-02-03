@@ -30,6 +30,9 @@ dependencies = [
     # TUI setup wizard
     "textual>=0.89.0",
     "rich>=13.9.0",
+    # Push notifications
+    "pywebpush>=1.14.0",
+    "aiohttp>=3.9.0",
     # Channel adapters (optional - installed as needed)
     # "python-telegram-bot>=21.0",
     # "discord.py>=2.4.0",

@@ -4,6 +4,7 @@ Push Notification Routes - Web Push API for Dashboard
 Provides endpoints for Web Push notification management:
 - VAPID key retrieval for client subscription
 - Subscription management (register, unregister, list)
+- Native token registration (Expo/FCM/APNs) for mobile apps
 - Notification preferences
 - Category management
 - Analytics and history
@@ -24,6 +25,12 @@ from tools.mobile.push.subscription_manager import (
     unregister_subscription,
     get_user_subscriptions,
     get_subscription_stats,
+)
+from tools.mobile.push.native_tokens import (
+    register_native_token,
+    unregister_native_token,
+    get_native_tokens,
+    send_native_push_batch,
 )
 from tools.mobile.queue.notification_queue import enqueue, get_pending, cancel
 from tools.mobile.preferences.user_preferences import (
@@ -99,6 +106,22 @@ class TestNotificationRequest(BaseModel):
 
     title: str = Field("Test from DexAI", description="Notification title")
     body: str = Field("This is a test notification", description="Notification body")
+
+
+class NativeTokenRequest(BaseModel):
+    """Request to register a native push token (Expo/FCM/APNs)."""
+
+    token: str = Field(..., description="Push token from mobile app")
+    tokenType: str = Field(..., description="Token type: 'expo', 'fcm', or 'apns'")
+    deviceInfo: dict | None = Field(None, description="Device information")
+
+
+class NativeTokenResponse(BaseModel):
+    """Response for native token registration."""
+
+    success: bool
+    subscriptionId: str | None = Field(None, alias="subscription_id")
+    reactivated: bool = False
 
 
 # =============================================================================
@@ -197,6 +220,143 @@ async def list_subscriptions(
         )
         for sub in subscriptions
     ]
+
+
+# =============================================================================
+# Native Token Endpoints (Expo Mobile App)
+# =============================================================================
+
+
+@router.post("/native-token")
+async def register_native_push_token(
+    request: NativeTokenRequest,
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Register a native push token from the Expo mobile app.
+
+    Supports Expo Push tokens (managed), FCM tokens (Android), and APNs tokens (iOS).
+    This enables native push notifications for the DexAI mobile wrapper app.
+    """
+    result = await register_native_token(
+        user_id=user_id,
+        token=request.token,
+        token_type=request.tokenType,
+        device_info=request.deviceInfo,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Failed to register native token"),
+        )
+
+    return {
+        "success": True,
+        "subscription_id": result["subscription_id"],
+        "reactivated": result.get("reactivated", False),
+    }
+
+
+@router.delete("/native-token/{token}")
+async def unregister_native_push_token(
+    token: str,
+    user_id: str = Query("default", description="User ID"),
+    token_type: str | None = Query(None, description="Token type for faster lookup"),
+):
+    """
+    Unregister a native push token (e.g., on user logout).
+    """
+    result = await unregister_native_token(token=token, token_type=token_type)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Failed to unregister token"),
+        )
+
+    return {"success": True}
+
+
+@router.get("/native-tokens")
+async def list_native_tokens(
+    user_id: str = Query("default", description="User ID"),
+    include_inactive: bool = Query(False, description="Include inactive tokens"),
+):
+    """
+    List user's native push tokens (mobile app registrations).
+    """
+    tokens = await get_native_tokens(
+        user_id=user_id,
+        active_only=not include_inactive,
+    )
+
+    return {
+        "tokens": tokens,
+        "total": len(tokens),
+    }
+
+
+@router.post("/native-test")
+async def send_native_test_notification(
+    request: TestNotificationRequest,
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Send a test notification to all native tokens for a user.
+
+    Tests the Expo/FCM/APNs push delivery path.
+    """
+    result = await send_native_push_batch(
+        user_id=user_id,
+        notification={
+            "title": request.title,
+            "body": request.body,
+            "data": {"action_url": "/settings/push", "category": "test"},
+        },
+    )
+
+    if not result.get("success") and result.get("sent", 0) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "No native tokens or delivery failed"),
+        )
+
+    return result
+
+
+@router.get("/sync")
+async def get_sync_status(
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Get sync status for background fetch.
+
+    Returns badge count and any pending notifications that should be displayed.
+    Used by the mobile app's background fetch task.
+    """
+    # Get badge count from pending notifications
+    pending = await get_pending(user_id, include_scheduled=False)
+    badge_count = len(pending)
+
+    # Get high-priority pending notifications that should be shown immediately
+    urgent_notifications = [
+        {
+            "id": n.get("id"),
+            "title": n.get("title"),
+            "body": n.get("body"),
+            "data": n.get("data"),
+            "priority": n.get("priority", 5),
+        }
+        for n in pending
+        if n.get("priority", 5) >= 8
+    ]
+
+    return {
+        "badgeCount": badge_count,
+        "pendingNotifications": urgent_notifications,
+        "lastSync": datetime.utcnow().isoformat(),
+    }
 
 
 # =============================================================================

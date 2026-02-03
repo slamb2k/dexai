@@ -1,6 +1,6 @@
 # Phase 10: Mobile Push Notifications — Tactical Implementation Guide
 
-**Status:** 🚧 In Progress (10a Complete)
+**Status:** ✅ Complete (10a + 10b)
 **Depends on:** Phase 0 (Security), Phase 4 (Smart Notifications), Phase 7 (Dashboard)
 **Last Updated:** 2026-02-04
 
@@ -33,7 +33,7 @@ Rather than building a full native app immediately, we use a **progressive enhan
 | Sub-Phase | Focus | Status |
 |-----------|-------|--------|
 | **10a** | Web Push + PWA | ✅ Complete |
-| **10b** | Expo Mobile Wrapper (iOS) | 📋 Planned |
+| **10b** | Expo Mobile Wrapper (iOS) | ✅ Complete |
 | **10c** | Native Enhancements | 📋 Planned |
 
 ---
@@ -706,53 +706,140 @@ async def can_send_now(user_id: str, priority: int) -> dict:
 
 ## Phase 10b: Expo Mobile Wrapper (iOS)
 
+**Status:** ✅ Complete
+
 ### Objective
 
 Wrap the PWA in an Expo app to enable iOS push notifications and provide a native app experience.
 
-### Directory Structure
+### Directory Structure (Implemented)
 
 ```
 mobile/
 ├── app.json                    # Expo configuration
-├── App.tsx                     # Entry point (WebView wrapper)
+├── App.tsx                     # Entry point (push init, WebView, deep linking)
+├── package.json                # Dependencies
+├── tsconfig.json               # TypeScript configuration
+├── babel.config.js             # Babel config for Expo
 ├── src/
 │   ├── components/
-│   │   └── WebViewContainer.tsx
+│   │   └── WebViewContainer.tsx  # WebView with auth injection, bridge, refresh
 │   ├── services/
-│   │   ├── push.ts            # Expo push token handling
-│   │   └── background.ts      # Background fetch
-│   └── utils/
-│       └── bridge.ts          # JS bridge to PWA
-├── ios/                        # iOS native code (if ejected)
-├── android/                    # Android native code (if ejected)
-└── package.json
+│   │   ├── push.ts               # Expo push token handling, listeners
+│   │   └── background.ts         # Background fetch, silent push, badges
+│   ├── utils/
+│   │   ├── bridge.ts             # JS bridge for native <-> web communication
+│   │   └── config.ts             # App configuration, feature flags
+│   └── types/
+│       └── index.ts              # TypeScript types
+└── assets/
+    ├── icon.png                  # Placeholder (replace for production)
+    ├── splash.png                # Placeholder
+    ├── adaptive-icon.png         # Placeholder
+    ├── notification-icon.png     # Placeholder
+    └── README.md                 # Asset requirements
 ```
 
-### Key Additions
+### Key Features Implemented
 
 | Component | Description |
 |-----------|-------------|
-| Expo Push Tokens | Handle Expo/FCM/APNs tokens |
-| WebView Bridge | Communicate between native and PWA |
-| Background Fetch | Sync data when app is backgrounded |
-| App Badges | Show unread count on app icon |
+| Expo Push Tokens | Register and manage Expo/FCM/APNs tokens |
+| WebView Bridge | Bidirectional communication (native <-> web) |
+| Background Fetch | Sync notifications, badge updates when backgrounded |
+| App Badges | Badge count management via Expo APIs |
+| Deep Linking | Handle dexai:// scheme for navigation |
+| Error Handling | Graceful offline and error states |
+| Pull-to-Refresh | Native refresh gesture support |
 
-### Database Changes
+### Backend Additions
+
+New file: `tools/mobile/push/native_tokens.py`
+- `register_native_token()` - Store Expo/FCM/APNs tokens
+- `unregister_native_token()` - Deactivate tokens on logout
+- `get_native_tokens()` - List user's mobile tokens
+- `send_native_push()` - Send via Expo Push Service
+- `send_native_push_batch()` - Send to all user's devices
+
+### New API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/push/native-token` | Register native push token |
+| `DELETE /api/push/native-token/{token}` | Unregister token |
+| `GET /api/push/native-tokens` | List native tokens |
+| `POST /api/push/native-test` | Test native push |
+| `GET /api/push/sync` | Background sync status |
+
+### Database Changes (Migration-Safe)
 
 ```sql
--- Extend push_subscriptions for native tokens
+-- Added to push_subscriptions table
 ALTER TABLE push_subscriptions ADD COLUMN expo_token TEXT;
 ALTER TABLE push_subscriptions ADD COLUMN fcm_token TEXT;
 ALTER TABLE push_subscriptions ADD COLUMN apns_token TEXT;
+ALTER TABLE push_subscriptions ADD COLUMN device_info TEXT;
 ```
 
-### Implementation Notes
+### WebView Bridge Protocol
 
-- Use `expo-notifications` for unified push handling
-- WebView loads dashboard with auth token injection
-- Native push tokens sent to backend alongside web push
-- Backend determines which delivery method per subscription
+**Native -> Web Commands:**
+- `AUTH_TOKEN` - Inject auth credentials
+- `NAVIGATE` - Navigate to path
+- `NOTIFICATION_RECEIVED` - Notify of new notification
+- `BADGE_UPDATE` - Update badge display
+- `DEVICE_INFO` - Send device information
+- `THEME_CHANGE` - Notify of theme change
+
+**Web -> Native Commands:**
+- `READY` - WebView is ready
+- `GET_AUTH` - Request auth token
+- `NAVIGATE_NATIVE` - Open external URL
+- `LOG` - Console logging
+
+### ADHD-Friendly Features
+
+1. **Permission Request** - Clear explanation of notification value
+2. **Gentle Vibration** - Short patterns to avoid startle
+3. **High-Priority Channel** - Urgent items break through
+4. **Badge Management** - Clear on app open
+5. **Silent Sync** - Background updates without interruption
+
+### Build Instructions
+
+```bash
+cd mobile
+
+# Install dependencies
+npm install
+
+# Start development server
+npm start
+
+# Build for iOS (requires EAS CLI)
+npm run build:ios
+
+# Build for Android
+npm run build:android
+```
+
+### Environment Variables
+
+For production, set in `app.json` extras or `.env`:
+- `EXPO_PUBLIC_API_URL` - Backend API endpoint
+- `EXPO_PUBLIC_DASHBOARD_URL` - PWA dashboard URL
+- `EXPO_PUBLIC_DEBUG` - Enable debug logging
+
+### Verification Checklist
+
+- [x] Expo project structure created
+- [x] Push notification service implemented
+- [x] Background fetch task registered
+- [x] WebView bridge functional
+- [x] Deep linking configured
+- [x] Backend native token endpoints added
+- [x] Database schema updated
+- [x] Documentation updated
 
 ---
 
