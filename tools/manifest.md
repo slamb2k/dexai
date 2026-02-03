@@ -239,18 +239,37 @@ Master list of all available tools. Check here before creating new scripts.
 |------|-------------|
 | `reader.py` | Unified inbox reading, search, filtering across providers |
 | `summarizer.py` | ADHD-friendly inbox summaries, priority detection, "one thing" mode |
+| `draft_manager.py` | Draft creation, approval workflow, sentiment analysis integration (Phase 12b) |
+| `sentiment.py` | Email sentiment analysis for ADHD-safe sending (Phase 12b) |
 
 ### Calendar Tools (`tools/office/calendar/`)
 
 | Tool | Description |
 |------|-------------|
 | `reader.py` | Event retrieval, availability checking, free slot finding |
+| `scheduler.py` | Meeting proposal, confirmation, time suggestion with conflict checking (Phase 12b) |
 
 ### Configuration
 
 | File | Description |
 |------|-------------|
 | `args/office_integration.yaml` | Integration levels, OAuth config, ADHD safeguards, security settings |
+
+### Dashboard Routes (Phase 12b)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/office/accounts` | List connected office accounts |
+| `GET /api/office/drafts` | List email drafts with filters |
+| `POST /api/office/drafts` | Create new draft with sentiment analysis |
+| `POST /api/office/drafts/{id}/approve` | Approve draft for sending |
+| `GET /api/office/meetings` | List meeting proposals |
+| `POST /api/office/meetings` | Propose new meeting with availability check |
+| `POST /api/office/meetings/{id}/confirm` | Confirm meeting and send invites |
+| `GET /api/office/suggest-times` | Get AI-suggested meeting times |
+| `GET /api/oauth/authorize/{provider}` | Get OAuth authorization URL |
+| `GET /oauth/google/callback` | Google OAuth callback handler |
+| `GET /oauth/microsoft/callback` | Microsoft OAuth callback handler |
 
 ---
 
