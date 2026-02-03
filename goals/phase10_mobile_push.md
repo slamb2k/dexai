@@ -1,6 +1,6 @@
 # Phase 10: Mobile Push Notifications — Tactical Implementation Guide
 
-**Status:** ✅ Complete (10a + 10b)
+**Status:** ✅ Complete (10a + 10b + 10c)
 **Depends on:** Phase 0 (Security), Phase 4 (Smart Notifications), Phase 7 (Dashboard)
 **Last Updated:** 2026-02-04
 
@@ -34,7 +34,7 @@ Rather than building a full native app immediately, we use a **progressive enhan
 |-----------|-------|--------|
 | **10a** | Web Push + PWA | ✅ Complete |
 | **10b** | Expo Mobile Wrapper (iOS) | ✅ Complete |
-| **10c** | Native Enhancements | 📋 Planned |
+| **10c** | Native Enhancements | ✅ Complete |
 
 ---
 
@@ -845,23 +845,163 @@ For production, set in `app.json` extras or `.env`:
 
 ## Phase 10c: Native Enhancements
 
+**Status:** ✅ Complete
+
 ### Objective
 
-Add native features that can't be achieved with PWA alone.
+Add native features that can't be achieved with PWA alone for deeper OS integration.
 
-### Features
+### Features Implemented
 
 | Feature | Description | Platform |
 |---------|-------------|----------|
-| **Background Sync** | Sync tasks/notifications in background | iOS, Android |
-| **Widgets** | Home screen widget showing next task | iOS 14+, Android |
-| **Watch App** | Quick task view on Apple Watch | watchOS |
-| **Siri Shortcuts** | "Hey Siri, what's my next task?" | iOS |
-| **Quick Actions** | 3D Touch shortcuts | iOS |
+| **Enhanced Background Sync** | Sync tasks, preferences, notifications | iOS, Android |
+| **Offline Queue** | Queue actions offline, replay on reconnect | iOS, Android |
+| **Home Screen Widgets** | Next task widget with current step | iOS 14+, Android |
+| **Apple Watch Support** | Task view, quick actions, complications | watchOS |
+| **Siri Shortcuts** | Voice commands for common actions | iOS |
+| **Quick Actions** | 3D Touch / long press shortcuts | iOS, Android |
 
-### Implementation
+### Directory Structure (Implemented)
 
-This phase will be scoped in detail after 10a and 10b are validated with users.
+```
+mobile/src/native/
+├── widgets/
+│   ├── index.ts             # Widget exports
+│   ├── NextTaskWidget.tsx   # Home screen widget showing next task
+│   └── config.ts            # Widget sizes, themes, refresh config
+├── watch/
+│   ├── index.ts             # Watch app exports
+│   ├── WatchConnector.ts    # Apple Watch communication
+│   └── types.ts             # WatchMessage, ComplicationData, WatchAppState
+├── shortcuts/
+│   ├── index.ts             # Shortcuts exports
+│   ├── SiriShortcuts.ts     # Siri voice commands, activity donation
+│   └── QuickActions.ts      # 3D Touch quick actions
+└── sync/
+    ├── index.ts             # Background sync exports
+    ├── BackgroundSync.ts    # Enhanced sync service
+    └── OfflineQueue.ts      # Offline action queue with conflict detection
+
+tools/mobile/native/
+├── __init__.py              # Module exports
+├── widget_data.py           # Widget and Watch data provider
+└── shortcuts.py             # Shortcut and quick action handlers
+```
+
+### Widget Features
+
+- **NextTaskWidget**: Shows current task title, current step, energy indicator
+- ADHD-friendly: Single focus, no overwhelm
+- Refreshes hourly (configurable)
+- Tap to open app at task
+- Sizes: small (2x2), medium (4x2)
+
+### Siri Shortcuts
+
+| Shortcut | Phrase | Description |
+|----------|--------|-------------|
+| next_task | "What's my next task?" | Get current task and step |
+| start_task | "I'm starting a task" | Mark task as in-progress |
+| complete_step | "I finished a step" | Complete current step |
+| snooze_reminders | "Snooze my reminders" | Snooze for 30 minutes |
+| start_focus | "Start focus mode" | Enable focus/DND |
+| end_focus | "End focus mode" | Exit focus session |
+| check_in | "Check in with Dex" | Quick status check |
+| add_task | "Add a task" | Quick task capture |
+
+### Quick Actions (3D Touch)
+
+| Action | Title | Behavior |
+|--------|-------|----------|
+| next_task | Next Task | Open app to current task |
+| quick_capture | Quick Capture | Open task add screen |
+| focus_mode | Focus Mode | Start focus session |
+
+Dynamic actions based on recent activity also supported.
+
+### Apple Watch Features
+
+- Current task display (truncated for small screen)
+- Quick actions from watch
+- Complications: current_task, task_count, energy_level, flow_state
+- Sync via expo-watch-connectivity
+
+### Background Sync
+
+- Enhanced sync beyond basic fetch
+- Syncs: tasks, preferences, notifications
+- Handles offline changes with queue
+- Conflict resolution strategy (server_wins by default)
+
+### Offline Queue
+
+- Persists to AsyncStorage
+- Automatic replay on reconnection
+- Exponential backoff for retries
+- Conflict detection via entity versioning
+- Convenience methods: queueTaskComplete, queueStepComplete, etc.
+
+### API Endpoints (Added)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/mobile/widget-data` | Data for home screen widget |
+| `GET /api/mobile/watch-data` | Data for Apple Watch |
+| `POST /api/mobile/shortcut/{id}` | Handle shortcut invocation |
+| `GET /api/mobile/shortcuts/suggested` | Suggested shortcuts |
+| `POST /api/mobile/quick-action/{action}` | Handle quick action |
+
+### Configuration
+
+Added to `args/mobile_push.yaml`:
+```yaml
+native:
+  widgets:
+    enabled: true
+    refresh_interval_minutes: 60
+    sizes: ['small', 'medium']
+  watch:
+    enabled: true
+    complications: ['current_task', 'next_reminder']
+  shortcuts:
+    enabled: true
+    suggested_limit: 5
+  quick_actions:
+    enabled: true
+    items: [next_task, quick_capture, focus_mode]
+  background_sync:
+    enabled: true
+    min_interval_minutes: 15
+```
+
+### App.json Updates
+
+- Added Siri entitlements
+- Added NSUserActivityTypes for shortcuts
+- Added UIApplicationShortcutItems for quick actions
+- Added BGTaskSchedulerPermittedIdentifiers
+- Added expo-quick-actions plugin
+- Added associated domains for continuity
+
+### Verification Checklist
+
+- [x] Widget component with ADHD-friendly design
+- [x] Widget configuration (sizes, themes, refresh)
+- [x] Watch connector for Apple Watch communication
+- [x] Watch types (messages, complications, state)
+- [x] Siri Shortcuts registration and handling
+- [x] Quick Actions setup and handling
+- [x] Enhanced background sync service
+- [x] Offline queue with conflict detection
+- [x] Backend widget data endpoint
+- [x] Backend watch data endpoint
+- [x] Backend shortcut handling
+- [x] Backend quick action handling
+- [x] App.tsx native feature initialization
+- [x] app.json native configuration
+- [x] Configuration in mobile_push.yaml
+- [x] Documentation updated
 
 ---
 

@@ -620,3 +620,135 @@ async def track_notification_dismissed(
     result = await track_dismissed(notification_id=notification_id)
 
     return {"success": True}
+
+
+# =============================================================================
+# Native Enhancement Endpoints (Phase 10c)
+# =============================================================================
+
+
+class ShortcutRequest(BaseModel):
+    """Request for shortcut invocation."""
+
+    params: dict | None = Field(None, description="Shortcut parameters")
+
+
+class QuickActionRequest(BaseModel):
+    """Request for quick action invocation."""
+
+    user_info: dict | None = Field(None, description="User info from quick action")
+
+
+@router.get("/mobile/widget-data")
+async def get_widget_data(
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Get data formatted for home screen widget display.
+
+    Returns the next task, current step, energy level, and upcoming count.
+    ADHD-friendly: Single focus, no overwhelm.
+    """
+    from tools.mobile.native.widget_data import get_widget_data as fetch_widget_data
+
+    result = await fetch_widget_data(user_id=user_id)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Failed to fetch widget data"),
+        )
+
+    return result
+
+
+@router.get("/mobile/watch-data")
+async def get_watch_data(
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Get data formatted for Apple Watch display.
+
+    Returns tasks, energy, flow state, and complication data.
+    """
+    from tools.mobile.native.widget_data import get_watch_data as fetch_watch_data
+
+    result = await fetch_watch_data(user_id=user_id)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Failed to fetch watch data"),
+        )
+
+    return result
+
+
+@router.post("/mobile/shortcut/{shortcut_id}")
+async def handle_shortcut(
+    shortcut_id: str,
+    request: ShortcutRequest,
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Handle Siri shortcut invocation.
+
+    Processes shortcuts like:
+    - "What's my next task?"
+    - "I'm starting a task"
+    - "Snooze my reminders"
+    """
+    from tools.mobile.native.shortcuts import handle_shortcut as process_shortcut
+
+    result = await process_shortcut(
+        user_id=user_id,
+        shortcut_id=shortcut_id,
+        params=request.params,
+    )
+
+    return result
+
+
+@router.get("/mobile/shortcuts/suggested")
+async def get_suggested_shortcuts(
+    user_id: str = Query("default", description="User ID"),
+    limit: int = Query(5, ge=1, le=10, description="Maximum shortcuts to return"),
+):
+    """
+    Get suggested shortcuts based on user patterns.
+
+    Returns shortcuts relevant to time of day, recent activity, and habits.
+    """
+    from tools.mobile.native.shortcuts import get_suggested_shortcuts as fetch_suggestions
+
+    result = await fetch_suggestions(user_id=user_id, limit=limit)
+
+    return result
+
+
+@router.post("/mobile/quick-action/{action_id}")
+async def handle_quick_action(
+    action_id: str,
+    request: QuickActionRequest,
+    user_id: str = Query("default", description="User ID"),
+):
+    """
+    Handle 3D Touch / long press quick action.
+
+    Processes actions like:
+    - "Next Task" - open to current task
+    - "Quick Capture" - add task quickly
+    - "Focus Mode" - enable DND and flow state
+    """
+    from tools.mobile.native.shortcuts import handle_quick_action as process_action
+
+    # Merge user_info into params for the handler
+    params = request.user_info or {}
+
+    result = await process_action(
+        user_id=user_id,
+        action_id=action_id,
+        params=params,
+    )
+
+    return result

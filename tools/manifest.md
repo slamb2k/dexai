@@ -433,4 +433,64 @@ Expo React Native wrapper for iOS push notifications and native app experience.
 
 ---
 
+## Native Features (`mobile/src/native/`) — Phase 10c
+
+Advanced native mobile features for deeper OS integration.
+
+### Widgets (`mobile/src/native/widgets/`)
+
+| File | Description |
+|------|-------------|
+| `index.ts` | Widget exports |
+| `NextTaskWidget.tsx` | iOS/Android home screen widget showing next task and current step |
+| `config.ts` | Widget configuration (sizes, refresh intervals, display options, themes) |
+
+### Watch (`mobile/src/native/watch/`)
+
+| File | Description |
+|------|-------------|
+| `index.ts` | Watch app exports |
+| `WatchConnector.ts` | Apple Watch communication (send tasks, receive actions, complications) |
+| `types.ts` | Watch-specific types (WatchMessage, ComplicationData, WatchAppState) |
+
+### Shortcuts (`mobile/src/native/shortcuts/`)
+
+| File | Description |
+|------|-------------|
+| `index.ts` | Shortcuts exports |
+| `SiriShortcuts.ts` | Siri Shortcuts integration (voice commands, activity donation) |
+| `QuickActions.ts` | 3D Touch / long press quick actions on app icon |
+
+### Sync (`mobile/src/native/sync/`)
+
+| File | Description |
+|------|-------------|
+| `index.ts` | Background sync exports |
+| `BackgroundSync.ts` | Enhanced background sync service (tasks, preferences, notifications) |
+| `OfflineQueue.ts` | Offline action queue with conflict detection and replay |
+
+---
+
+## Native Backend Tools (`tools/mobile/native/`) — Phase 10c
+
+Backend APIs for native mobile features.
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Module exports and path constants |
+| `widget_data.py` | Get data for widgets (next task, current step, energy level, upcoming count) |
+| `shortcuts.py` | Handle Siri shortcuts and quick actions, get suggested shortcuts |
+
+### Native API Endpoints (Phase 10c)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/mobile/widget-data` | Get data formatted for home screen widget |
+| `GET /api/mobile/watch-data` | Get data formatted for Apple Watch |
+| `POST /api/mobile/shortcut/{id}` | Handle Siri shortcut invocation |
+| `GET /api/mobile/shortcuts/suggested` | Get suggested shortcuts based on patterns |
+| `POST /api/mobile/quick-action/{action}` | Handle 3D Touch quick action |
+
+---
+
 *Update this manifest when adding new tools.*

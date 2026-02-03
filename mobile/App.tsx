@@ -6,6 +6,10 @@
  * - Background fetch for syncing
  * - Deep linking support
  * - Native app shell experience
+ * - Home screen widgets
+ * - Apple Watch support
+ * - Siri Shortcuts
+ * - 3D Touch quick actions
  *
  * Architecture:
  * - The app primarily displays the PWA dashboard in a WebView
@@ -43,6 +47,29 @@ import {
   registerBackgroundNotifications,
   cleanupBackgroundTasks,
 } from './src/services/background';
+
+// Native Features (Phase 10c)
+import {
+  initializeWatchConnectivity,
+  sendFullSync as syncWatch,
+  cleanupWatchConnectivity,
+} from './src/native/watch';
+import {
+  initializeSiriShortcuts,
+  cleanupSiriShortcuts,
+  donateTaskViewActivity,
+} from './src/native/shortcuts';
+import {
+  initializeQuickActions,
+  getPendingAction,
+  refreshDynamicActions,
+  cleanupQuickActions,
+} from './src/native/shortcuts';
+import {
+  initializeBackgroundSync,
+  cleanupBackgroundSync,
+} from './src/native/sync';
+import { loadQueue } from './src/native/sync';
 
 // Utils
 import { config, debugLog, debugError, buildDashboardUrl } from './src/utils/config';
@@ -106,6 +133,44 @@ export default function App() {
         } else {
           debugLog('App: Push notifications not supported on this device');
         }
+
+        // =================================================================
+        // Initialize Native Features (Phase 10c)
+        // =================================================================
+
+        // Load offline queue from storage
+        await loadQueue();
+        debugLog('App: Offline queue loaded');
+
+        // Initialize enhanced background sync
+        await initializeBackgroundSync();
+        debugLog('App: Background sync initialized');
+
+        // Initialize Siri Shortcuts (iOS only, fails gracefully on Android)
+        if (Platform.OS === 'ios') {
+          await initializeSiriShortcuts();
+          debugLog('App: Siri Shortcuts initialized');
+        }
+
+        // Initialize Quick Actions (3D Touch / Long Press)
+        await initializeQuickActions();
+        debugLog('App: Quick Actions initialized');
+
+        // Check for pending quick action (app launched via quick action)
+        const pendingAction = getPendingAction();
+        if (pendingAction) {
+          debugLog('App: Pending quick action found', pendingAction.id);
+          // Handle after WebView is ready
+        }
+
+        // Initialize Apple Watch connectivity (iOS only)
+        if (Platform.OS === 'ios') {
+          await initializeWatchConnectivity();
+          debugLog('App: Watch connectivity initialized');
+        }
+
+        // Refresh dynamic quick actions based on server data
+        await refreshDynamicActions();
 
         // Update state
         setAppState((prev) => ({
@@ -265,9 +330,28 @@ export default function App() {
   /**
    * Handle WebView ready
    */
-  const handleWebViewReady = useCallback(() => {
+  const handleWebViewReady = useCallback(async () => {
     debugLog('App: WebView ready');
     setAppState((prev) => ({ ...prev, webViewReady: true }));
+
+    // Handle pending quick action if any
+    const pendingAction = getPendingAction();
+    if (pendingAction) {
+      debugLog('App: Processing pending quick action', pendingAction.id);
+      // Navigate based on action
+      if (pendingAction.id === 'next_task') {
+        navigateWebView({ path: '/tasks/current' });
+      } else if (pendingAction.id === 'quick_capture') {
+        navigateWebView({ path: '/tasks/add' });
+      } else if (pendingAction.id === 'focus_mode') {
+        navigateWebView({ path: '/focus' });
+      }
+    }
+
+    // Sync Watch with current state (iOS)
+    if (Platform.OS === 'ios') {
+      await syncWatch();
+    }
   }, []);
 
   /**

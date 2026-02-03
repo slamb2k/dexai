@@ -138,3 +138,131 @@ analytics:
   track_delivery_rate: true
   track_click_rate: true
   track_dismiss_rate: true
+
+# =============================================================================
+# Phase 10c: Native Enhancements
+# =============================================================================
+
+native:
+  # Home screen widgets
+  widgets:
+    enabled: true
+    refresh_interval_minutes: 60
+    sizes:
+      - small
+      - medium
+    display:
+      show_energy: true
+      show_upcoming_count: true
+      show_step_progress: true
+      compact_mode: false
+      max_title_length: 40
+      max_body_length: 80
+    theme:
+      light:
+        background: "#FFFFFF"
+        text: "#111827"
+        text_secondary: "#6B7280"
+        accent: "#4F46E5"
+      dark:
+        background: "#1F2937"
+        text: "#F9FAFB"
+        text_secondary: "#9CA3AF"
+        accent: "#818CF8"
+
+  # Apple Watch integration
+  watch:
+    enabled: true
+    complications:
+      - current_task  # Shows current task title
+      - next_reminder # Shows next reminder time
+      - task_count    # Shows remaining task count
+      - energy_level  # Shows current energy level
+    sync_interval_seconds: 300
+    max_title_length: 30
+    max_step_length: 50
+
+  # Siri Shortcuts
+  shortcuts:
+    enabled: true
+    suggested_limit: 5
+    available_shortcuts:
+      - id: next_task
+        title: "Next Task"
+        phrase: "What's my next task?"
+        description: "Ask Dex what to work on next"
+        icon: checklist
+      - id: start_task
+        title: "Start Task"
+        phrase: "I'm starting a task"
+        description: "Tell Dex you are starting your next task"
+        icon: play.fill
+      - id: complete_step
+        title: "Complete Step"
+        phrase: "I finished a step"
+        description: "Mark the current step as done"
+        icon: checkmark.circle.fill
+      - id: snooze_reminders
+        title: "Snooze Reminders"
+        phrase: "Snooze my reminders"
+        description: "Snooze all reminders for 30 minutes"
+        icon: bell.slash
+        default_duration_minutes: 30
+      - id: start_focus
+        title: "Start Focus"
+        phrase: "Start focus mode"
+        description: "Enter focus mode with DND"
+        icon: scope
+        default_duration_minutes: 25
+      - id: end_focus
+        title: "End Focus"
+        phrase: "End focus mode"
+        description: "Exit focus mode"
+        icon: hand.raised
+      - id: check_in
+        title: "Check In"
+        phrase: "Check in with Dex"
+        description: "Quick status check and guidance"
+        icon: person.wave.2
+      - id: add_task
+        title: "Add Task"
+        phrase: "Add a task"
+        description: "Quickly add a new task"
+        icon: plus.circle.fill
+
+  # 3D Touch / Long Press Quick Actions
+  quick_actions:
+    enabled: true
+    items:
+      - id: next_task
+        title: "Next Task"
+        subtitle: "See what to do next"
+        icon: task
+      - id: quick_capture
+        title: "Quick Capture"
+        subtitle: "Add a task"
+        icon: add
+      - id: focus_mode
+        title: "Focus Mode"
+        subtitle: "Start focusing"
+        icon: focus
+    dynamic_actions:
+      enabled: true
+      max_count: 1
+      include_recent_task: true
+
+  # Enhanced Background Sync
+  background_sync:
+    enabled: true
+    min_interval_minutes: 15
+    sync_on_network_change: true
+    data_types:
+      - tasks
+      - preferences
+      - notifications
+    offline_queue:
+      enabled: true
+      max_queue_size: 100
+      max_retry_count: 5
+      retry_delay_base_ms: 1000
+      conflict_resolution: "server_wins"  # or "client_wins", "manual"
