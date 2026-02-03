@@ -12,6 +12,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | `future_roadmap.md` | **Roadmap** — Phases 10-14 future development plans (mobile, voice, office, collaboration, analytics) |
 | `phase9_ci_testing.md` | Phase 9 tactical implementation guide — CI/CD, pytest, Vitest, GitHub Actions |
 | `phase10_mobile_push.md` | Phase 10 tactical implementation guide — Mobile push notifications (Web Push, PWA, Expo) |
+| `phase11_voice_interface.md` | Phase 11 tactical implementation guide — Voice interface (Web Speech, Whisper, wake word, TTS) |
 | `phase12_office_integration.md` | Phase 12 tactical implementation guide — Office integration with 5 levels (Google, Microsoft) |
 | `phase12b_collaborative.md` | Phase 12b tactical implementation guide — Collaborative office (drafts, meeting scheduling) |
 | `phase12c_managed_proxy.md` | Phase 12c tactical implementation guide — Managed proxy (send with undo, audit trail) |
@@ -57,7 +58,9 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 10a | Mobile Push: Web Push + PWA | ✅ Complete |
 | Phase 10b | Mobile Push: Expo Mobile Wrapper (iOS) | ✅ Complete |
 | Phase 10c | Mobile Push: Native Enhancements (widgets, watch, shortcuts) | ✅ Complete |
-| Phase 11 | Voice Interface (Speech-to-text, commands) | 📋 Planned |
+| Phase 11a | Voice Interface: Browser Voice (Web Speech API) | 📋 Planned |
+| Phase 11b | Voice Interface: Whisper Integration (API + local) | 📋 Planned |
+| Phase 11c | Voice Interface: Advanced (wake word, TTS, mobile) | 📋 Planned |
 | Phase 12a | Office Integration: Foundation (OAuth, read-only) | ✅ Complete |
 | Phase 12b | Office Integration: Collaborative (drafts, scheduling) | ✅ Complete |
 | Phase 12c | Office Integration: Managed Proxy (send with undo) | ✅ Complete |
