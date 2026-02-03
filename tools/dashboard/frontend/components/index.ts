@@ -6,6 +6,7 @@
 
 // Core components
 export { DexAvatar, type AvatarState } from './dex-avatar';
+export { LayoutContent } from './layout-content';
 export { Sidebar } from './sidebar';
 export { TopBar } from './top-bar';
 export { ToastContainer, useToast } from './toast';

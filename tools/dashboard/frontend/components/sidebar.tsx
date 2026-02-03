@@ -12,6 +12,7 @@ import {
   Bug,
   ChevronLeft,
   ChevronRight,
+  Wand2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/metrics', icon: BarChart3, label: 'Metrics' },
   { href: '/audit', icon: Shield, label: 'Audit' },
   { href: '/settings', icon: Settings, label: 'Settings' },
+  { href: '/setup', icon: Wand2, label: 'Setup' },
   { href: '/debug', icon: Bug, label: 'Debug', admin: true },
 ];
 

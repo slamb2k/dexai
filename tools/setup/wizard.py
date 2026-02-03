@@ -31,7 +31,7 @@ from typing import Any, Optional
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.setup import CONFIG_PATH, DATA_PATH, SETUP_COMPLETE_FLAG, SETUP_STATE_PATH
+from tools.setup import CONFIG_PATH, DATA_PATH, SETUP_COMPLETE_FLAG, SETUP_STATE_PATH  # noqa: E402
 
 
 class SetupStep(Enum):
@@ -153,10 +153,7 @@ class SetupState:
             return True
 
         # Current step is always accessible
-        if step == self.current_step:
-            return True
-
-        return False
+        return step == self.current_step
 
     def get_progress_percent(self) -> int:
         """Get setup progress as percentage."""
@@ -373,6 +370,169 @@ async def validate_channel(channel: str, config: dict[str, str]) -> dict[str, An
 
 
 # =============================================================================
+# Test Message Sending
+# =============================================================================
+
+
+async def send_test_message(channel: str, config: dict[str, str]) -> dict[str, Any]:
+    """
+    Send a test message to the configured channel.
+
+    Args:
+        channel: Channel name (telegram, discord, slack)
+        config: Channel-specific configuration including chat/channel ID
+
+    Returns:
+        dict with send result and message ID
+    """
+    if channel == "telegram":
+        return await send_telegram_test_message(
+            config.get("token", ""),
+            config.get("chat_id"),
+        )
+    elif channel == "discord":
+        return await send_discord_test_message(
+            config.get("token", ""),
+            config.get("channel_id"),
+        )
+    elif channel == "slack":
+        return await send_slack_test_message(
+            config.get("bot_token", ""),
+            config.get("channel_id"),
+        )
+    else:
+        return {"success": False, "error": f"Unknown channel: {channel}"}
+
+
+async def send_telegram_test_message(
+    token: str, chat_id: str | None
+) -> dict[str, Any]:
+    """
+    Send a test message via Telegram.
+
+    Args:
+        token: Telegram bot token
+        chat_id: Chat ID to send to (optional, bot must have received a message first)
+
+    Returns:
+        dict with send result
+    """
+    if not token:
+        return {"success": False, "error": "No token provided"}
+
+    try:
+        from telegram import Bot
+
+        bot = Bot(token)
+
+        # If no chat_id provided, we can't send a message yet
+        if not chat_id:
+            # Try to get updates to find a chat
+            updates = await bot.get_updates(limit=1, timeout=1)
+            if updates:
+                chat_id = str(updates[0].message.chat.id)
+            else:
+                return {
+                    "success": False,
+                    "error": "Please send a message to your bot first, then try again",
+                }
+
+        message = await bot.send_message(
+            chat_id=chat_id,
+            text="Hello from DexAI! Your setup is working correctly.",
+        )
+        return {"success": True, "message_id": str(message.message_id)}
+
+    except ImportError:
+        return {"success": False, "error": "python-telegram-bot not installed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def send_discord_test_message(
+    token: str, channel_id: str | None
+) -> dict[str, Any]:
+    """
+    Send a test message via Discord.
+
+    Args:
+        token: Discord bot token
+        channel_id: Channel ID to send to
+
+    Returns:
+        dict with send result
+    """
+    if not token:
+        return {"success": False, "error": "No token provided"}
+
+    if not channel_id:
+        return {"success": False, "error": "No channel ID provided"}
+
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bot {token}"}
+            payload = {"content": "Hello from DexAI! Your setup is working correctly."}
+
+            async with session.post(
+                f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                headers=headers,
+                json=payload,
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return {"success": True, "message_id": data.get("id")}
+                else:
+                    error = await resp.text()
+                    return {"success": False, "error": f"Discord API error: {error}"}
+
+    except ImportError:
+        return {"success": False, "error": "aiohttp not installed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def send_slack_test_message(
+    bot_token: str, channel_id: str | None
+) -> dict[str, Any]:
+    """
+    Send a test message via Slack.
+
+    Args:
+        bot_token: Slack bot token
+        channel_id: Channel ID to send to
+
+    Returns:
+        dict with send result
+    """
+    if not bot_token:
+        return {"success": False, "error": "No bot token provided"}
+
+    if not channel_id:
+        return {"success": False, "error": "No channel ID provided"}
+
+    try:
+        from slack_sdk.web.async_client import AsyncWebClient
+
+        client = AsyncWebClient(token=bot_token)
+        response = await client.chat_postMessage(
+            channel=channel_id,
+            text="Hello from DexAI! Your setup is working correctly.",
+        )
+
+        if response.get("ok"):
+            return {"success": True, "message_id": response.get("ts")}
+        else:
+            return {"success": False, "error": response.get("error", "Unknown error")}
+
+    except ImportError:
+        return {"success": False, "error": "slack-sdk not installed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# =============================================================================
 # API Key Validation
 # =============================================================================
 
@@ -393,7 +553,7 @@ async def validate_anthropic_key(api_key: str) -> dict[str, Any]:
         client = anthropic.Anthropic(api_key=api_key)
 
         # Make a minimal API call to validate
-        response = client.messages.create(
+        client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=10,
             messages=[{"role": "user", "content": "Hi"}],
