@@ -212,4 +212,46 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
+## Office Integration Tools (`tools/office/`) — Phase 12
+
+### Core Modules
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Database schema, path constants, shared utilities |
+| `models.py` | Data models (Email, CalendarEvent, OfficeAccount, IntegrationLevel) |
+| `oauth_manager.py` | OAuth 2.0 flows for Google and Microsoft (token exchange, refresh, storage) |
+| `level_detector.py` | Detect integration level from granted scopes, suggest upgrades |
+| `onboarding.py` | Integration level selection wizard for setup |
+
+### Providers (`tools/office/providers/`)
+
+| Tool | Description |
+|------|-------------|
+| `base.py` | Abstract OfficeProvider base class defining provider interface |
+| `google_workspace.py` | Gmail and Google Calendar API integration (Level 2-5) |
+| `microsoft_365.py` | Microsoft Graph API for Outlook and Calendar (Level 2-5) |
+| `standalone_imap.py` | IMAP/SMTP provider for Dex's own mailbox (Level 1) |
+
+### Email Tools (`tools/office/email/`)
+
+| Tool | Description |
+|------|-------------|
+| `reader.py` | Unified inbox reading, search, filtering across providers |
+| `summarizer.py` | ADHD-friendly inbox summaries, priority detection, "one thing" mode |
+
+### Calendar Tools (`tools/office/calendar/`)
+
+| Tool | Description |
+|------|-------------|
+| `reader.py` | Event retrieval, availability checking, free slot finding |
+
+### Configuration
+
+| File | Description |
+|------|-------------|
+| `args/office_integration.yaml` | Integration levels, OAuth config, ADHD safeguards, security settings |
+
+---
+
 *Update this manifest when adding new tools.*

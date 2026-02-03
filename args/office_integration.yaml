@@ -1,0 +1,245 @@
+# =============================================================================
+# Office Integration Configuration
+# =============================================================================
+# Controls DexAI's integration with Microsoft 365 and Google Workspace.
+# This file defines integration levels, OAuth settings, and ADHD safeguards.
+
+office_integration:
+  # Default integration level for new users
+  # Levels: 1 (Sandboxed), 2 (Read-Only), 3 (Collaborative), 4 (Managed Proxy), 5 (Autonomous)
+  default_level: 2
+
+  # Whether to enable office integration features
+  enabled: true
+
+  # =============================================================================
+  # Platform Configuration
+  # =============================================================================
+
+  platforms:
+    # Google Workspace (Gmail, Calendar)
+    google:
+      enabled: true
+      display_name: "Google Workspace"
+      oauth:
+        # OAuth credentials - actual values stored in vault or env vars
+        client_id_env: "GOOGLE_CLIENT_ID"
+        client_secret_env: "GOOGLE_CLIENT_SECRET"
+        redirect_uri: "http://localhost:8080/oauth/google/callback"
+
+      # Scopes requested per level
+      scopes_by_level:
+        level_2:
+          - "https://www.googleapis.com/auth/gmail.readonly"
+          - "https://www.googleapis.com/auth/calendar.readonly"
+          - "https://www.googleapis.com/auth/userinfo.email"
+          - "https://www.googleapis.com/auth/userinfo.profile"
+        level_3:
+          - "https://www.googleapis.com/auth/gmail.modify"
+          - "https://www.googleapis.com/auth/calendar"
+          - "https://www.googleapis.com/auth/userinfo.email"
+          - "https://www.googleapis.com/auth/userinfo.profile"
+        level_4:
+          - "https://www.googleapis.com/auth/gmail.modify"
+          - "https://www.googleapis.com/auth/gmail.send"
+          - "https://www.googleapis.com/auth/calendar"
+          - "https://www.googleapis.com/auth/userinfo.email"
+          - "https://www.googleapis.com/auth/userinfo.profile"
+        level_5:
+          - "https://www.googleapis.com/auth/gmail.modify"
+          - "https://www.googleapis.com/auth/gmail.send"
+          - "https://www.googleapis.com/auth/calendar"
+          - "https://www.googleapis.com/auth/contacts"
+          - "https://www.googleapis.com/auth/userinfo.email"
+          - "https://www.googleapis.com/auth/userinfo.profile"
+
+    # Microsoft 365 (Outlook, Calendar)
+    microsoft:
+      enabled: true
+      display_name: "Microsoft 365"
+      oauth:
+        client_id_env: "MICROSOFT_CLIENT_ID"
+        client_secret_env: "MICROSOFT_CLIENT_SECRET"
+        redirect_uri: "http://localhost:8080/oauth/microsoft/callback"
+        tenant: "common"  # "common" for multi-tenant, or specific tenant ID
+
+      # Scopes requested per level
+      scopes_by_level:
+        level_2:
+          - "Mail.Read"
+          - "Calendars.Read"
+          - "User.Read"
+          - "offline_access"
+        level_3:
+          - "Mail.ReadWrite"
+          - "Calendars.ReadWrite"
+          - "User.Read"
+          - "offline_access"
+        level_4:
+          - "Mail.ReadWrite"
+          - "Mail.Send"
+          - "Calendars.ReadWrite"
+          - "User.Read"
+          - "offline_access"
+        level_5:
+          - "Mail.ReadWrite"
+          - "Mail.Send"
+          - "Calendars.ReadWrite"
+          - "Contacts.ReadWrite"
+          - "User.Read"
+          - "offline_access"
+
+    # Standalone IMAP/SMTP (for Level 1)
+    standalone:
+      enabled: true
+      display_name: "Standalone Email"
+      description: "Use Dex's own email address via IMAP/SMTP"
+      # No OAuth - uses traditional credentials
+
+  # =============================================================================
+  # Level 1: Sandboxed Settings
+  # =============================================================================
+  # When using Level 1, Dex has its own email account
+
+  sandboxed:
+    # Dex's own email configuration (set during setup)
+    email_address: ""  # e.g., dex@yourdomain.com
+    imap_host: ""
+    imap_port: 993
+    smtp_host: ""
+    smtp_port: 587
+    use_tls: true
+
+  # =============================================================================
+  # Cache Settings
+  # =============================================================================
+
+  cache:
+    # How long to keep cached emails
+    email_retention_days: 30
+
+    # How many days ahead to sync calendar
+    calendar_sync_days_ahead: 90
+
+    # How often to sync in background (Level 5)
+    sync_interval_minutes: 15
+
+    # Maximum emails to cache per account
+    max_emails_cached: 1000
+
+  # =============================================================================
+  # ADHD-Specific Settings
+  # =============================================================================
+  # Features designed for neuro-divergent users
+
+  adhd:
+    # Extended undo window (seconds)
+    # Standard apps use 30s, we use 60s for impulsivity protection
+    undo_window_seconds: 60
+
+    # Sentiment detection threshold (0.0-1.0)
+    # Emails scoring above this are flagged for review before sending
+    sentiment_review_threshold: 0.7
+
+    # Cool-off period for negative replies (minutes)
+    # Delay sending replies to negative/emotional emails
+    negative_reply_delay_minutes: 10
+
+    # Daily digest settings
+    daily_digest:
+      enabled: true
+      send_time: "20:00"  # In user's timezone
+      channel: "primary"  # Send via primary notification channel
+      include_sent_count: true
+      include_calendar_summary: true
+
+    # Batch confirmation
+    # Group similar actions for single approval instead of one-by-one
+    batch_confirmation:
+      enabled: true
+      max_batch_size: 10
+      group_by: "action_type"  # or "recipient_domain"
+
+    # Emergency pause
+    # One-click disable all autonomous actions
+    emergency_pause:
+      enabled: true
+      notify_on_pause: true
+      auto_resume_hours: 24  # Auto-resume after this many hours
+
+    # Progressive trust requirements
+    # Cannot jump directly to higher levels
+    progressive_trust:
+      enabled: true
+      level_3_required_days_at_2: 7
+      level_4_required_days_at_3: 30
+      level_5_required_days_at_4: 90
+      require_explicit_acknowledgment: true
+
+  # =============================================================================
+  # Security Settings
+  # =============================================================================
+
+  security:
+    # Token encryption
+    encrypt_tokens: true
+    token_namespace: "office_tokens"
+
+    # Audit logging
+    audit:
+      enabled: true
+      log_all_actions: true
+      log_email_content: false  # Don't log actual email content
+      retention_days: 365
+
+    # Rate limiting
+    rate_limits:
+      emails_per_hour: 100
+      calendar_changes_per_hour: 50
+      api_calls_per_minute: 60
+
+    # Revocation
+    allow_emergency_revoke: true
+    revoke_command: "!revoke office"
+
+  # =============================================================================
+  # Integration Level Descriptions
+  # =============================================================================
+  # For display in UI
+
+  levels:
+    1:
+      name: "Sandboxed"
+      short_description: "Dex has own email"
+      description: "Dex uses its own email address. You forward messages to share."
+      risk: "Very Low"
+      requires_oauth: false
+
+    2:
+      name: "Read-Only"
+      short_description: "Can read inbox"
+      description: "Dex can read your inbox and calendar. Suggests actions but cannot act."
+      risk: "Low"
+      requires_oauth: true
+      recommended: true
+
+    3:
+      name: "Collaborative"
+      short_description: "Creates drafts"
+      description: "Dex creates drafts and schedules meetings. You review before sending."
+      risk: "Medium"
+      requires_oauth: true
+
+    4:
+      name: "Managed Proxy"
+      short_description: "Sends with undo"
+      description: "Dex sends on your behalf with undo window. Full audit trail."
+      risk: "Medium-High"
+      requires_oauth: true
+
+    5:
+      name: "Autonomous"
+      short_description: "Policy-based"
+      description: "Dex manages email and calendar autonomously based on your policies."
+      risk: "High"
+      requires_oauth: true

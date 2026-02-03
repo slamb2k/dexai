@@ -248,6 +248,10 @@ Because: It's built around how ADHD brains actually work
 | 7 | Dashboard | ✅ Complete | Web-based management interface |
 | 8 | Installation | ✅ Complete | Guided setup wizard (web + TUI) |
 | 9 | CI/CD & Testing | ✅ Complete | GitHub Actions, pytest, Vitest |
+| 12a | Office: Foundation | 🔄 In Progress | OAuth, read-only access (Level 1-2) |
+| 12b | Office: Collaborative | 📋 Planned | Drafts, meeting scheduling (Level 3) |
+| 12c | Office: Managed Proxy | 📋 Planned | Send with undo, audit (Level 4) |
+| 12d | Office: Autonomous | 📋 Planned | Policy-based automation (Level 5) |
 
 ### 6.2 Phase 0: Foundation (COMPLETE)
 
@@ -403,9 +407,9 @@ Because: It's built around how ADHD brains actually work
 
 **Technology Stack:** Textual (TUI), Next.js (web), existing channel adapters
 
-### 6.11 Phase 9: CI/CD & Testing (IN PROGRESS)
+### 6.11 Phase 9: CI/CD & Testing (COMPLETE)
 
-**Status:** 🔜 In Progress
+**Status:** ✅ Done
 
 **Objective:** Ensure code quality and prevent regressions through automated testing and continuous integration.
 
@@ -413,14 +417,14 @@ Because: It's built around how ADHD brains actually work
 
 | Feature | Tool | Status |
 |---------|------|--------|
-| Python Project Config | `pyproject.toml` | 🔜 |
-| GitHub Actions CI | `.github/workflows/ci.yml` | 🔜 |
-| Pytest Infrastructure | `tests/conftest.py` | 🔜 |
-| Security Tests | `tests/unit/security/*.py` | 🔜 |
-| ADHD Tool Tests | `tests/unit/adhd/*.py` | 🔜 |
-| Task Engine Tests | `tests/unit/tasks/*.py` | 🔜 |
-| Memory Tests | `tests/unit/memory/*.py` | 🔜 |
-| Frontend Tests | `frontend/__tests__/*.tsx` | 🔜 |
+| Python Project Config | `pyproject.toml` | ✅ |
+| GitHub Actions CI | `.github/workflows/ci.yml` | ✅ |
+| Pytest Infrastructure | `tests/conftest.py` | ✅ |
+| Security Tests | `tests/unit/security/*.py` | ✅ |
+| ADHD Tool Tests | `tests/unit/adhd/*.py` | ✅ |
+| Task Engine Tests | `tests/unit/tasks/*.py` | ✅ |
+| Memory Tests | `tests/unit/memory/*.py` | ✅ |
+| Frontend Tests | `frontend/__tests__/*.tsx` | ✅ |
 
 **Design Philosophy:**
 - Test critical paths first (security, ADHD communication, task engine)
@@ -429,6 +433,56 @@ Because: It's built around how ADHD brains actually work
 - Coverage targets: >80% for critical modules
 
 **Technology Stack:** pytest, ruff, mypy, Vitest, GitHub Actions
+
+### 6.12 Phase 12: Office Integration (IN PROGRESS)
+
+**Status:** 🔄 In Progress
+
+**Objective:** Comprehensive integration with Microsoft 365 and Google Workspace for email, calendar, and future office ecosystem features.
+
+> **Full specification:** `goals/phase12_office_integration.md`
+
+Phase 12 is split into 4 sub-phases to provide progressive capability unlocks:
+
+| Sub-Phase | Focus | Status |
+|-----------|-------|--------|
+| **12a: Foundation** | OAuth infrastructure, Level 1-2 (read-only) | 🔄 In Progress |
+| **12b: Collaborative** | Level 3 (drafts, meeting scheduling) | 📋 Planned |
+| **12c: Managed Proxy** | Level 4 (send with undo, audit trail) | 📋 Planned |
+| **12d: Autonomous** | Level 5 (policy-based automation) | 📋 Planned |
+
+#### Integration Levels
+
+| Level | Name | Description |
+|-------|------|-------------|
+| 1 | Sandboxed | Dex has its own email/calendar, user forwards content |
+| 2 | Read-Only | Dex can read user's inbox/calendar, suggests actions |
+| 3 | Collaborative | Dex creates drafts, schedules meetings as user |
+| 4 | Managed Proxy | Dex sends with undo window, full audit trail |
+| 5 | Autonomous | Policy-based automation, continuous background processing |
+
+#### Phase 12a Features
+
+| Feature | Tool | Status |
+|---------|------|--------|
+| OAuth Manager | `tools/office/oauth_manager.py` | 🔄 |
+| Level Detector | `tools/office/level_detector.py` | 🔄 |
+| Onboarding Wizard | `tools/office/onboarding.py` | 🔄 |
+| Google Provider | `tools/office/providers/google_workspace.py` | 🔄 |
+| Microsoft Provider | `tools/office/providers/microsoft_365.py` | 🔄 |
+| Standalone IMAP | `tools/office/providers/standalone_imap.py` | 🔄 |
+| Email Reader | `tools/office/email/reader.py` | 🔄 |
+| Calendar Reader | `tools/office/calendar/reader.py` | 🔄 |
+| Configuration | `args/office_integration.yaml` | 🔄 |
+
+**ADHD-Specific Features:**
+- Extended undo windows (60 seconds vs typical 30s)
+- Sentiment detection for emotional emails
+- Daily digest of actions
+- Emergency pause button
+- Progressive trust unlocking
+
+**Technology Stack:** OAuth 2.0, Google APIs, Microsoft Graph API, IMAP/SMTP
 
 ---
 
@@ -539,9 +593,10 @@ class Commitment:
 ├── Feb 02: Phase 6 Complete (Learning) ✅
 ├── Feb 02: Phase 7 Complete (Web Dashboard) ✅
 ├── Feb 03: Phase 8 Complete (Guided Installation) ✅
-└── Feb 03: Phase 9 Complete (CI/CD & Testing) ✅
+├── Feb 03: Phase 9 Complete (CI/CD & Testing) ✅
+└── Feb 03: Phase 12a Started (Office Integration: Foundation) 🔄
 
-Phases 0-9 COMPLETE - Ready for Phase 10+ (Mobile, Voice, Calendar)
+Phases 0-9 COMPLETE - Phase 12 (Office Integration) in progress
 ```
 
 ### 8.2 Next Steps
