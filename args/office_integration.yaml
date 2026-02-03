@@ -203,6 +203,46 @@ office_integration:
     revoke_command: "!revoke office"
 
   # =============================================================================
+  # Level 4: Managed Proxy Settings
+  # =============================================================================
+  # Configuration specific to Level 4 (Managed Proxy) operation mode
+
+  level_4:
+    # Undo window defaults (seconds)
+    undo_windows:
+      send_email: 60
+      send_email_high_sentiment: 300
+      delete_email: 30
+      archive_email: 15
+      schedule_meeting: 60
+      cancel_meeting: 60
+
+    # Rate limits (per hour)
+    rate_limits:
+      send_email: 50
+      delete_email: 100
+      archive_email: 200
+
+    # Confirmation requirements
+    require_confirmation:
+      - permanent_delete
+      - send_to_large_group  # >10 recipients
+      - external_domain_first_contact
+
+    # Daily digest
+    digest:
+      enabled: true
+      send_time: "20:00"
+      timezone: "user"  # Use user's timezone
+      channel: "primary"
+
+    # Audit settings
+    audit:
+      retention_days: 365
+      include_body_preview: true
+      redact_after_days: 90  # Redact full content after 90 days
+
+  # =============================================================================
   # Integration Level Descriptions
   # =============================================================================
   # For display in UI

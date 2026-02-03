@@ -540,6 +540,44 @@ class Microsoft365Provider(OfficeProvider):
         url = f"{GRAPH_API_BASE}/me/messages/{draft_id}/send"
         return await self._make_request("POST", url)
 
+    async def move_to_deleted(self, message_id: str) -> dict[str, Any]:
+        """Move an email to the deletedItems folder."""
+        if self.integration_level < IntegrationLevel.MANAGED_PROXY:
+            return {"success": False, "error": "Moving to deleted requires Level 4+"}
+
+        url = f"{GRAPH_API_BASE}/me/messages/{message_id}/move"
+        data = {"destinationId": "deleteditems"}
+
+        result = await self._make_request("POST", url, data=data)
+
+        if result.get("success"):
+            new_id = result.get("data", {}).get("id")
+            return {"success": True, "message_id": new_id}
+        return result
+
+    async def delete_email(self, message_id: str) -> dict[str, Any]:
+        """Permanently delete an email via Graph API DELETE."""
+        if self.integration_level < IntegrationLevel.MANAGED_PROXY:
+            return {"success": False, "error": "Deleting email requires Level 4+"}
+
+        url = f"{GRAPH_API_BASE}/me/messages/{message_id}"
+        return await self._make_request("DELETE", url)
+
+    async def archive_email(self, message_id: str) -> dict[str, Any]:
+        """Move an email to the archive folder."""
+        if self.integration_level < IntegrationLevel.MANAGED_PROXY:
+            return {"success": False, "error": "Archiving email requires Level 4+"}
+
+        url = f"{GRAPH_API_BASE}/me/messages/{message_id}/move"
+        data = {"destinationId": "archive"}
+
+        result = await self._make_request("POST", url, data=data)
+
+        if result.get("success"):
+            new_id = result.get("data", {}).get("id")
+            return {"success": True, "message_id": new_id}
+        return result
+
     # =========================================================================
     # Calendar Write Operations (Level 3+)
     # =========================================================================

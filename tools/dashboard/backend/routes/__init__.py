@@ -6,6 +6,7 @@ that can be included in the main FastAPI application.
 
 from fastapi import APIRouter
 
+from .actions import router as actions_router
 from .activity import router as activity_router
 from .metrics import router as metrics_router
 from .oauth import router as oauth_router
@@ -28,5 +29,6 @@ api_router.include_router(settings_router, prefix="/settings", tags=["settings"]
 api_router.include_router(setup_router, prefix="/setup", tags=["setup"])
 api_router.include_router(office_router, prefix="/office", tags=["office"])
 api_router.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
+api_router.include_router(actions_router, tags=["actions"])
 
 __all__ = ["api_router"]
