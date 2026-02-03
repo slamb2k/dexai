@@ -11,6 +11,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
 | `future_roadmap.md` | **Roadmap** — Phases 10-14 future development plans (mobile, voice, office, collaboration, analytics) |
 | `phase9_ci_testing.md` | Phase 9 tactical implementation guide — CI/CD, pytest, Vitest, GitHub Actions |
+| `phase10_mobile_push.md` | Phase 10 tactical implementation guide — Mobile push notifications (Web Push, PWA, Expo) |
 | `phase12_office_integration.md` | Phase 12 tactical implementation guide — Office integration with 5 levels (Google, Microsoft) |
 | `phase12b_collaborative.md` | Phase 12b tactical implementation guide — Collaborative office (drafts, meeting scheduling) |
 | `phase12c_managed_proxy.md` | Phase 12c tactical implementation guide — Managed proxy (send with undo, audit trail) |
