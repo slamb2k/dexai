@@ -82,7 +82,7 @@ def load_config() -> dict:
         "viewport": DEFAULT_VIEWPORT,
         "allowed_domains": DEFAULT_ALLOWED_DOMAINS,
         "blocked_domains": DEFAULT_BLOCKED_DOMAINS,
-        "user_agent": "AddultingBot/1.0 (Browser Automation)",
+        "user_agent": "DexAI-Bot/1.0 (Browser Automation)",
         "permissions": {
             "navigate": "browser:navigate",
             "screenshot": "browser:screenshot",
@@ -269,7 +269,7 @@ async def navigate(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
+            viewport=viewport, user_agent=config.get("user_agent", "DexAI-Bot/1.0")
         )
         page = await context.new_page()
 
@@ -346,7 +346,7 @@ async def screenshot(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
+            viewport=viewport, user_agent=config.get("user_agent", "DexAI-Bot/1.0")
         )
         page = await context.new_page()
 
@@ -428,7 +428,7 @@ async def pdf(url: str, output_path: str, user_id: str | None = None) -> dict[st
     try:
         playwright, browser = await get_browser()
         # PDF requires non-headless context for some operations
-        context = await browser.new_context(user_agent=config.get("user_agent", "AddultingBot/1.0"))
+        context = await browser.new_context(user_agent=config.get("user_agent", "DexAI-Bot/1.0"))
         page = await context.new_page()
 
         await page.goto(url, wait_until="networkidle", timeout=timeout)
@@ -504,7 +504,7 @@ async def extract_text(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
+            viewport=viewport, user_agent=config.get("user_agent", "DexAI-Bot/1.0")
         )
         page = await context.new_page()
 
@@ -589,7 +589,7 @@ async def fill_form(
     try:
         playwright, browser = await get_browser()
         context = await browser.new_context(
-            viewport=viewport, user_agent=config.get("user_agent", "AddultingBot/1.0")
+            viewport=viewport, user_agent=config.get("user_agent", "DexAI-Bot/1.0")
         )
         page = await context.new_page()
 

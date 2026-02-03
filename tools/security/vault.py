@@ -22,7 +22,7 @@ Dependencies:
     - sqlite3 (stdlib)
 
 Security Notes:
-    - Master key must be set in ADDULTING_MASTER_KEY env var
+    - Master key must be set in DEXAI_MASTER_KEY env var
     - Fails closed: no master key = no access
     - Never logs decrypted values
     - All access is audit logged
@@ -54,7 +54,7 @@ DB_PATH = Path(__file__).parent.parent.parent / "data" / "vault.db"
 SALT_PATH = Path(__file__).parent.parent.parent / "data" / ".vault_salt"
 
 # Master key env var
-MASTER_KEY_ENV = "ADDULTING_MASTER_KEY"
+MASTER_KEY_ENV = "DEXAI_MASTER_KEY"
 
 # KDF iterations (from args/security.yaml default)
 KDF_ITERATIONS = 100000

@@ -49,9 +49,9 @@ CONFIG_PATH = PROJECT_ROOT / "args" / "system_access.yaml"
 
 # Default approved directories (paths will be expanded)
 DEFAULT_APPROVED_DIRS = [
-    "~/addulting/workspace",
-    "~/addulting/.tmp",
-    "/tmp/addulting",
+    "~/dexai/workspace",
+    "~/dexai/.tmp",
+    "/tmp/dexai",
 ]
 
 # Default size limits

@@ -279,7 +279,7 @@ def request(
     # Prepare headers
     request_headers = headers or {}
     if "User-Agent" not in request_headers:
-        request_headers["User-Agent"] = "AddultingBot/1.0 (Network Client)"
+        request_headers["User-Agent"] = "DexAI-Bot/1.0 (Network Client)"
 
     start_time = datetime.now()
 

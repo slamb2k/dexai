@@ -195,7 +195,7 @@ def load_config() -> dict:
             "memory_mb": DEFAULT_MEMORY_MB,
             "cpu_percent": 50,
         },
-        "default_working_dir": str(Path.home() / "addulting" / "workspace"),
+        "default_working_dir": str(Path.home() / "dexai" / "workspace"),
     }
 
     if not CONFIG_PATH.exists():

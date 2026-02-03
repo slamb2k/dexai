@@ -1,7 +1,7 @@
 #!/bin/bash
 # Claude Code Task System Helpers
 # Source this file in your .bashrc or .zshrc:
-#   source ~/work/addulting/scripts/claude-tasks.sh
+#   source ~/work/dexai/scripts/claude-tasks.sh
 
 # Generate a deterministic task list ID from directory path
 # This ensures the same project always gets the same task list
