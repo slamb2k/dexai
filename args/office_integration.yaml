@@ -243,6 +243,48 @@ office_integration:
       redact_after_days: 90  # Redact full content after 90 days
 
   # =============================================================================
+  # Level 5: Autonomous Settings
+  # =============================================================================
+  # Configuration specific to Level 5 (Autonomous) operation mode
+
+  level_5:
+    # Progressive trust requirements
+    progressive_trust:
+      required_days_at_level_4: 90
+      max_undo_rate: 0.05  # 5%
+      min_actions_executed: 50
+
+    # Policy limits
+    policy_limits:
+      max_policies_per_account: 50
+      max_conditions_per_policy: 10
+      max_actions_per_policy: 5
+      max_executions_per_day_per_policy: 100
+
+    # Automation settings
+    automation:
+      inbox_poll_interval_seconds: 60
+      calendar_poll_interval_seconds: 300
+      batch_size: 50
+
+    # Safety settings
+    safety:
+      novel_situation_threshold: 0.7  # Confidence below this = prompt user
+      require_undo_window: true       # Even autonomous actions get undo window
+      vip_always_notify: true         # VIPs bypass notification suppression
+      emergency_pause_default_hours: null  # Until manual resume
+
+    # Default policy settings
+    default_policies:
+      auto_enable: false              # User must enable each policy
+      show_suggestions: true          # Suggest policies based on behavior
+
+    # Response templates
+    templates:
+      max_templates: 20
+      max_template_length: 5000       # Characters
+
+  # =============================================================================
   # Integration Level Descriptions
   # =============================================================================
   # For display in UI

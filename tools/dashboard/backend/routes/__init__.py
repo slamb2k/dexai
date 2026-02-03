@@ -11,6 +11,7 @@ from .activity import router as activity_router
 from .metrics import router as metrics_router
 from .oauth import router as oauth_router
 from .office import router as office_router
+from .policies import router as policies_router
 from .settings import router as settings_router
 from .setup import router as setup_router
 from .status import router as status_router
@@ -30,5 +31,6 @@ api_router.include_router(setup_router, prefix="/setup", tags=["setup"])
 api_router.include_router(office_router, prefix="/office", tags=["office"])
 api_router.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
 api_router.include_router(actions_router, tags=["actions"])
+api_router.include_router(policies_router, tags=["policies"])
 
 __all__ = ["api_router"]
