@@ -89,7 +89,7 @@ python tools/security/vault.py --action inject-env  # Load all secrets to env va
 ```
 
 **Security Notes:**
-- Master key from env var ADDULTING_MASTER_KEY
+- Master key from env var DEXAI_MASTER_KEY
 - Never log decrypted values
 - Fail closed — missing master key = no access
 

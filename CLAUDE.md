@@ -447,7 +447,7 @@ TaskList()
 Set `CLAUDE_CODE_TASK_LIST_ID` to persist task list across sessions:
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-source ~/work/addulting/scripts/claude-tasks.sh
+source ~/work/dexai/scripts/claude-tasks.sh
 
 # Then in any project:
 claude-tasks-init  # Sets task list ID for current directory
@@ -490,7 +490,7 @@ Every failure strengthens the system:
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| **PRD / Product Spec** | `goals/prd_addulting_ai_v1.md` | Complete product requirements, roadmap, personas |
+| **PRD / Product Spec** | `goals/prd_dexai_v1.md` | Complete product requirements, roadmap, personas |
 | **Phase Plans** | `goals/phase{N}_{name}.md` | Tactical implementation guides per phase |
 | **Competitive Analysis** | `context/openclaw_research.md` | Deep dive on competitors |
 | **Gap Analysis** | `context/gap_analysis.md` | Feature comparison, roadmap justification |
@@ -552,7 +552,7 @@ Also update the database if roles already exist.
 Add YAML config with sensible defaults.
 
 ### 7. Update PRD (if scope changes)
-**File:** `goals/prd_addulting_ai_v1.md`
+**File:** `goals/prd_dexai_v1.md`
 
 Update feature list, roadmap, or requirements.
 

@@ -29,7 +29,7 @@ executor:
     cpu_percent: 50            # CPU throttling (nice priority)
 
   # Default working directory for commands
-  default_working_dir: "~/addulting/workspace"
+  default_working_dir: "~/dexai/workspace"
 
 # -----------------------------------------------------------------------------
 # File Operations
@@ -41,9 +41,9 @@ fileops:
   # Directories where file operations are allowed
   # Paths are expanded (~ = home directory)
   approved_dirs:
-    - "~/addulting/workspace"   # Main workspace
-    - "~/addulting/.tmp"        # Temporary/scratch files
-    - "/tmp/addulting"          # System temp area
+    - "~/dexai/workspace"       # Main workspace
+    - "~/dexai/.tmp"            # Temporary/scratch files
+    - "/tmp/dexai"              # System temp area
 
   # Size limits in bytes
   max_read_size: 10485760       # 10MB max file read
@@ -76,7 +76,7 @@ browser:
     height: 720
 
   # User agent string
-  user_agent: "AddultingBot/1.0 (Browser Automation)"
+  user_agent: "DexAI-Bot/1.0 (Browser Automation)"
 
   # Domains allowed for navigation
   # Wildcards supported: *.example.com matches sub.example.com

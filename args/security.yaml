@@ -57,7 +57,7 @@ secrets:
 
   # Master key source: env, file, prompt
   master_key_source: "env"
-  master_key_env_var: "ADDULTING_MASTER_KEY"
+  master_key_env_var: "DEXAI_MASTER_KEY"
 
   # Secret rotation reminder (days)
   rotation_reminder_days: 90
