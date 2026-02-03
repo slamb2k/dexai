@@ -592,6 +592,181 @@ class ApiClient {
       body: JSON.stringify({ account_id: accountId }),
     });
   }
+
+  // ==========================================================================
+  // Push Notification endpoints (Phase 10a)
+  // ==========================================================================
+
+  async getVapidKey(): Promise<ApiResponse<{ public_key: string }>> {
+    return this.request<{ public_key: string }>('/api/push/vapid-key');
+  }
+
+  async subscribePush(
+    userId: string,
+    subscription: {
+      endpoint: string;
+      p256dh: string;
+      auth: string;
+      device_name?: string;
+      device_type?: string;
+      browser?: string;
+    }
+  ): Promise<ApiResponse<{ success: boolean; subscription_id: string }>> {
+    return this.request<{ success: boolean; subscription_id: string }>(
+      `/api/push/subscribe?user_id=${userId}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(subscription),
+      }
+    );
+  }
+
+  async unsubscribePush(
+    subscriptionId: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.request<{ success: boolean }>(
+      `/api/push/subscribe/${subscriptionId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  async getPushSubscriptions(
+    userId: string
+  ): Promise<ApiResponse<PushSubscription[]>> {
+    return this.request<PushSubscription[]>(
+      `/api/push/subscriptions?user_id=${userId}`
+    );
+  }
+
+  async sendTestPush(
+    userId: string,
+    title?: string,
+    body?: string
+  ): Promise<ApiResponse<{ success: boolean; sent_to: number }>> {
+    return this.request<{ success: boolean; sent_to: number }>(
+      `/api/push/test?user_id=${userId}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ title, body }),
+      }
+    );
+  }
+
+  async getPushPreferences(userId: string): Promise<ApiResponse<PushPreferences>> {
+    return this.request<PushPreferences>(
+      `/api/push/preferences?user_id=${userId}`
+    );
+  }
+
+  async updatePushPreferences(
+    userId: string,
+    preferences: Partial<PushPreferences>
+  ): Promise<ApiResponse<PushPreferences>> {
+    return this.request<PushPreferences>(
+      `/api/push/preferences?user_id=${userId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(preferences),
+      }
+    );
+  }
+
+  async getPushCategories(): Promise<
+    ApiResponse<{ categories: PushCategory[] }>
+  > {
+    return this.request<{ categories: PushCategory[] }>('/api/push/categories');
+  }
+
+  async updatePushCategoryPreference(
+    userId: string,
+    categoryId: string,
+    setting: { enabled: boolean; priority_threshold?: number; batch?: boolean }
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.request<{ success: boolean }>(
+      `/api/push/categories/${categoryId}?user_id=${userId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(setting),
+      }
+    );
+  }
+
+  async getPushHistory(
+    userId: string,
+    limit?: number
+  ): Promise<ApiResponse<{ notifications: PushNotification[]; total: number }>> {
+    const query = this.buildQuery({ user_id: userId, limit });
+    return this.request<{ notifications: PushNotification[]; total: number }>(
+      `/api/push/history${query}`
+    );
+  }
+
+  async getPushStats(
+    userId?: string,
+    days?: number
+  ): Promise<ApiResponse<PushStats>> {
+    const query = this.buildQuery({ user_id: userId, days });
+    return this.request<PushStats>(`/api/push/stats${query}`);
+  }
+}
+
+// Push notification types
+export interface PushSubscription {
+  id: string;
+  device_name: string | null;
+  device_type: string;
+  browser: string | null;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface PushPreferences {
+  enabled: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  timezone: string;
+  respect_flow_state: boolean;
+  flow_interrupt_threshold: number;
+  batch_notifications: boolean;
+  batch_window_minutes: number;
+  max_notifications_per_hour: number;
+  category_settings: Record<string, { enabled: boolean; priority_threshold: number; batch?: boolean }>;
+}
+
+export interface PushCategory {
+  id: string;
+  name: string;
+  description: string;
+  default_priority: number;
+  can_batch: boolean;
+  can_suppress: boolean;
+  color: string;
+}
+
+export interface PushNotification {
+  id: string;
+  category: string;
+  title: string;
+  body: string | null;
+  priority: number;
+  created_at: string;
+  delivery_status: string;
+  sent_at: string | null;
+  clicked_at: string | null;
+}
+
+export interface PushStats {
+  period_days: number;
+  total_sent: number;
+  total_delivered: number;
+  total_clicked: number;
+  total_dismissed: number;
+  delivery_rate: number;
+  click_rate: number;
+  dismiss_rate: number;
+  by_category: Record<string, { total: number; clicked: number; click_rate: number }>;
+  by_day: { day: string; total: number; clicked: number }[];
 }
 
 // Export singleton instance
