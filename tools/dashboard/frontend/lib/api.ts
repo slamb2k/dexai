@@ -155,6 +155,90 @@ export interface CompleteSetupRequest {
   skip_api_key?: boolean;
 }
 
+// Office Integration types (Phase 12b)
+export interface OfficeAccount {
+  id: string;
+  provider: 'google' | 'microsoft';
+  email_address: string;
+  integration_level: number;
+  integration_level_name: string;
+  is_active: boolean;
+  last_sync: string | null;
+  created_at: string;
+}
+
+export interface OfficeDraft {
+  id: string;
+  account_id: string;
+  provider_draft_id: string | null;
+  subject: string | null;
+  recipients: string[];
+  cc: string[] | null;
+  bcc: string[] | null;
+  body_text: string | null;
+  body_preview: string | null;
+  status: 'pending' | 'approved' | 'sent' | 'deleted';
+  sentiment_score: number | null;
+  sentiment_flags: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeetingProposal {
+  id: string;
+  account_id: string;
+  provider_event_id: string | null;
+  title: string;
+  description: string | null;
+  location: string | null;
+  start_time: string;
+  end_time: string;
+  timezone: string | null;
+  attendees: string[] | null;
+  organizer_email: string | null;
+  status: 'proposed' | 'confirmed' | 'cancelled';
+  conflicts: MeetingConflict[] | null;
+  created_at: string;
+}
+
+export interface MeetingConflict {
+  event_id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+}
+
+export interface TimeSuggestion {
+  start: string;
+  end: string;
+  score: number;
+  reason: string;
+}
+
+export interface DraftCreateRequest {
+  account_id: string;
+  to: string[];
+  subject: string;
+  body: string;
+  cc?: string[];
+  bcc?: string[];
+  reply_to_message_id?: string;
+  check_sentiment?: boolean;
+}
+
+export interface MeetingProposalRequest {
+  account_id: string;
+  title: string;
+  start_time: string;
+  end_time?: string;
+  duration_minutes?: number;
+  attendees?: string[];
+  description?: string;
+  location?: string;
+  timezone?: string;
+  check_availability?: boolean;
+}
+
 // Pagination params
 export interface PaginationParams {
   page?: number;
@@ -347,6 +431,165 @@ class ApiClient {
   async resetSetup(): Promise<ApiResponse<{ success: boolean; message?: string }>> {
     return this.request<{ success: boolean; message?: string }>('/api/setup/reset', {
       method: 'POST',
+    });
+  }
+
+  // ==========================================================================
+  // Office Integration endpoints (Phase 12b)
+  // ==========================================================================
+
+  // Accounts
+  async getOfficeAccounts(): Promise<ApiResponse<OfficeAccount[]>> {
+    return this.request<OfficeAccount[]>('/api/office/accounts');
+  }
+
+  async getOfficeAccount(accountId: string): Promise<ApiResponse<OfficeAccount>> {
+    return this.request<OfficeAccount>(`/api/office/accounts/${accountId}`);
+  }
+
+  async updateOfficeAccountLevel(
+    accountId: string,
+    level: number
+  ): Promise<ApiResponse<{ success: boolean; integration_level: number }>> {
+    return this.request<{ success: boolean; integration_level: number }>(
+      `/api/office/accounts/${accountId}/level?level=${level}`,
+      { method: 'PUT' }
+    );
+  }
+
+  // Drafts
+  async getOfficeDrafts(
+    accountId: string,
+    status: string = 'pending',
+    limit: number = 20
+  ): Promise<ApiResponse<{ drafts: OfficeDraft[]; total: number }>> {
+    const query = this.buildQuery({ account_id: accountId, status, limit });
+    return this.request<{ drafts: OfficeDraft[]; total: number }>(`/api/office/drafts${query}`);
+  }
+
+  async getOfficeDraft(draftId: string): Promise<ApiResponse<OfficeDraft>> {
+    return this.request<OfficeDraft>(`/api/office/drafts/${draftId}`);
+  }
+
+  async createOfficeDraft(
+    request: DraftCreateRequest
+  ): Promise<ApiResponse<{ success: boolean; draft_id: string; sentiment_analysis: unknown }>> {
+    return this.request<{ success: boolean; draft_id: string; sentiment_analysis: unknown }>(
+      '/api/office/drafts',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }
+    );
+  }
+
+  async approveOfficeDraft(
+    draftId: string,
+    sendImmediately: boolean = false
+  ): Promise<ApiResponse<{ success: boolean; status: string }>> {
+    return this.request<{ success: boolean; status: string }>(
+      `/api/office/drafts/${draftId}/approve?send_immediately=${sendImmediately}`,
+      { method: 'POST' }
+    );
+  }
+
+  async deleteOfficeDraft(draftId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.request<{ success: boolean }>(`/api/office/drafts/${draftId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Meetings
+  async getOfficeMeetings(
+    accountId: string,
+    status: string = 'proposed',
+    limit: number = 20
+  ): Promise<ApiResponse<{ proposals: MeetingProposal[]; total: number }>> {
+    const query = this.buildQuery({ account_id: accountId, status, limit });
+    return this.request<{ proposals: MeetingProposal[]; total: number }>(
+      `/api/office/meetings${query}`
+    );
+  }
+
+  async getOfficeMeeting(proposalId: string): Promise<ApiResponse<MeetingProposal>> {
+    return this.request<MeetingProposal>(`/api/office/meetings/${proposalId}`);
+  }
+
+  async createOfficeMeeting(
+    request: MeetingProposalRequest
+  ): Promise<ApiResponse<{ success: boolean; proposal_id: string; conflicts: MeetingConflict[] }>> {
+    return this.request<{
+      success: boolean;
+      proposal_id: string;
+      conflicts: MeetingConflict[];
+    }>('/api/office/meetings', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async confirmOfficeMeeting(
+    proposalId: string
+  ): Promise<ApiResponse<{ success: boolean; event_id: string; status: string }>> {
+    return this.request<{ success: boolean; event_id: string; status: string }>(
+      `/api/office/meetings/${proposalId}/confirm`,
+      { method: 'POST' }
+    );
+  }
+
+  async cancelOfficeMeeting(proposalId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.request<{ success: boolean }>(`/api/office/meetings/${proposalId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getOfficeMeetingSuggestions(
+    accountId: string,
+    durationMinutes: number = 30,
+    daysAhead: number = 7
+  ): Promise<ApiResponse<TimeSuggestion[]>> {
+    const query = this.buildQuery({
+      account_id: accountId,
+      duration_minutes: durationMinutes,
+      days_ahead: daysAhead,
+    });
+    return this.request<TimeSuggestion[]>(`/api/office/suggest-times${query}`);
+  }
+
+  // OAuth
+  async getOAuthAuthorizationUrl(
+    provider: 'google' | 'microsoft',
+    integrationLevel: number = 2
+  ): Promise<ApiResponse<{ authorization_url: string }>> {
+    return this.request<{ authorization_url: string }>(
+      `/api/oauth/authorize/${provider}?integration_level=${integrationLevel}`
+    );
+  }
+
+  async getOAuthStatus(): Promise<
+    ApiResponse<
+      {
+        provider: string;
+        connected: boolean;
+        email: string | null;
+        integration_level: number | null;
+      }[]
+    >
+  > {
+    return this.request<
+      {
+        provider: string;
+        connected: boolean;
+        email: string | null;
+        integration_level: number | null;
+      }[]
+    >('/api/oauth/status');
+  }
+
+  async revokeOAuth(accountId: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
+    return this.request<{ success: boolean; message: string }>('/api/oauth/revoke', {
+      method: 'POST',
+      body: JSON.stringify({ account_id: accountId }),
     });
   }
 }
