@@ -40,6 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Development tools
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
@@ -48,10 +49,32 @@ dev = [
     "mypy>=1.13.0",
     "types-PyYAML>=6.0.0",
 ]
+
+# Individual channel adapters
+telegram = ["python-telegram-bot>=21.0"]
+discord = ["discord.py>=2.4.0"]
+slack = ["slack-bolt>=1.20.0"]
+
+# All messaging channels combined
 channels = [
     "python-telegram-bot>=21.0",
     "discord.py>=2.4.0",
     "slack-bolt>=1.20.0",
+]
+
+# Office integrations (Google, Microsoft)
+office = [
+    "google-auth>=2.25.0",
+    "google-auth-oauthlib>=1.2.0",
+]
+
+# Everything except dev tools
+all = [
+    "python-telegram-bot>=21.0",
+    "discord.py>=2.4.0",
+    "slack-bolt>=1.20.0",
+    "google-auth>=2.25.0",
+    "google-auth-oauthlib>=1.2.0",
 ]
 
 [project.scripts]
