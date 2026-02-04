@@ -2,6 +2,11 @@
 Tool: Browser Automation
 Purpose: Web automation with domain controls, screenshot, PDF, and form filling
 
+DEPRECATED: This module is deprecated since the SDK migration.
+    For simple web fetching, use the SDK's WebFetch tool instead.
+    This module is kept for advanced features (screenshots, PDFs, form filling)
+    that WebFetch doesn't support.
+
 Security Model:
 - Domain allowlist/blocklist for navigation
 - Isolated browser profile (no access to user's data)
