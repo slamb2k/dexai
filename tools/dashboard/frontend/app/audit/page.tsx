@@ -18,10 +18,14 @@ import {
   Database,
   Settings,
   AlertTriangle,
+  AlertCircle,
+  Inbox,
 } from 'lucide-react';
 
-// Mock data
-const mockAuditEvents: AuditEvent[] = [
+const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+// Demo mode fallback data
+const demoAuditEvents: AuditEvent[] = [
   {
     id: '1',
     eventType: 'auth.login',
@@ -110,6 +114,8 @@ const eventTypeIcons: Record<string, typeof Shield> = {
 export default function AuditPage() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isEmpty, setIsEmpty] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,6 +125,8 @@ export default function AuditPage() {
   useEffect(() => {
     const loadEvents = async () => {
       setIsLoading(true);
+      setError(null);
+      setIsEmpty(false);
       try {
         const res = await api.getAuditLog({
           eventType: typeFilter !== 'all' ? typeFilter : undefined,
@@ -127,9 +135,17 @@ export default function AuditPage() {
         });
         if (res.success && res.data) {
           setEvents(res.data.events);
+          setIsEmpty(res.data.events.length === 0);
+        } else if (res.error) {
+          throw new Error(res.error);
         }
-      } catch {
-        setEvents(mockAuditEvents);
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : 'Failed to load audit log';
+        setError(errorMsg);
+        // Only use demo data if explicitly in demo mode
+        if (isDemo) {
+          setEvents(demoAuditEvents);
+        }
       }
       setIsLoading(false);
     };
@@ -151,7 +167,7 @@ export default function AuditPage() {
     return true;
   });
 
-  const displayEvents = filteredEvents.length > 0 ? filteredEvents : mockAuditEvents;
+  const displayEvents = filteredEvents.length > 0 ? filteredEvents : (isDemo ? demoAuditEvents : []);
 
   // Export to JSON
   const handleExport = useCallback(() => {
@@ -173,6 +189,14 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Error banner */}
+      {error && !isDemo && (
+        <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-status-error flex-shrink-0" />
+          <p className="text-body text-status-error">{error}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -262,6 +286,12 @@ export default function AuditPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <RefreshCw size={24} className="animate-spin text-text-muted" />
+          </div>
+        ) : displayEvents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-text-muted">
+            <Inbox size={48} className="mb-4 opacity-50" />
+            <p className="text-body">No audit events</p>
+            <p className="text-caption">Security events will appear here as they occur</p>
           </div>
         ) : (
           <table className="w-full">

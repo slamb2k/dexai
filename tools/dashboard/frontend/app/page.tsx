@@ -4,14 +4,14 @@ import { useEffect, useState } from 'react';
 import { DexAvatar, AvatarState } from '@/components/dex-avatar';
 import { StatCard } from '@/components/stat-card';
 import { CompactActivityFeed, ActivityItem } from '@/components/activity-feed';
-import { ListTodo, MessageSquare, DollarSign, RefreshCw } from 'lucide-react';
+import { ListTodo, MessageSquare, DollarSign, RefreshCw, AlertCircle } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useDexStore, useActivityStore, useMetricsStore } from '@/lib/store';
 import { api } from '@/lib/api';
 import { socketClient } from '@/lib/socket';
 
-// Mock data for demo (will be replaced by real API calls)
-const mockActivity: ActivityItem[] = [
+// Demo mode fallback data
+const demoActivity: ActivityItem[] = [
   {
     id: '1',
     type: 'message',
@@ -47,17 +47,23 @@ const mockActivity: ActivityItem[] = [
   },
 ];
 
+const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
 export default function HomePage() {
   const { avatarState, currentTask, setAvatarState, setCurrentTask } = useDexStore();
   const { items: activityItems, setItems, addItem, isConnected, setConnected } = useActivityStore();
   const { tasksToday, messagesToday, costToday, updateMetrics } = useMetricsStore();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isEmpty, setIsEmpty] = useState(false);
 
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
+      setError(null);
+      setIsEmpty(false);
 
       try {
         // Try to fetch real data
@@ -81,21 +87,27 @@ export default function HomePage() {
         }
 
         if (activityRes.success && activityRes.data) {
-          setItems(
-            activityRes.data.events.map((e) => ({
-              ...e,
-              timestamp: new Date(e.timestamp),
-            }))
-          );
+          const events = activityRes.data.events.map((e) => ({
+            ...e,
+            timestamp: new Date(e.timestamp),
+          }));
+          setItems(events);
+          setIsEmpty(events.length === 0);
+        } else if (activityRes.error) {
+          throw new Error(activityRes.error);
         }
-      } catch {
-        // Use mock data if API is unavailable
-        setItems(mockActivity);
-        updateMetrics({
-          tasksToday: 12,
-          messagesToday: 47,
-          costToday: 0.23,
-        });
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : 'Failed to load data';
+        setError(errorMsg);
+        // Only use demo data if explicitly in demo mode
+        if (isDemo) {
+          setItems(demoActivity);
+          updateMetrics({
+            tasksToday: 12,
+            messagesToday: 47,
+            costToday: 0.23,
+          });
+        }
       }
 
       setIsLoading(false);
@@ -159,10 +171,18 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [setAvatarState]);
 
-  const displayActivity = activityItems.length > 0 ? activityItems : mockActivity;
+  const displayActivity = activityItems.length > 0 ? activityItems : (isDemo ? demoActivity : []);
 
   return (
     <div className="space-y-8 animate-fade-in">
+      {/* Error banner */}
+      {error && !isDemo && (
+        <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-status-error flex-shrink-0" />
+          <p className="text-body text-status-error">{error}</p>
+        </div>
+      )}
+
       {/* Connection status */}
       <div className="flex items-center justify-end gap-2">
         <span

@@ -14,10 +14,14 @@ import {
   MessageSquare,
   Wrench,
   ChevronDown,
+  AlertCircle,
+  Inbox,
 } from 'lucide-react';
 
-// Mock data for demo
-const mockTasks: Task[] = [
+const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+// Demo mode fallback data
+const demoTasks: Task[] = [
   {
     id: '1',
     status: 'completed',
@@ -88,6 +92,8 @@ export default function TasksPage() {
   const { tasks, setTasks, selectedTask, setSelectedTask, filters, setFilters } =
     useTasksStore();
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isEmpty, setIsEmpty] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [channelFilter, setChannelFilter] = useState('all');
 
@@ -95,6 +101,8 @@ export default function TasksPage() {
   useEffect(() => {
     const loadTasks = async () => {
       setIsLoading(true);
+      setError(null);
+      setIsEmpty(false);
 
       try {
         const res = await api.getTasks({
@@ -103,17 +111,23 @@ export default function TasksPage() {
         });
 
         if (res.success && res.data) {
-          setTasks(
-            res.data.tasks.map((t) => ({
-              ...t,
-              startTime: t.startTime ? new Date(t.startTime) : undefined,
-              endTime: t.endTime ? new Date(t.endTime) : undefined,
-            }))
-          );
+          const taskList = res.data.tasks.map((t) => ({
+            ...t,
+            startTime: t.startTime ? new Date(t.startTime) : undefined,
+            endTime: t.endTime ? new Date(t.endTime) : undefined,
+          }));
+          setTasks(taskList);
+          setIsEmpty(taskList.length === 0);
+        } else if (res.error) {
+          throw new Error(res.error);
         }
-      } catch {
-        // Use mock data
-        setTasks(mockTasks);
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : 'Failed to load tasks';
+        setError(errorMsg);
+        // Only use demo data if explicitly in demo mode
+        if (isDemo) {
+          setTasks(demoTasks);
+        }
       }
 
       setIsLoading(false);
@@ -129,10 +143,18 @@ export default function TasksPage() {
     return true;
   });
 
-  const displayTasks = filteredTasks.length > 0 ? filteredTasks : mockTasks;
+  const displayTasks = filteredTasks.length > 0 ? filteredTasks : (isDemo ? demoTasks : []);
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Error banner */}
+      {error && !isDemo && (
+        <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-status-error flex-shrink-0" />
+          <p className="text-body text-status-error">{error}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-page-title text-text-primary">Tasks</h1>
@@ -211,6 +233,12 @@ export default function TasksPage() {
         {isLoading ? (
           <div className="col-span-full flex items-center justify-center py-12">
             <RefreshCw size={24} className="animate-spin text-text-muted" />
+          </div>
+        ) : displayTasks.length === 0 ? (
+          <div className="col-span-full flex flex-col items-center justify-center py-12 text-text-muted">
+            <Inbox size={48} className="mb-4 opacity-50" />
+            <p className="text-body">No tasks found</p>
+            <p className="text-caption">Tasks will appear here when you start using DexAI</p>
           </div>
         ) : (
           displayTasks.map((task) => (
