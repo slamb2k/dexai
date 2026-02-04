@@ -37,6 +37,24 @@ You make smart decisions. Tools execute perfectly.
 
 ---
 
+## **Quick Reference: Where to Find Information**
+
+| Need | Location | Purpose |
+|------|----------|---------|
+| **Product vision & roadmap** | `goals/prd_dexai_v1.md` | Full PRD with personas, features, phases |
+| **Phase status & task index** | `goals/manifest.md` | What's done, what's planned, all goal files |
+| **Available tools** | `tools/manifest.md` | Every tool with description and location |
+| **ADHD design principles** | `context/adhd_design_principles.md` | Core UX philosophy (RSD-safe, one-thing, etc.) |
+| **Architecture decisions** | `context/dexai_vs_claude_sdk_comparison.md` | SDK integration rationale |
+| **Competitive context** | `context/gap_analysis.md` | Why features exist, market positioning |
+| **Security infrastructure** | `tools/security/` | Vault, RBAC, audit, sanitizer, rate limiting |
+| **Office integration** | `tools/office/` + `args/office_integration.yaml` | OAuth, email, calendar, automation |
+| **Agent SDK config** | `args/agent.yaml` | Model, tools, ADHD settings |
+
+**Use `/prime` to load key architectural context into the conversation.**
+
+---
+
 # **The Layered Structure**
 
 ## **1. Process Layer — Goals (`goals/`)**
