@@ -164,17 +164,93 @@ if [ "$NO_DOCKER" = false ]; then
     fi
 fi
 
-# Check uv (preferred) or pip
+# Check uv (preferred), pip3, pip, or python -m pip
 if check_command uv; then
     PKG_MANAGER="uv"
-    log_success "uv package manager found"
+    log_success "uv package manager found (fastest)"
 elif check_command pip3; then
     PKG_MANAGER="pip3"
     log_warn "uv not found, using pip3 (slower)"
     echo "  Install uv for faster installs: curl -LsSf https://astral.sh/uv/install.sh | sh"
+elif check_command pip; then
+    PKG_MANAGER="pip"
+    log_warn "uv not found, using pip (slower)"
+    echo "  Install uv for faster installs: curl -LsSf https://astral.sh/uv/install.sh | sh"
+elif python3 -m pip --version >/dev/null 2>&1; then
+    PKG_MANAGER="python3 -m pip"
+    log_warn "No standalone pip found, using python3 -m pip (slower)"
+    echo "  Install uv for faster installs: curl -LsSf https://astral.sh/uv/install.sh | sh"
 else
-    log_error "No Python package manager found. Install uv or pip."
-    exit 1
+    log_warn "No Python package manager found (pip not installed)"
+    echo ""
+    read -p "Would you like to install uv (fast Python package manager)? [Y/n] " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        log_info "Installing uv..."
+        if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+            # Source the shell config to get uv in PATH
+            export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+            if check_command uv; then
+                PKG_MANAGER="uv"
+                log_success "uv installed successfully"
+            else
+                log_error "uv installed but not found in PATH. Please restart your terminal and re-run this script."
+                exit 1
+            fi
+        else
+            log_error "Failed to install uv. Please install manually:"
+            echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+            echo "  Or install pip: python3 -m ensurepip --upgrade"
+            exit 1
+        fi
+    else
+        log_error "No package manager available. Install uv or pip:"
+        echo "  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        echo "  Or install pip: python3 -m ensurepip --upgrade"
+        exit 1
+    fi
+fi
+
+# Check bun (preferred), pnpm, npm, or offer to install bun
+if check_command bun; then
+    JS_PKG_MANAGER="bun"
+    log_success "bun package manager found (fastest)"
+elif check_command pnpm; then
+    JS_PKG_MANAGER="pnpm"
+    log_warn "bun not found, using pnpm"
+    echo "  Install bun for faster installs: curl -fsSL https://bun.sh/install | bash"
+elif check_command npm; then
+    JS_PKG_MANAGER="npm"
+    log_warn "bun not found, using npm (slower)"
+    echo "  Install bun for faster installs: curl -fsSL https://bun.sh/install | bash"
+else
+    log_warn "No JavaScript package manager found (npm/pnpm/bun not installed)"
+    echo ""
+    read -p "Would you like to install bun (fast JavaScript runtime & package manager)? [Y/n] " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        log_info "Installing bun..."
+        if curl -fsSL https://bun.sh/install | bash; then
+            # Add bun to PATH for this session
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+            if check_command bun; then
+                JS_PKG_MANAGER="bun"
+                log_success "bun installed successfully"
+            else
+                log_error "bun installed but not found in PATH. Please restart your terminal and re-run this script."
+                exit 1
+            fi
+        else
+            log_error "Failed to install bun. Please install manually:"
+            echo "  curl -fsSL https://bun.sh/install | bash"
+            echo "  Or install Node.js/npm: https://nodejs.org/"
+            exit 1
+        fi
+    else
+        log_warn "Skipping frontend dependencies (no JS package manager)"
+        JS_PKG_MANAGER=""
+    fi
 fi
 
 # ==============================================================================
@@ -218,15 +294,113 @@ fi
 # Install Dependencies
 # ==============================================================================
 
-log_info "Installing dependencies..."
+log_info "Installing core dependencies..."
 
-if [ "$PKG_MANAGER" = "uv" ]; then
-    run_cmd uv pip install -e "."
-else
-    run_cmd pip3 install -e "."
+case "$PKG_MANAGER" in
+    uv)
+        run_cmd uv pip install -e "."
+        ;;
+    pip3)
+        run_cmd pip3 install -e "."
+        ;;
+    pip)
+        run_cmd pip install -e "."
+        ;;
+    "python3 -m pip")
+        run_cmd python3 -m pip install -e "."
+        ;;
+esac
+
+log_success "Core Python dependencies installed"
+
+# ==============================================================================
+# Auto-detect and Install Optional Dependencies
+# ==============================================================================
+
+log_info "Detecting enabled features from configuration..."
+
+EXTRAS_TO_INSTALL=""
+
+# Check channels.yaml for enabled messaging channels
+CHANNELS_CONFIG="$DEXAI_DIR/args/channels.yaml"
+if [ -f "$CHANNELS_CONFIG" ]; then
+    # Check individual channels
+    if grep -q "telegram:" "$CHANNELS_CONFIG" && grep -A1 "telegram:" "$CHANNELS_CONFIG" | grep -q "enabled: true"; then
+        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL telegram"
+        log_info "  Telegram enabled"
+    fi
+    if grep -q "discord:" "$CHANNELS_CONFIG" && grep -A1 "discord:" "$CHANNELS_CONFIG" | grep -q "enabled: true"; then
+        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL discord"
+        log_info "  Discord enabled"
+    fi
+    if grep -q "slack:" "$CHANNELS_CONFIG" && grep -A1 "slack:" "$CHANNELS_CONFIG" | grep -q "enabled: true"; then
+        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL slack"
+        log_info "  Slack enabled"
+    fi
 fi
 
-log_success "Dependencies installed"
+# Check office_integration.yaml for office features
+OFFICE_CONFIG="$DEXAI_DIR/args/office_integration.yaml"
+if [ -f "$OFFICE_CONFIG" ]; then
+    if grep -q "enabled: true" "$OFFICE_CONFIG"; then
+        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL office"
+        log_info "  Office integration enabled"
+    fi
+fi
+
+# Install detected extras
+if [ -n "$EXTRAS_TO_INSTALL" ]; then
+    EXTRAS_TO_INSTALL=$(echo "$EXTRAS_TO_INSTALL" | xargs)  # trim whitespace
+    EXTRAS_CSV=$(echo "$EXTRAS_TO_INSTALL" | tr ' ' ',')
+    log_info "Installing optional dependencies: $EXTRAS_CSV..."
+
+    case "$PKG_MANAGER" in
+        uv)
+            run_cmd uv pip install -e ".[$EXTRAS_CSV]"
+            ;;
+        pip3)
+            run_cmd pip3 install -e ".[$EXTRAS_CSV]"
+            ;;
+        pip)
+            run_cmd pip install -e ".[$EXTRAS_CSV]"
+            ;;
+        "python3 -m pip")
+            run_cmd python3 -m pip install -e ".[$EXTRAS_CSV]"
+            ;;
+    esac
+
+    log_success "Optional dependencies installed"
+else
+    log_info "No optional features enabled in configuration"
+fi
+
+# ==============================================================================
+# Install Frontend Dependencies
+# ==============================================================================
+
+FRONTEND_DIR="$DEXAI_DIR/tools/dashboard/frontend"
+
+if [ -n "$JS_PKG_MANAGER" ] && [ -d "$FRONTEND_DIR" ]; then
+    log_info "Installing frontend dependencies..."
+
+    case "$JS_PKG_MANAGER" in
+        bun)
+            run_cmd bun install --cwd "$FRONTEND_DIR"
+            ;;
+        pnpm)
+            run_cmd pnpm install --dir "$FRONTEND_DIR"
+            ;;
+        npm)
+            run_cmd npm install --prefix "$FRONTEND_DIR"
+            ;;
+    esac
+
+    log_success "Frontend dependencies installed"
+elif [ -z "$JS_PKG_MANAGER" ]; then
+    log_warn "Skipping frontend dependencies (no JS package manager)"
+elif [ ! -d "$FRONTEND_DIR" ]; then
+    log_warn "Frontend directory not found, skipping frontend dependencies"
+fi
 
 # ==============================================================================
 # Generate Master Key (if not exists)
