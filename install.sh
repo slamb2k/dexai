@@ -279,7 +279,23 @@ VENV_DIR="$DEXAI_DIR/.venv"
 
 if [ ! -d "$VENV_DIR" ]; then
     log_info "Creating virtual environment..."
-    run_cmd python3 -m venv "$VENV_DIR"
+
+    # Prefer uv venv (faster, no system venv dependency)
+    if [ "$PKG_MANAGER" = "uv" ]; then
+        run_cmd uv venv "$VENV_DIR"
+    else
+        # Fall back to python3 -m venv
+        if ! run_cmd python3 -m venv "$VENV_DIR" 2>/dev/null; then
+            log_error "Failed to create virtual environment."
+            log_error "On Debian/Ubuntu, install the venv package:"
+            echo "  sudo apt install python3.$(python3 -c 'import sys; print(sys.version_info.minor)')-venv"
+            echo ""
+            echo "Or install uv (recommended - no system venv needed):"
+            echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+            exit 1
+        fi
+    fi
+
     log_success "Virtual environment created"
 else
     log_success "Virtual environment exists"
