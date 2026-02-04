@@ -708,6 +708,40 @@ class ApiClient {
     const query = this.buildQuery({ user_id: userId, days });
     return this.request<PushStats>(`/api/push/stats${query}`);
   }
+
+  // ==========================================================================
+  // Service Management endpoints
+  // ==========================================================================
+
+  async getServices(): Promise<ApiResponse<ServiceStatus[]>> {
+    return this.request<ServiceStatus[]>('/api/services');
+  }
+
+  async getServiceStatus(name: string): Promise<ApiResponse<ServiceStatus>> {
+    return this.request<ServiceStatus>(`/api/services/${name}`);
+  }
+
+  async startService(name: string): Promise<ApiResponse<ServiceAction>> {
+    return this.request<ServiceAction>(`/api/services/${name}/start`, {
+      method: 'POST',
+    });
+  }
+
+  async stopService(name: string): Promise<ApiResponse<ServiceAction>> {
+    return this.request<ServiceAction>(`/api/services/${name}/stop`, {
+      method: 'POST',
+    });
+  }
+
+  async restartService(name: string): Promise<ApiResponse<ServiceAction>> {
+    return this.request<ServiceAction>(`/api/services/${name}/restart`, {
+      method: 'POST',
+    });
+  }
+
+  async getServiceHealth(name: string): Promise<ApiResponse<ServiceHealth>> {
+    return this.request<ServiceHealth>(`/api/services/${name}/health`);
+  }
 }
 
 // Push notification types
@@ -767,6 +801,33 @@ export interface PushStats {
   dismiss_rate: number;
   by_category: Record<string, { total: number; clicked: number; click_rate: number }>;
   by_day: { day: string; total: number; clicked: number }[];
+}
+
+// Service Management types
+export interface ServiceStatus {
+  name: string;
+  display_name: string;
+  status: 'running' | 'stopped' | 'error' | 'unknown';
+  connected: boolean;
+  last_activity: string | null;
+  error: string | null;
+  config_status: 'configured' | 'unconfigured' | 'partial';
+  uptime_seconds: number | null;
+}
+
+export interface ServiceAction {
+  success: boolean;
+  service: string;
+  action: string;
+  message: string | null;
+  error: string | null;
+}
+
+export interface ServiceHealth {
+  service: string;
+  timestamp: string;
+  overall: 'healthy' | 'unhealthy' | 'degraded';
+  checks: Record<string, { status: string; detail: unknown }>;
 }
 
 // Export singleton instance
