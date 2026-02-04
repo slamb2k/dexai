@@ -165,15 +165,15 @@ class SocketClient {
   }
 
   onDexState(callback: EventCallback<DexStateEvent>): () => void {
-    return this.on('dex_state', callback);
+    return this.on('dex:state', callback);
   }
 
   onActivityNew(callback: EventCallback<ActivityNewEvent>): () => void {
-    return this.on('activity_new', callback);
+    return this.on('activity:new', callback);
   }
 
   onMetricsUpdate(callback: EventCallback<MetricsUpdateEvent>): () => void {
-    return this.on('metrics_update', callback);
+    return this.on('metrics:update', callback);
   }
 
   /**
