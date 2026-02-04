@@ -473,6 +473,7 @@ Every failure strengthens the system:
 
 * `goals/` — Process Layer (what to achieve)
 * `tools/` — Execution Layer (organized by workflow)
+* `tools/agent/` — Claude Agent SDK integration (ADHD-aware client, MCP tools)
 * `args/` — Args Layer (behavior settings)
 * `context/` — Context Layer (domain knowledge)
 * `hardprompts/` — Hard Prompts Layer (instruction templates)
@@ -481,6 +482,7 @@ Every failure strengthens the system:
 * `credentials.json`, `token.json` — OAuth credentials (ignored by Git)
 * `goals/manifest.md` — Index of available goal workflows
 * `tools/manifest.md` — Master list of tools and their functions
+* `args/agent.yaml` — Claude Agent SDK configuration (model, tools, ADHD settings)
 
 ---
 
@@ -578,6 +580,52 @@ Use conventional commit format: `feat(scope): description`
 * **Deliverables**: outputs needed by the user (Sheets, Slides, processed data, etc.)
 * **Scratch Work**: temp files (raw scrapes, CSVs, research). Always disposable.
 * Never store important data in `.tmp/`.
+
+---
+
+## **Claude Agent SDK Integration**
+
+DexAI uses the Claude Agent SDK for agentic capabilities while preserving unique ADHD features.
+
+**Architecture:**
+```
+Telegram/Discord/Slack → Router (security pipeline) → SDK Handler → DexAIClient
+                                                           ↓
+                                                    Claude Agent SDK
+                                                    (Read, Write, Bash, etc.)
+                                                           +
+                                                    DexAI MCP Tools
+                                                    (ADHD-specific features)
+```
+
+**Key Components:**
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| DexAIClient | `tools/agent/sdk_client.py` | SDK wrapper with ADHD-aware prompts |
+| Permission callback | `tools/agent/permissions.py` | Maps RBAC to SDK tool access |
+| SDK Handler | `tools/channels/sdk_handler.py` | Channel message handler |
+| Memory MCP Tools | `tools/agent/mcp/memory_tools.py` | Hybrid search, commitments, context |
+| Task MCP Tools | `tools/agent/mcp/task_tools.py` | Decomposition, friction, current step |
+| ADHD MCP Tools | `tools/agent/mcp/adhd_tools.py` | Response formatting, language filter |
+
+**What SDK Provides (Use These):**
+- File operations: Read, Write, Edit, Glob, Grep, LS
+- Command execution: Bash (sandboxed)
+- Web access: WebSearch, WebFetch
+- Task tracking: TaskCreate, TaskList, TaskUpdate, TaskGet
+
+**What DexAI Adds (Unique Value):**
+- Hybrid memory search (BM25 + semantic embeddings)
+- Commitment tracking (RSD-safe promise surfacing)
+- Context capture/resume (20-45min recovery savings)
+- Task decomposition (LLM-powered breakdown)
+- Friction solving (pre-solve hidden blockers)
+- Current step (ONE action, not lists)
+- Energy matching (route tasks to capacity)
+- RSD-safe language filtering
+
+**Configuration:** `args/agent.yaml`
 
 ---
 
