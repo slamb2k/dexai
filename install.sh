@@ -525,16 +525,16 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "  1. Configure your API keys in .env:"
-echo "     ${BLUE}nano $ENV_FILE${NC}"
+echo -e "     ${BLUE}nano $ENV_FILE${NC}"
 echo ""
 echo "  2. Run the setup wizard:"
-echo "     ${BLUE}cd $DEXAI_DIR && python tools/wizard/wizard.py${NC}"
+echo -e "     ${BLUE}cd $DEXAI_DIR && python -m tools.setup.tui.main${NC}"
 echo ""
 echo "  3. Start the dashboard:"
-echo "     ${BLUE}cd $DEXAI_DIR && make dev${NC}"
+echo -e "     ${BLUE}cd $DEXAI_DIR && make dev${NC}"
 echo ""
 echo "  4. Or use Docker:"
-echo "     ${BLUE}cd $DEXAI_DIR && docker compose up -d${NC}"
+echo -e "     ${BLUE}cd $DEXAI_DIR && docker compose up -d${NC}"
 echo ""
 
 # Launch wizard unless skipped
@@ -543,7 +543,7 @@ if [ "$NO_WIZARD" = false ] && [ "$DRY_RUN" = false ]; then
     read -p "Would you like to run the setup wizard now? [y/N] " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        python3 "$DEXAI_DIR/tools/wizard/wizard.py"
+        python3 -m tools.setup.tui.main
     fi
 fi
 
