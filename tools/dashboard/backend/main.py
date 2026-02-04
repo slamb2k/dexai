@@ -184,7 +184,7 @@ async def health_check():
     """
     Check system health status.
 
-    Returns overall health and status of individual services.
+    Returns overall health and status of individual services including channels.
     """
     services = {}
 
@@ -220,10 +220,54 @@ async def health_check():
     except Exception:
         services["memory"] = "unavailable"
 
-    # Overall status
-    overall = "healthy" if services.get("database") == "healthy" else "degraded"
+    # Check channel adapters
+    channels = {}
+    try:
+        from tools.channels.router import get_router
 
-    return HealthCheck(status=overall, version="0.1.0", timestamp=datetime.now(), services=services)
+        router = get_router()
+        if router.adapters:
+            # Get async status with health checks
+            router_status = await router.get_status_async()
+            channels = router_status.get("adapters", {})
+
+            # Summarize channel health
+            connected_count = sum(1 for c in channels.values() if c.get("connected"))
+            total_count = len(channels)
+
+            if total_count > 0:
+                if connected_count == total_count:
+                    services["channels"] = "healthy"
+                elif connected_count > 0:
+                    services["channels"] = "degraded"
+                else:
+                    services["channels"] = "unhealthy"
+            else:
+                services["channels"] = "no_adapters"
+        else:
+            services["channels"] = "no_adapters"
+    except Exception as e:
+        logger.warning(f"Channel health check failed: {e}")
+        services["channels"] = "unavailable"
+
+    # Overall status
+    core_healthy = services.get("database") == "healthy"
+    channels_ok = services.get("channels") in ("healthy", "degraded", "no_adapters", "unavailable")
+    overall = "healthy" if core_healthy and channels_ok else "degraded"
+
+    # Build extended response with channel details
+    response = HealthCheck(
+        status=overall,
+        version="0.1.0",
+        timestamp=datetime.now(),
+        services=services
+    )
+
+    # Add channel details to response if available
+    if channels:
+        response.services["channel_details"] = channels
+
+    return response
 
 
 # =============================================================================

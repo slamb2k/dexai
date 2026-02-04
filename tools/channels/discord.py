@@ -142,6 +142,34 @@ class DiscordAdapter(ChannelAdapter):
         # Start the client
         await self.client.start(self.token)
 
+    async def health_check(self) -> dict[str, Any]:
+        """
+        Check Discord bot connection health.
+
+        Returns:
+            Dict with connected status, latency_ms, and optional error
+        """
+        if not self._connected or not self.client:
+            return {"connected": False, "error": "Not connected"}
+
+        try:
+            # Discord.py provides latency directly
+            latency_ms = int(self.client.latency * 1000)
+
+            # Check if we have a valid user
+            if not self.client.user:
+                return {"connected": False, "error": "Bot user not available"}
+
+            return {
+                "connected": True,
+                "latency_ms": latency_ms,
+                "bot_username": self.client.user.name,
+                "bot_id": self.client.user.id,
+                "guilds": len(self.client.guilds),
+            }
+        except Exception as e:
+            return {"connected": False, "error": str(e)[:100]}
+
     async def disconnect(self) -> None:
         """Disconnect from Discord."""
         if self.client:

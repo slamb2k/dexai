@@ -53,6 +53,53 @@ def load_yaml_config(filename: str) -> dict:
     return {}
 
 
+def save_yaml_config(filename: str, config: dict) -> bool:
+    """
+    Save a YAML config file atomically.
+
+    Uses write-to-temp + rename pattern to prevent corruption.
+
+    Args:
+        filename: Config filename (e.g., 'smart_notifications.yaml')
+        config: Configuration dict to save
+
+    Returns:
+        True if successful, False otherwise
+    """
+    import os
+    import tempfile
+
+    config_file = CONFIG_PATH / filename
+
+    try:
+        # Ensure the args directory exists
+        CONFIG_PATH.mkdir(parents=True, exist_ok=True)
+
+        # Write to temporary file first
+        fd, temp_path = tempfile.mkstemp(
+            suffix=".yaml",
+            prefix=filename.replace(".yaml", "_"),
+            dir=CONFIG_PATH,
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+            # Atomic rename
+            os.replace(temp_path, config_file)
+            return True
+        except Exception:
+            # Clean up temp file on failure
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).error(f"Failed to save config {filename}: {e}")
+        return False
+
+
 def get_system_settings() -> dict:
     """Load system settings from various config files."""
     settings = {}
@@ -161,14 +208,52 @@ async def update_settings(updates: SettingsUpdate, user_id: str = "default"):
 
     # Handle notification settings updates
     if updates.notifications is not None:
-        # Note: Full implementation would update smart_notifications.yaml
-        # For now, we store preferences in database
-        pass
+        notif = updates.notifications
+
+        # Load current config
+        config = load_yaml_config("smart_notifications.yaml")
+        if "smart_notifications" not in config:
+            config["smart_notifications"] = {}
+
+        sn = config["smart_notifications"]
+
+        # Update enabled status
+        if notif.enabled is not None:
+            sn["enabled"] = notif.enabled
+
+        # Update quiet hours
+        if notif.quiet_hours_start is not None or notif.quiet_hours_end is not None:
+            if "active_hours" not in sn:
+                sn["active_hours"] = {}
+            if notif.quiet_hours_start is not None:
+                sn["active_hours"]["start"] = notif.quiet_hours_start
+            if notif.quiet_hours_end is not None:
+                sn["active_hours"]["end"] = notif.quiet_hours_end
+
+        # Save updated config
+        save_yaml_config("smart_notifications.yaml", config)
 
     # Handle privacy settings updates
     if updates.privacy is not None:
-        # Note: Full implementation would update relevant config files
-        pass
+        priv = updates.privacy
+
+        # Load or create privacy config
+        config = load_yaml_config("privacy.yaml")
+        if "privacy" not in config:
+            config["privacy"] = {}
+
+        pc = config["privacy"]
+
+        # Update settings
+        if priv.remember_conversations is not None:
+            pc["remember_conversations"] = priv.remember_conversations
+        if priv.log_activity is not None:
+            pc["log_activity"] = priv.log_activity
+        if priv.data_retention_days is not None:
+            pc["data_retention_days"] = priv.data_retention_days
+
+        # Save updated config
+        save_yaml_config("privacy.yaml", config)
 
     # Get updated settings
     result = await get_settings(user_id)

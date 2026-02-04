@@ -1,0 +1,60 @@
+# ==============================================================================
+# DexAI Channel Adapters Systemd Service
+# ==============================================================================
+# This service runs the channel adapters (Telegram, Discord, Slack)
+# Should be started after dexai-backend
+#
+# Installation:
+#   sudo cp deploy/systemd/dexai-channels.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable dexai-channels
+#   sudo systemctl start dexai-channels
+# ==============================================================================
+
+[Unit]
+Description=DexAI Channel Adapters
+Documentation=https://github.com/slamb2k/dexai
+After=network-online.target dexai-backend.service
+Requires=dexai-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dexai
+Group=dexai
+WorkingDirectory=/opt/dexai
+
+# Python virtual environment
+Environment="PATH=/opt/dexai/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/opt/dexai"
+
+# Load environment file
+EnvironmentFile=-/opt/dexai/.env
+
+# Start channel adapters
+ExecStart=/opt/dexai/.venv/bin/python tools/channels/router.py --start
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=1G
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/dexai/data /opt/dexai/memory
+PrivateTmp=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dexai-channels
+
+[Install]
+WantedBy=multi-user.target

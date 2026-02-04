@@ -587,4 +587,39 @@ Note: `tools/system/browser.py` is deprecated but retained for advanced features
 
 ---
 
+## Deployment Infrastructure
+
+### Root Files
+
+| File | Description |
+|------|-------------|
+| `install.sh` | One-line installation script with prerequisites check, dependency install, and DB init |
+| `Makefile` | Build automation (install, dev, test, lint, build, deploy, clean, status) |
+| `Caddyfile` | Reverse proxy configuration with automatic HTTPS via Caddy |
+| `docker-compose.yml` | Multi-service Docker deployment (backend, frontend, caddy, tailscale) |
+| `.env.example` | Environment variable template with all configuration options |
+
+### Systemd Services (`deploy/systemd/`)
+
+| File | Description |
+|------|-------------|
+| `dexai.service` | Main service (Docker Compose mode) with security hardening |
+| `dexai-backend.service` | Standalone backend service (no Docker) with resource limits |
+| `dexai-channels.service` | Channel adapters service with auto-restart on failure |
+
+### Tailscale Integration (`deploy/tailscale/`)
+
+| File | Description |
+|------|-------------|
+| `README.md` | Tailscale setup guide (auth key, ACLs, MagicDNS, Funnel) |
+| `tailscale-serve.json` | Tailscale Serve configuration for automatic HTTPS |
+
+### Documentation (`docs/`)
+
+| File | Description |
+|------|-------------|
+| `HARDENING.md` | Security hardening guide (system, AI, gateway, client, monitoring) |
+
+---
+
 *Update this manifest when adding new tools.*
