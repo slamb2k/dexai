@@ -1,0 +1,199 @@
+# =============================================================================
+# Claude Agent SDK Configuration
+# =============================================================================
+# Configuration for the Claude Agent SDK integration with DexAI.
+# Controls agent behavior, tool access, and ADHD-specific features.
+
+# -----------------------------------------------------------------------------
+# Agent Settings
+# -----------------------------------------------------------------------------
+# Core agent configuration for Claude SDK.
+
+agent:
+  # Model selection (claude-sonnet-4-20250514 recommended for balance)
+  model: "claude-sonnet-4-20250514"
+
+  # Working directory for file operations
+  working_directory: null  # null = PROJECT_ROOT
+
+  # Maximum tokens for responses
+  max_tokens: 4096
+
+  # Permission mode: "default", "plan", "auto-edit"
+  permission_mode: "default"
+
+  # Session timeout (minutes of inactivity before session reset)
+  session_timeout_minutes: 60
+
+# -----------------------------------------------------------------------------
+# Tool Configuration
+# -----------------------------------------------------------------------------
+# Which SDK tools are available and their restrictions.
+
+tools:
+  # Built-in SDK tools to allow
+  allowed_builtin:
+    - "Read"          # Read files
+    - "Write"         # Write files (with approval)
+    - "Edit"          # Edit files (with approval)
+    - "Glob"          # Pattern search for files
+    - "Grep"          # Content search in files
+    - "LS"            # List directory contents
+    - "Bash"          # Run shell commands (sandboxed)
+    - "WebSearch"     # Search the web
+    - "WebFetch"      # Fetch web content
+    - "TaskCreate"    # Create tasks (native)
+    - "TaskList"      # List tasks (native)
+    - "TaskUpdate"    # Update tasks (native)
+    - "TaskGet"       # Get task details (native)
+
+  # Tools that require explicit confirmation
+  require_confirmation:
+    - "Write"
+    - "Edit"
+    - "Bash"
+
+  # DexAI custom MCP tools to register
+  dexai_tools:
+    # Memory tools
+    - "dexai_memory_search"      # Hybrid semantic + keyword search
+    - "dexai_memory_write"       # Write with importance/type
+    - "dexai_commitments_add"    # Add a promise/commitment
+    - "dexai_commitments_list"   # List active commitments
+    - "dexai_context_capture"    # Snapshot current context
+    - "dexai_context_resume"     # Generate resumption prompt
+
+    # Task tools (ADHD-specific)
+    - "dexai_task_decompose"     # Break down vague tasks
+    - "dexai_friction_check"     # Identify blockers
+    - "dexai_friction_solve"     # Pre-solve blockers
+    - "dexai_current_step"       # Get ONE next action
+    - "dexai_energy_match"       # Match tasks to energy
+
+    # ADHD communication tools
+    - "dexai_format_response"    # Brevity-first formatting
+    - "dexai_check_language"     # RSD-safe filter
+
+# -----------------------------------------------------------------------------
+# System Prompt Configuration
+# -----------------------------------------------------------------------------
+# ADHD-aware system prompt for the agent.
+
+system_prompt:
+  # Base instructions (always included)
+  base: |
+    You are Dex, a helpful AI assistant designed for users with ADHD.
+
+    CORE PRINCIPLES:
+    1. ONE THING AT A TIME - Never present lists of options when one clear action will do
+    2. BREVITY FIRST - Keep responses short for chat. Details only when asked.
+    3. FORWARD-FACING - Focus on what to do, not what wasn't done
+    4. NO GUILT LANGUAGE - Avoid "you should have", "overdue", "forgot to"
+    5. PRE-SOLVE FRICTION - Identify blockers and solve them proactively
+
+    COMMUNICATION STYLE:
+    - Be direct and helpful, not enthusiastic or overly positive
+    - Use short sentences and paragraphs
+    - If breaking down tasks, present ONE step at a time
+    - Ask clarifying questions rather than making assumptions
+
+    TOOLS AVAILABLE:
+    - File operations (read, write, edit, search)
+    - Web search and fetch
+    - DexAI memory system (semantic search, commitments)
+    - Task management with ADHD features (decomposition, friction solving)
+
+  # Additional context loaded per-user
+  include_memory: true        # Include relevant memory context
+  include_commitments: true   # Include active commitments
+  include_energy: true        # Include current energy level estimate
+
+# -----------------------------------------------------------------------------
+# ADHD-Specific Settings
+# -----------------------------------------------------------------------------
+# Fine-tuned settings for ADHD accommodation.
+
+adhd:
+  # Response formatting
+  response:
+    max_length_chat: 500      # Max chars for chat responses
+    max_length_detailed: 2000 # Max chars when detail requested
+    strip_preamble: true      # Remove "Certainly!", "Of course!", etc.
+    one_thing_mode: true      # Default to showing one action at a time
+
+  # Task handling
+  tasks:
+    auto_decompose: true      # Automatically break down vague tasks
+    show_friction: true       # Always show identified blockers
+    energy_aware: true        # Factor in energy level
+    max_steps_shown: 1        # Steps to show at once (1 = one thing mode)
+
+  # Language filtering
+  language:
+    filter_enabled: true      # Enable RSD-safe filtering
+    filter_threshold: 0.7     # Confidence threshold for rewriting
+
+  # Context capture
+  context:
+    auto_capture: true        # Auto-snapshot on task switches
+    staleness_days: 7         # Ask "still relevant?" after N days
+    max_stored: 50            # Maximum stored contexts
+
+# -----------------------------------------------------------------------------
+# Security Integration
+# -----------------------------------------------------------------------------
+# How agent integrates with DexAI security layer.
+
+security:
+  # Map SDK tools to DexAI permissions
+  permission_mapping:
+    Read: "files:read"
+    Write: "files:write"
+    Edit: "files:write"
+    Glob: "files:read"
+    Grep: "files:read"
+    LS: "files:read"
+    Bash: "system:execute"
+    WebSearch: "network:request"
+    WebFetch: "network:request"
+    TaskCreate: "tasks:write"
+    TaskUpdate: "tasks:write"
+    TaskGet: "tasks:read"
+    TaskList: "tasks:read"
+
+  # DexAI tool permissions
+  dexai_permission_mapping:
+    dexai_memory_search: "memory:read"
+    dexai_memory_write: "memory:write"
+    dexai_commitments_add: "memory:write"
+    dexai_commitments_list: "memory:read"
+    dexai_context_capture: "memory:write"
+    dexai_context_resume: "memory:read"
+    dexai_task_decompose: "tasks:write"
+    dexai_friction_check: "tasks:read"
+    dexai_friction_solve: "tasks:write"
+    dexai_current_step: "tasks:read"
+    dexai_energy_match: "tasks:read"
+    dexai_format_response: "chat:send"
+    dexai_check_language: "chat:send"
+
+  # Audit all tool uses
+  audit_tool_use: true
+
+# -----------------------------------------------------------------------------
+# Cost Tracking
+# -----------------------------------------------------------------------------
+# Monitor and limit agent costs.
+
+costs:
+  # Track costs from SDK
+  track_enabled: true
+
+  # Daily limits per user
+  daily_limit_usd: 10.0
+
+  # Warning threshold (percentage of limit)
+  warning_threshold: 0.8
+
+  # Action when limit reached
+  limit_action: "notify_and_degrade"  # Options: block, notify, notify_and_degrade

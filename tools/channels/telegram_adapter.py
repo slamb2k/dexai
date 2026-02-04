@@ -376,7 +376,10 @@ class TelegramAdapter(ChannelAdapter):
                     "Could not generate pairing code. Please try again."
                 )
 
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] Pairing failed: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text("Error generating pairing code. Please try again.")
 
     async def _handle_help(self, update, context) -> None:
@@ -556,7 +559,11 @@ async def run_adapter() -> None:
     router = get_router()
     router.register_adapter(adapter)
 
-    print("Starting Telegram adapter...")
+    # Register SDK handler for full Claude Agent SDK capabilities
+    from tools.channels.sdk_handler import sdk_handler
+    router.add_message_handler(sdk_handler)
+
+    print("Starting Telegram adapter with DexAI SDK client...")
     await adapter.connect()
 
     # Keep running
@@ -602,8 +609,6 @@ def main():
             sys.exit(1)
 
         try:
-            import asyncio
-
             async def test_token():
                 try:
                     from telegram import Bot

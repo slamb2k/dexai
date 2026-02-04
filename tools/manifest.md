@@ -493,4 +493,62 @@ Backend APIs for native mobile features.
 
 ---
 
+## Agent SDK Integration (`tools/agent/`) — SDK Migration
+
+Core integration layer for Claude Agent SDK with DexAI's ADHD features.
+
+### Core Modules
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Module exports, path constants (PROJECT_ROOT, DATA_DIR, CONFIG_PATH) |
+| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, context loading, cost tracking |
+| `permissions.py` | SDK `can_use_tool` callback mapping DexAI RBAC to tool permissions |
+
+### Channel Handler
+
+| Tool | Description |
+|------|-------------|
+| `tools/channels/sdk_handler.py` | Message handler using DexAIClient, session management, channel-aware truncation |
+
+### MCP Tools (`tools/agent/mcp/`)
+
+Custom MCP tools exposing DexAI's unique ADHD features to the SDK agent.
+
+#### Memory MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_memory_search` | Hybrid semantic + keyword search (BM25 + embeddings) |
+| `dexai_memory_write` | Write memory with importance score and type classification |
+| `dexai_commitments_add` | Track promises/commitments to prevent relationship damage |
+| `dexai_commitments_list` | List active commitments with ADHD-friendly framing |
+| `dexai_context_capture` | Snapshot context on task switch for working memory |
+| `dexai_context_resume` | Generate "you were here..." resumption prompts |
+
+#### Task MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_task_decompose` | Break vague tasks into concrete steps (LLM-powered) |
+| `dexai_friction_check` | Identify hidden blockers (passwords, decisions, phone calls) |
+| `dexai_friction_solve` | Pre-solve blockers before user hits them |
+| `dexai_current_step` | Get ONE next action (not a list!) — core ADHD interface |
+| `dexai_energy_match` | Match tasks to current energy level |
+
+#### ADHD Communication MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_format_response` | Apply brevity rules, strip preamble, one-thing mode |
+| `dexai_check_language` | Detect and reframe RSD-triggering language |
+
+### Configuration
+
+| File | Description |
+|------|-------------|
+| `args/agent.yaml` | Agent configuration (model, tools, system prompt, ADHD settings, security mapping) |
+
+---
+
 *Update this manifest when adding new tools.*

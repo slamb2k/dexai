@@ -221,7 +221,7 @@ export function PushSubscription({
               Push notifications not supported
             </p>
             <p className="text-caption text-text-muted mt-1">
-              Your browser doesn't support push notifications. Try using Chrome, Firefox, or Edge.
+              Your browser doesn&apos;t support push notifications. Try using Chrome, Firefox, or Edge.
             </p>
           </div>
         </div>
@@ -239,7 +239,7 @@ export function PushSubscription({
               Notifications are blocked
             </p>
             <p className="text-caption text-text-muted mt-1">
-              You've blocked notifications for this site. To enable them, update your browser settings.
+              You&apos;ve blocked notifications for this site. To enable them, update your browser settings.
             </p>
             <p className="text-caption text-text-muted mt-2">
               No pressure - notifications are completely optional!
@@ -263,7 +263,7 @@ export function PushSubscription({
                 Notifications enabled
               </p>
               <p className="text-caption text-text-muted mt-1">
-                You'll receive gentle reminders when things need your attention.
+                You&apos;ll receive gentle reminders when things need your attention.
                 Customize your preferences below.
               </p>
             </div>
@@ -297,13 +297,13 @@ export function PushSubscription({
           </p>
           <p className="text-caption text-text-muted mt-1">
             Get gentle reminders when tasks need attention or commitments are coming up.
-            We respect your focus time and won't interrupt flow states.
+            We respect your focus time and won&apos;t interrupt flow states.
           </p>
 
           {/* ADHD-friendly explanation */}
           <div className="mt-3 p-3 bg-bg-elevated rounded-lg">
             <p className="text-caption text-text-muted">
-              <strong>What you'll get:</strong>
+              <strong>What you&apos;ll get:</strong>
             </p>
             <ul className="mt-2 space-y-1 text-caption text-text-muted">
               <li className="flex items-center gap-2">
@@ -316,7 +316,7 @@ export function PushSubscription({
               </li>
               <li className="flex items-center gap-2">
                 <Check size={14} className="text-green-500 shrink-0" />
-                Flow state protection (won't interrupt deep work)
+                Flow state protection (won&apos;t interrupt deep work)
               </li>
             </ul>
             <p className="mt-2 text-caption text-text-muted">
@@ -359,16 +359,17 @@ export function PushSubscription({
 // =============================================================================
 
 /**
- * Convert URL-safe base64 to Uint8Array
+ * Convert URL-safe base64 to Uint8Array for push subscription
  */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding)
     .replace(/-/g, '+')
     .replace(/_/g, '/');
 
   const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+  const buffer = new ArrayBuffer(rawData.length);
+  const outputArray = new Uint8Array(buffer);
 
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
