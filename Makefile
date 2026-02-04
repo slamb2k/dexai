@@ -68,7 +68,10 @@ dev: ## Start development servers (backend + frontend)
 	@echo "$(BLUE)Starting development servers...$(NC)"
 	@trap 'kill 0' EXIT; \
 	python -m uvicorn tools.dashboard.backend.main:app --host 127.0.0.1 --port 8080 --reload & \
-	cd tools/dashboard/frontend && npm run dev & \
+	cd tools/dashboard/frontend && \
+	if command -v bun >/dev/null 2>&1; then bun run dev; \
+	elif command -v pnpm >/dev/null 2>&1; then pnpm run dev; \
+	else npm run dev; fi & \
 	wait
 
 backend: ## Start backend only
@@ -77,7 +80,10 @@ backend: ## Start backend only
 
 frontend: ## Start frontend only
 	@echo "$(BLUE)Starting frontend server...$(NC)"
-	cd tools/dashboard/frontend && npm run dev
+	@cd tools/dashboard/frontend && \
+	if command -v bun >/dev/null 2>&1; then bun run dev; \
+	elif command -v pnpm >/dev/null 2>&1; then pnpm run dev; \
+	else npm run dev; fi
 
 channels: ## Start all channel adapters
 	@echo "$(BLUE)Starting channel adapters...$(NC)"
@@ -85,7 +91,7 @@ channels: ## Start all channel adapters
 
 wizard: ## Run the setup wizard
 	@echo "$(BLUE)Starting setup wizard...$(NC)"
-	python tools/wizard/wizard.py
+	python -m tools.setup.tui.main
 
 # ==============================================================================
 # Testing & Linting
