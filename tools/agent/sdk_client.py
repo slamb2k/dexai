@@ -201,16 +201,22 @@ class DexAIClient:
                 "claude-agent-sdk required. Install with: uv pip install claude-agent-sdk"
             )
 
-        # Import permission callback
+        # Import permission callback and DexAI tools
         from tools.agent.permissions import create_permission_callback
+        from tools.agent.sdk_tools import dexai_server
 
         agent_config = self.config.get("agent", {})
         tools_config = self.config.get("tools", {})
 
+        # Build allowed tools list: built-in + DexAI tools
+        allowed_tools = tools_config.get("allowed_builtin", []).copy()
+        allowed_tools.append("mcp__dexai__*")  # Allow all DexAI tools
+
         # Build options
         options = ClaudeAgentOptions(
             model=agent_config.get("model", "claude-sonnet-4-20250514"),
-            allowed_tools=tools_config.get("allowed_builtin", []),
+            allowed_tools=allowed_tools,
+            mcp_servers={"dexai": dexai_server},  # Register DexAI tools
             cwd=self.working_dir,
             permission_mode=agent_config.get("permission_mode", "default"),
             system_prompt=build_system_prompt(self.user_id, self.config),

@@ -52,10 +52,10 @@ Master list of all available tools. Check here before creating new scripts.
 
 | Tool | Description |
 |------|-------------|
-| `executor.py` | Sandboxed command execution with allowlists, timeouts, and resource limits |
-| `fileops.py` | Secure file read/write/delete sandboxed to approved directories |
-| `browser.py` | Playwright-based web automation with domain controls and isolated profiles |
+| `browser.py` | Playwright-based web automation with domain controls (DEPRECATED: prefer SDK WebFetch for simple cases) |
 | `network.py` | HTTP client with domain allowlist, SSL enforcement, and private IP blocking |
+
+> **SDK Migration Note:** `executor.py` and `fileops.py` were removed. Use SDK tools (Bash, Read, Write, Edit, Glob, Grep, LS) instead.
 
 ---
 
@@ -543,11 +543,47 @@ Custom MCP tools exposing DexAI's unique ADHD features to the SDK agent.
 | `dexai_format_response` | Apply brevity rules, strip preamble, one-thing mode |
 | `dexai_check_language` | Detect and reframe RSD-triggering language |
 
+#### Automation MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_schedule` | Create scheduled jobs (cron, heartbeat, trigger) |
+| `dexai_schedule_list` | List scheduled jobs with optional filters |
+| `dexai_schedule_manage` | Enable, disable, delete, or run jobs manually |
+| `dexai_notify` | Send notification with flow-awareness (suppresses during focus) |
+| `dexai_reminder` | Set reminder with natural language time ("in 30 minutes") |
+| `dexai_suppressed_count` | Get count of notifications suppressed during flow state |
+| `dexai_release_suppressed` | Release suppressed notifications after flow ends |
+
+#### Office MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_email_list` | List emails from inbox with optional filters |
+| `dexai_email_read` | Read a single email's full content |
+| `dexai_email_draft` | Create email draft with sentiment analysis |
+| `dexai_email_send` | Queue email for sending with undo window |
+| `dexai_calendar_today` | Get today's calendar events with summary |
+| `dexai_calendar_week` | Get this week's calendar events |
+| `dexai_calendar_propose` | Propose meeting (requires confirmation to create) |
+| `dexai_calendar_availability` | Find available meeting time slots |
+
 ### Configuration
 
 | File | Description |
 |------|-------------|
 | `args/agent.yaml` | Agent configuration (model, tools, system prompt, ADHD settings, security mapping) |
+
+### Removed Modules (SDK Migration)
+
+The following modules were removed as they are now provided by the Claude Agent SDK:
+
+| Removed File | Replacement |
+|--------------|-------------|
+| `tools/system/fileops.py` | SDK tools: Read, Write, Edit, Glob, Grep, LS |
+| `tools/system/executor.py` | SDK tool: Bash (with sandboxing) |
+
+Note: `tools/system/browser.py` is deprecated but retained for advanced features (screenshots, PDFs) that WebFetch doesn't support.
 
 ---
 
