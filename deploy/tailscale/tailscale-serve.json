@@ -1,0 +1,22 @@
+{
+  "TCP": {
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "${TS_CERT_DOMAIN}:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://frontend:3000"
+        },
+        "/api/": {
+          "Proxy": "http://backend:8080"
+        },
+        "/ws": {
+          "Proxy": "http://backend:8080"
+        }
+      }
+    }
+  }
+}

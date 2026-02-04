@@ -30,6 +30,37 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from tools.channels.models import UnifiedMessage
 
 
+def _log_to_dashboard(
+    event_type: str,
+    summary: str,
+    channel: str = None,
+    user_id: str = None,
+    details: dict = None,
+    severity: str = "info",
+) -> None:
+    """Log event to dashboard database. Fails silently."""
+    try:
+        from tools.dashboard.backend.database import log_event
+
+        log_event(event_type, summary, channel, user_id, details, severity)
+    except Exception:
+        pass
+
+
+def _record_dashboard_metric(
+    metric_name: str,
+    metric_value: float,
+    labels: dict = None,
+) -> None:
+    """Record metric to dashboard database. Fails silently."""
+    try:
+        from tools.dashboard.backend.database import record_metric
+
+        record_metric(metric_name, metric_value, labels)
+    except Exception:
+        pass
+
+
 # Channel-specific message limits
 CHANNEL_MESSAGE_LIMITS = {
     "telegram": 4096,
@@ -180,6 +211,19 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
         # Log error
         _log_error(message, result.get("error", "unknown error"))
 
+        # Log to dashboard
+        _log_to_dashboard(
+            event_type="system",
+            summary=f"SDK query failed: {result.get('error', 'unknown')[:50]}",
+            channel=message.channel,
+            user_id=message.user_id,
+            details={
+                "error": result.get("error"),
+                "message_id": message.id,
+            },
+            severity="error",
+        )
+
         # Send error response
         error_content = result.get(
             "content",
@@ -188,6 +232,37 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
         response_content = error_content
     else:
         response_content = result.get("content", "I completed the task but have no text response.")
+
+        # Log successful LLM response to dashboard
+        _log_to_dashboard(
+            event_type="task",
+            summary=f"AI response generated ({len(response_content)} chars)",
+            channel=message.channel,
+            user_id=message.user_id,
+            details={
+                "message_id": message.id,
+                "response_length": len(response_content),
+                "tool_uses": len(result.get("tool_uses", [])),
+                "cost_usd": result.get("cost_usd", 0),
+            },
+            severity="info",
+        )
+
+        # Record cost metric
+        cost_usd = result.get("cost_usd", 0)
+        if cost_usd > 0:
+            _record_dashboard_metric(
+                metric_name="api_cost_usd",
+                metric_value=cost_usd,
+                labels={"channel": message.channel, "user_id": message.user_id},
+            )
+
+        # Record response time (approximate from tool uses)
+        _record_dashboard_metric(
+            metric_name="llm_response_count",
+            metric_value=1,
+            labels={"channel": message.channel},
+        )
 
     # Create response message
     response = UnifiedMessage(

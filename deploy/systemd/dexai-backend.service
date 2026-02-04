@@ -1,0 +1,63 @@
+# ==============================================================================
+# DexAI Backend Systemd Service - Standalone Mode (No Docker)
+# ==============================================================================
+# This service runs the DexAI backend directly without Docker
+# Use this for development or when Docker is not available
+#
+# Installation:
+#   sudo cp deploy/systemd/dexai-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable dexai-backend
+#   sudo systemctl start dexai-backend
+# ==============================================================================
+
+[Unit]
+Description=DexAI Backend API Service
+Documentation=https://github.com/slamb2k/dexai
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dexai
+Group=dexai
+WorkingDirectory=/opt/dexai
+
+# Python virtual environment
+Environment="PATH=/opt/dexai/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/opt/dexai"
+
+# Load environment file
+EnvironmentFile=-/opt/dexai/.env
+
+# Start the backend
+ExecStart=/opt/dexai/.venv/bin/python -m uvicorn tools.dashboard.backend.main:app \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --workers 2
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=2G
+CPUQuota=200%
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/dexai/data /opt/dexai/memory /opt/dexai/logs
+PrivateTmp=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dexai-backend
+
+[Install]
+WantedBy=multi-user.target

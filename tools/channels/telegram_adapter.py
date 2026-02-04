@@ -127,6 +127,35 @@ class TelegramAdapter(ChannelAdapter):
         except Exception:
             pass
 
+    async def health_check(self) -> dict[str, Any]:
+        """
+        Check Telegram bot connection health.
+
+        Returns:
+            Dict with connected status, latency_ms, and optional error
+        """
+        import time
+
+        if not self._connected or not self.bot:
+            return {"connected": False, "error": "Not connected"}
+
+        try:
+            start = time.time()
+            # Use asyncio.wait_for to prevent hanging
+            me = await asyncio.wait_for(self.bot.get_me(), timeout=2.0)
+            latency = int((time.time() - start) * 1000)
+
+            return {
+                "connected": True,
+                "latency_ms": latency,
+                "bot_username": me.username,
+                "bot_id": me.id,
+            }
+        except asyncio.TimeoutError:
+            return {"connected": False, "error": "Health check timed out"}
+        except Exception as e:
+            return {"connected": False, "error": str(e)[:100]}
+
     async def disconnect(self) -> None:
         """Stop polling and shutdown."""
         if self.application:

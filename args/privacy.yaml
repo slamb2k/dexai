@@ -1,0 +1,28 @@
+# Privacy Settings for DexAI
+# Controls data collection, retention, and conversation memory
+
+privacy:
+  # Whether to remember conversation history across sessions
+  remember_conversations: true
+
+  # Whether to log user activity to dashboard
+  log_activity: true
+
+  # Number of days to retain activity data (0 = forever)
+  data_retention_days: 90
+
+  # Data export settings
+  export:
+    # Allow users to export their data
+    enabled: true
+    # Formats available for export
+    formats:
+      - json
+      - csv
+
+  # Anonymization settings
+  anonymization:
+    # Hash user IDs in aggregate metrics
+    hash_user_ids_in_metrics: true
+    # Strip PII from error logs
+    strip_pii_from_logs: true

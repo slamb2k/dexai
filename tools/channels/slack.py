@@ -143,6 +143,40 @@ class SlackAdapter(ChannelAdapter):
 
         print("Slack adapter connected")
 
+    async def health_check(self) -> dict[str, Any]:
+        """
+        Check Slack connection health.
+
+        Returns:
+            Dict with connected status, latency_ms, and optional error
+        """
+        import time
+
+        if not self._connected:
+            return {"connected": False, "error": "Not connected"}
+
+        try:
+            from slack_sdk.web.async_client import AsyncWebClient
+
+            client = AsyncWebClient(token=self.bot_token)
+
+            start = time.time()
+            # auth.test verifies the token and returns bot info
+            auth = await asyncio.wait_for(client.auth_test(), timeout=2.0)
+            latency = int((time.time() - start) * 1000)
+
+            return {
+                "connected": True,
+                "latency_ms": latency,
+                "bot_username": auth.get("user"),
+                "bot_id": auth.get("bot_id"),
+                "team": auth.get("team"),
+            }
+        except asyncio.TimeoutError:
+            return {"connected": False, "error": "Health check timed out"}
+        except Exception as e:
+            return {"connected": False, "error": str(e)[:100]}
+
     async def disconnect(self) -> None:
         """Disconnect from Slack."""
         if self.handler:

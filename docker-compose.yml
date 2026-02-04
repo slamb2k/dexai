@@ -2,10 +2,11 @@
 # DexAI Docker Compose Configuration
 # =============================================================================
 # Usage:
-#   docker compose up -d              # Start all services
-#   docker compose up -d backend      # Start only backend
-#   docker compose logs -f            # Follow logs
-#   docker compose down               # Stop all services
+#   docker compose up -d                       # Start core services
+#   docker compose --profile proxy up -d       # Start with Caddy reverse proxy
+#   docker compose --profile tailscale up -d   # Start with Tailscale VPN
+#   docker compose logs -f                     # Follow logs
+#   docker compose down                        # Stop all services
 # =============================================================================
 
 services:
@@ -19,7 +20,7 @@ services:
     container_name: dexai-backend
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${DEXAI_BACKEND_PORT:-8080}:8080"
     environment:
       - PYTHONPATH=/app
       - DEXAI_ENV=production
@@ -51,7 +52,7 @@ services:
     container_name: dexai-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${DEXAI_FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://backend:8080
@@ -67,11 +68,79 @@ services:
     networks:
       - dexai-network
 
+  # ---------------------------------------------------------------------------
+  # Caddy: Reverse Proxy with Automatic HTTPS
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: dexai-caddy
+    restart: unless-stopped
+    profiles:
+      - proxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    environment:
+      - DEXAI_DOMAIN=${DEXAI_DOMAIN:-localhost}
+      - DEXAI_ADMIN_EMAIL=${DEXAI_ADMIN_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - dexai-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Tailscale: Secure Zero-Config VPN
+  # ---------------------------------------------------------------------------
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: dexai-tailscale
+    hostname: dexai
+    restart: unless-stopped
+    profiles:
+      - tailscale
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/tailscale-serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./deploy/tailscale:/config:ro
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      - dexai-network
+    depends_on:
+      - backend
+
 # =============================================================================
 # Volumes
 # =============================================================================
 volumes:
   dexai-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+  caddy-logs:
+    driver: local
+  tailscale-state:
     driver: local
 
 # =============================================================================

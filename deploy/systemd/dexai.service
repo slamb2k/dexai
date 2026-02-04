@@ -1,0 +1,56 @@
+# ==============================================================================
+# DexAI Systemd Service - Docker Compose Mode
+# ==============================================================================
+# This service runs DexAI using Docker Compose
+#
+# Installation:
+#   sudo cp deploy/systemd/dexai.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable dexai
+#   sudo systemctl start dexai
+#
+# Management:
+#   sudo systemctl status dexai
+#   sudo journalctl -u dexai -f
+# ==============================================================================
+
+[Unit]
+Description=DexAI AI Assistant (Docker)
+Documentation=https://github.com/slamb2k/dexai
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dexai
+Group=dexai
+WorkingDirectory=/opt/dexai
+
+# Load environment file
+EnvironmentFile=-/opt/dexai/.env
+
+# Start containers
+ExecStart=/usr/bin/docker compose up --remove-orphans
+ExecStop=/usr/bin/docker compose down
+
+# Restart policy
+Restart=unless-stopped
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/dexai/data /opt/dexai/memory /opt/dexai/logs
+PrivateTmp=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dexai
+
+[Install]
+WantedBy=multi-user.target

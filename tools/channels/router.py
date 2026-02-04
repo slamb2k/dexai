@@ -38,6 +38,45 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from tools.channels.models import ChannelUser, UnifiedMessage
 
 
+def _log_to_dashboard(
+    event_type: str,
+    summary: str,
+    channel: str = None,
+    user_id: str = None,
+    details: dict = None,
+    severity: str = "info",
+) -> None:
+    """
+    Log event to dashboard database.
+
+    Fails silently to prevent logging from breaking message flow.
+    """
+    try:
+        from tools.dashboard.backend.database import log_event
+
+        log_event(event_type, summary, channel, user_id, details, severity)
+    except Exception:
+        pass  # Never let logging break message flow
+
+
+def _record_dashboard_metric(
+    metric_name: str,
+    metric_value: float,
+    labels: dict = None,
+) -> None:
+    """
+    Record metric to dashboard database.
+
+    Fails silently to prevent metrics from breaking message flow.
+    """
+    try:
+        from tools.dashboard.backend.database import record_metric
+
+        record_metric(metric_name, metric_value, labels)
+    except Exception:
+        pass
+
+
 class ChannelAdapter(ABC):
     """
     Abstract base class for channel adapters.
@@ -334,7 +373,37 @@ class MessageRouter:
             pass
 
         if not allowed:
+            # Log blocked message to dashboard
+            _log_to_dashboard(
+                event_type="message",
+                summary=f"Blocked inbound message: {reason}",
+                channel=message.channel,
+                user_id=message.user_id,
+                details={"reason": reason, "message_id": message.id},
+                severity="warning",
+            )
             return {"success": False, "reason": reason, "context": context}
+
+        # Log successful inbound message to dashboard
+        _log_to_dashboard(
+            event_type="message",
+            summary=f"Received message from {message.channel}",
+            channel=message.channel,
+            user_id=message.user_id,
+            details={
+                "message_id": message.id,
+                "content_type": message.content_type,
+                "content_preview": message.content[:100] if message.content else None,
+            },
+            severity="info",
+        )
+
+        # Record inbound message metric
+        _record_dashboard_metric(
+            metric_name="messages_inbound",
+            metric_value=1,
+            labels={"channel": message.channel},
+        )
 
         # Store message
         try:
@@ -434,6 +503,27 @@ class MessageRouter:
             except Exception:
                 pass
 
+            # Log to dashboard
+            _log_to_dashboard(
+                event_type="message",
+                summary=f"Sent message to {channel}",
+                channel=channel,
+                user_id=message.user_id,
+                details={
+                    "message_id": message.id,
+                    "content_preview": message.content[:100] if message.content else None,
+                    "success": result.get("success"),
+                },
+                severity="info" if result.get("success") else "warning",
+            )
+
+            # Record outbound message metric
+            _record_dashboard_metric(
+                metric_name="messages_outbound",
+                metric_value=1,
+                labels={"channel": channel, "success": str(result.get("success", False))},
+            )
+
             return result
 
         except Exception as e:
@@ -513,7 +603,7 @@ class MessageRouter:
 
     def get_status(self) -> dict[str, Any]:
         """
-        Get router status and statistics.
+        Get router status and statistics (synchronous).
 
         Returns:
             Dict with adapter status and metrics
@@ -522,6 +612,39 @@ class MessageRouter:
             "started": self._started,
             "start_time": self._start_time.isoformat() if self._start_time else None,
             "adapters": {name: {"connected": True} for name in self.adapters.keys()},
+            "handler_count": len(self.message_handlers),
+        }
+
+    async def get_status_async(self) -> dict[str, Any]:
+        """
+        Get router status with live adapter health checks.
+
+        Returns:
+            Dict with adapter status including health check results
+        """
+        adapter_status = {}
+
+        for name, adapter in self.adapters.items():
+            if hasattr(adapter, "health_check"):
+                try:
+                    # Call health check with timeout
+                    health = await asyncio.wait_for(
+                        adapter.health_check(),
+                        timeout=3.0
+                    )
+                    adapter_status[name] = health
+                except asyncio.TimeoutError:
+                    adapter_status[name] = {"connected": False, "error": "Health check timed out"}
+                except Exception as e:
+                    adapter_status[name] = {"connected": False, "error": str(e)[:100]}
+            else:
+                # Fallback for adapters without health_check
+                adapter_status[name] = {"connected": True, "health_check": "not_implemented"}
+
+        return {
+            "started": self._started,
+            "start_time": self._start_time.isoformat() if self._start_time else None,
+            "adapters": adapter_status,
             "handler_count": len(self.message_handlers),
         }
 
