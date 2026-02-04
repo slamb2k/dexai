@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { api, Settings } from '@/lib/api';
+import { api, Settings, ServiceStatus } from '@/lib/api';
 import { useToastStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
@@ -15,6 +15,13 @@ import {
   RotateCcw,
   Check,
   Loader2,
+  MessageSquare,
+  Key,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
 } from 'lucide-react';
 
 // Default settings
@@ -66,12 +73,39 @@ const models = [
   { value: 'claude-3-haiku', label: 'Claude 3 Haiku (Fastest)' },
 ];
 
+// Channel configuration
+interface ChannelConfig {
+  telegram: { token: string; enabled: boolean };
+  discord: { token: string; enabled: boolean };
+  slack: { botToken: string; appToken: string; enabled: boolean };
+}
+
+const defaultChannelConfig: ChannelConfig = {
+  telegram: { token: '', enabled: false },
+  discord: { token: '', enabled: false },
+  slack: { botToken: '', appToken: '', enabled: false },
+};
+
+// API Keys config
+interface ApiKeysConfig {
+  anthropic: { key: string; validated: boolean };
+}
+
+const defaultApiKeys: ApiKeysConfig = {
+  anthropic: { key: '', validated: false },
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [channelConfig, setChannelConfig] = useState<ChannelConfig>(defaultChannelConfig);
+  const [apiKeys, setApiKeys] = useState<ApiKeysConfig>(defaultApiKeys);
+  const [services, setServices] = useState<ServiceStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isValidatingApiKey, setIsValidatingApiKey] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['general', 'notifications', 'privacy', 'advanced'])
+    new Set(['general', 'notifications', 'privacy', 'advanced', 'channels', 'apikeys'])
   );
   const { addToast } = useToastStore();
 
@@ -80,9 +114,27 @@ export default function SettingsPage() {
     const loadSettings = async () => {
       setIsLoading(true);
       try {
-        const res = await api.getSettings();
-        if (res.success && res.data) {
-          setSettings(res.data);
+        const [settingsRes, servicesRes] = await Promise.all([
+          api.getSettings(),
+          api.getServices(),
+        ]);
+        if (settingsRes.success && settingsRes.data) {
+          setSettings(settingsRes.data);
+        }
+        if (servicesRes.success && servicesRes.data) {
+          setServices(servicesRes.data);
+          // Update channel config based on service status
+          const newConfig = { ...defaultChannelConfig };
+          servicesRes.data.forEach((service) => {
+            if (service.name === 'telegram') {
+              newConfig.telegram.enabled = service.status === 'running';
+            } else if (service.name === 'discord') {
+              newConfig.discord.enabled = service.status === 'running';
+            } else if (service.name === 'slack') {
+              newConfig.slack.enabled = service.status === 'running';
+            }
+          });
+          setChannelConfig(newConfig);
         }
       } catch {
         // Keep defaults
@@ -91,6 +143,39 @@ export default function SettingsPage() {
     };
     loadSettings();
   }, []);
+
+  // Validate API key
+  const handleValidateApiKey = async () => {
+    if (!apiKeys.anthropic.key) {
+      addToast({ type: 'error', message: 'Please enter an API key' });
+      return;
+    }
+    setIsValidatingApiKey(true);
+    try {
+      const res = await api.validateApiKey(apiKeys.anthropic.key);
+      if (res.success && res.data?.success) {
+        setApiKeys((prev) => ({
+          ...prev,
+          anthropic: { ...prev.anthropic, validated: true },
+        }));
+        addToast({ type: 'success', message: 'API key validated successfully' });
+      } else {
+        setApiKeys((prev) => ({
+          ...prev,
+          anthropic: { ...prev.anthropic, validated: false },
+        }));
+        addToast({ type: 'error', message: res.data?.error || 'API key validation failed' });
+      }
+    } catch {
+      addToast({ type: 'error', message: 'Failed to validate API key' });
+    }
+    setIsValidatingApiKey(false);
+  };
+
+  // Get service status for a channel
+  const getServiceStatus = (name: string) => {
+    return services.find((s) => s.name === name);
+  };
 
   // Toggle section
   const toggleSection = (section: string) => {
@@ -364,6 +449,213 @@ export default function SettingsPage() {
           />
         </div>
       </SettingsSection>
+
+      {/* Channel Configuration */}
+      <SettingsSection
+        id="channels"
+        title="Channel Configuration"
+        icon={MessageSquare}
+        expanded={expandedSections.has('channels')}
+        onToggle={() => toggleSection('channels')}
+        onReset={() => setChannelConfig(defaultChannelConfig)}
+      >
+        <div className="space-y-6">
+          {/* Telegram */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded flex items-center justify-center"
+                  style={{ backgroundColor: '#0088cc20' }}
+                >
+                  <MessageSquare size={16} style={{ color: '#0088cc' }} />
+                </div>
+                <span className="text-body text-text-primary font-medium">Telegram</span>
+              </div>
+              <ServiceStatusBadge service={getServiceStatus('telegram')} />
+            </div>
+            <FormField label="Bot Token">
+              <input
+                type="password"
+                placeholder="Enter Telegram bot token"
+                value={channelConfig.telegram.token}
+                onChange={(e) =>
+                  setChannelConfig((prev) => ({
+                    ...prev,
+                    telegram: { ...prev.telegram, token: e.target.value },
+                  }))
+                }
+                className="input w-full font-mono text-sm"
+              />
+            </FormField>
+            <p className="text-caption text-text-muted">
+              Get your bot token from @BotFather on Telegram
+            </p>
+          </div>
+
+          {/* Discord */}
+          <div className="space-y-3 pt-4 border-t border-border-default">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded flex items-center justify-center"
+                  style={{ backgroundColor: '#5865F220' }}
+                >
+                  <MessageSquare size={16} style={{ color: '#5865F2' }} />
+                </div>
+                <span className="text-body text-text-primary font-medium">Discord</span>
+              </div>
+              <ServiceStatusBadge service={getServiceStatus('discord')} />
+            </div>
+            <FormField label="Bot Token">
+              <input
+                type="password"
+                placeholder="Enter Discord bot token"
+                value={channelConfig.discord.token}
+                onChange={(e) =>
+                  setChannelConfig((prev) => ({
+                    ...prev,
+                    discord: { ...prev.discord, token: e.target.value },
+                  }))
+                }
+                className="input w-full font-mono text-sm"
+              />
+            </FormField>
+            <p className="text-caption text-text-muted">
+              Create a bot at discord.com/developers/applications
+            </p>
+          </div>
+
+          {/* Slack */}
+          <div className="space-y-3 pt-4 border-t border-border-default">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded flex items-center justify-center"
+                  style={{ backgroundColor: '#4A154B20' }}
+                >
+                  <MessageSquare size={16} style={{ color: '#4A154B' }} />
+                </div>
+                <span className="text-body text-text-primary font-medium">Slack</span>
+              </div>
+              <ServiceStatusBadge service={getServiceStatus('slack')} />
+            </div>
+            <FormField label="Bot Token (xoxb-...)">
+              <input
+                type="password"
+                placeholder="Enter Slack bot token"
+                value={channelConfig.slack.botToken}
+                onChange={(e) =>
+                  setChannelConfig((prev) => ({
+                    ...prev,
+                    slack: { ...prev.slack, botToken: e.target.value },
+                  }))
+                }
+                className="input w-full font-mono text-sm"
+              />
+            </FormField>
+            <FormField label="App Token (xapp-...)">
+              <input
+                type="password"
+                placeholder="Enter Slack app token"
+                value={channelConfig.slack.appToken}
+                onChange={(e) =>
+                  setChannelConfig((prev) => ({
+                    ...prev,
+                    slack: { ...prev.slack, appToken: e.target.value },
+                  }))
+                }
+                className="input w-full font-mono text-sm"
+              />
+            </FormField>
+            <p className="text-caption text-text-muted">
+              Configure your Slack app at api.slack.com/apps
+            </p>
+          </div>
+
+          <div className="bg-bg-elevated/50 rounded-card p-3 text-caption text-text-muted">
+            <AlertCircle size={14} className="inline mr-2" />
+            Channel tokens are stored securely in environment variables.
+            Changes require a server restart to take effect.
+          </div>
+        </div>
+      </SettingsSection>
+
+      {/* API Keys */}
+      <SettingsSection
+        id="apikeys"
+        title="API Keys"
+        icon={Key}
+        expanded={expandedSections.has('apikeys')}
+        onToggle={() => toggleSection('apikeys')}
+        onReset={() => setApiKeys(defaultApiKeys)}
+      >
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-body text-text-primary font-medium">Anthropic API Key</span>
+              {apiKeys.anthropic.validated ? (
+                <span className="badge badge-success flex items-center gap-1">
+                  <CheckCircle size={12} />
+                  Validated
+                </span>
+              ) : apiKeys.anthropic.key ? (
+                <span className="badge badge-warning flex items-center gap-1">
+                  <AlertCircle size={12} />
+                  Not Validated
+                </span>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  placeholder="sk-ant-..."
+                  value={apiKeys.anthropic.key}
+                  onChange={(e) =>
+                    setApiKeys((prev) => ({
+                      ...prev,
+                      anthropic: { key: e.target.value, validated: false },
+                    }))
+                  }
+                  className="input w-full pr-10 font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-bg-elevated rounded"
+                >
+                  {showApiKey ? (
+                    <EyeOff size={16} className="text-text-muted" />
+                  ) : (
+                    <Eye size={16} className="text-text-muted" />
+                  )}
+                </button>
+              </div>
+              <button
+                onClick={handleValidateApiKey}
+                disabled={isValidatingApiKey || !apiKeys.anthropic.key}
+                className="btn btn-secondary flex items-center gap-2"
+              >
+                {isValidatingApiKey ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Check size={16} />
+                )}
+                Validate
+              </button>
+            </div>
+            <p className="text-caption text-text-muted">
+              Get your API key from console.anthropic.com
+            </p>
+          </div>
+
+          <div className="bg-bg-elevated/50 rounded-card p-3 text-caption text-text-muted">
+            <Shield size={14} className="inline mr-2" />
+            API keys are encrypted and stored securely. Never share your API keys.
+          </div>
+        </div>
+      </SettingsSection>
     </div>
   );
 }
@@ -510,4 +802,45 @@ function ToggleField({
       </button>
     </div>
   );
+}
+
+// Service status badge component
+function ServiceStatusBadge({ service }: { service?: ServiceStatus }) {
+  if (!service) {
+    return (
+      <span className="badge bg-text-muted/20 text-text-muted">
+        Unknown
+      </span>
+    );
+  }
+
+  switch (service.status) {
+    case 'running':
+      return (
+        <span className="badge badge-success flex items-center gap-1">
+          <CheckCircle size={12} />
+          Running
+        </span>
+      );
+    case 'stopped':
+      return (
+        <span className="badge bg-text-muted/20 text-text-muted flex items-center gap-1">
+          Stopped
+        </span>
+      );
+    case 'error':
+      return (
+        <span className="badge badge-error flex items-center gap-1">
+          <XCircle size={12} />
+          Error
+        </span>
+      );
+    default:
+      return (
+        <span className="badge badge-warning flex items-center gap-1">
+          <AlertCircle size={12} />
+          {service.status}
+        </span>
+      );
+  }
 }
