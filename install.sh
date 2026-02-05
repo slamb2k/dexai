@@ -37,9 +37,12 @@ DRY_RUN=false
 INTERACTIVE=false
 
 # Check if we can interact with terminal (fails in non-TTY contexts like Claude Code)
-# Test by attempting to open /dev/tty in a subshell
-if (exec </dev/tty) 2>/dev/null; then
-    INTERACTIVE=true
+# Test by checking if /dev/tty is a readable character device
+if [ -c /dev/tty ] && [ -r /dev/tty ]; then
+    # Double-check by trying to write to it (empty string)
+    if (printf '' >/dev/tty) 2>/dev/null; then
+        INTERACTIVE=true
+    fi
 fi
 
 # Detected tools (set during checks)
