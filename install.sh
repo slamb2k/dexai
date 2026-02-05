@@ -34,6 +34,13 @@ MANUAL_DOCS_URL="https://github.com/slamb2k/dexai/blob/main/docs/installation.md
 
 # Flags
 DRY_RUN=false
+INTERACTIVE=true
+
+# Check if we can interact with terminal (fails in non-TTY contexts like Claude Code)
+# Test by attempting a zero-timeout read from /dev/tty
+if ! read -t 0 </dev/tty 2>/dev/null; then
+    INTERACTIVE=false
+fi
 
 # Detected tools (set during checks)
 PKG_MANAGER=""
@@ -119,10 +126,16 @@ prompt_install() {
     echo ""
 
     if [ -n "$install_cmd" ]; then
-        read -p "Would you like to install $name now? [Y/n] " -n 1 -r REPLY </dev/tty
-        echo ""
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            return 0  # Yes, install
+        if [ "$INTERACTIVE" = true ]; then
+            read -p "Would you like to install $name now? [Y/n] " -n 1 -r REPLY </dev/tty
+            echo ""
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                return 0  # Yes, install
+            fi
+        else
+            # Non-interactive: default to yes for dependency installation
+            log_info "Non-interactive mode: auto-installing $name"
+            return 0
         fi
     fi
     return 1  # No, skip
@@ -324,8 +337,14 @@ offer_docker_install() {
     echo ""
 
     if [ "$OS_TYPE" = "linux" ]; then
-        read -p "Would you like to install Docker now? [Y/n] " -n 1 -r REPLY </dev/tty
-        echo ""
+        if [ "$INTERACTIVE" = true ]; then
+            read -p "Would you like to install Docker now? [Y/n] " -n 1 -r REPLY </dev/tty
+            echo ""
+        else
+            # Non-interactive: skip Docker auto-install (requires sudo)
+            log_info "Non-interactive mode: skipping Docker auto-install"
+            REPLY="n"
+        fi
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             log_info "Installing Docker..."
             if curl -fsSL https://get.docker.com | sh; then
@@ -759,31 +778,32 @@ launch_wizard() {
 }
 
 # Main deployment flow
-show_deployment_menu
+if [ "$INTERACTIVE" = true ]; then
+    show_deployment_menu
 
-while true; do
-    read -p "Enter your choice [1-3]: " choice </dev/tty
-    case $choice in
-        1)
-            if install_local; then
-                DOCKER_DEPLOYMENT=false
-                launch_wizard
-            fi
-            break
-            ;;
-        2)
-            if install_docker; then
-                DOCKER_DEPLOYMENT=true
-                launch_wizard
-            else
-                echo ""
-                log_warn "Docker setup failed. Choose another option or fix the issues above."
-                echo ""
-                show_deployment_menu
-            fi
-            break
-            ;;
-        3)
+    while true; do
+        read -p "Enter your choice [1-3]: " choice </dev/tty
+        case $choice in
+            1)
+                if install_local; then
+                    DOCKER_DEPLOYMENT=false
+                    launch_wizard
+                fi
+                break
+                ;;
+            2)
+                if install_docker; then
+                    DOCKER_DEPLOYMENT=true
+                    launch_wizard
+                else
+                    echo ""
+                    log_warn "Docker setup failed. Choose another option or fix the issues above."
+                    echo ""
+                    show_deployment_menu
+                fi
+                break
+                ;;
+            3)
             echo ""
             log_info "Exiting. You can complete setup manually."
             echo ""
@@ -810,6 +830,15 @@ while true; do
             echo -e "${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
             ;;
     esac
-done
+    done
+else
+    # Non-interactive mode: default to local development
+    log_info "Non-interactive mode: defaulting to local development setup"
+    if install_local; then
+        DOCKER_DEPLOYMENT=false
+        # Skip wizard in non-interactive mode
+        log_info "Run 'python -m tools.setup.tui.main' to complete setup"
+    fi
+fi
 
 log_success "Installation complete!"
