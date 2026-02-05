@@ -9,6 +9,7 @@ Handles SQLite database operations for dashboard-specific tables:
 """
 
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,9 @@ from pathlib import Path
 # Database path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "dashboard.db"
+
+# Seeding control via environment variable
+SEED_DATA_ON_INIT = os.getenv("DEXAI_SEED_DATA", "false").lower() in ("true", "1", "yes")
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -108,7 +112,31 @@ def init_db():
     )
 
     conn.commit()
+
+    # Check if seeding is needed (tables empty or env var set)
+    cursor.execute("SELECT COUNT(*) as count FROM dashboard_events")
+    events_count = cursor.fetchone()["count"]
+    cursor.execute("SELECT COUNT(*) as count FROM dashboard_metrics")
+    metrics_count = cursor.fetchone()["count"]
+
     conn.close()
+
+    # Auto-seed if tables are empty or DEXAI_SEED_DATA is set
+    if SEED_DATA_ON_INIT or (events_count == 0 and metrics_count == 0):
+        try:
+            from . import seed
+
+            print("[Database] Running initial seed...")
+            results = seed.seed_database(force=False)
+            if results["success"]:
+                print(f"[Database] {results['message']}")
+            else:
+                print(f"[Database] Seed warning: {results['message']}")
+        except ImportError:
+            # Seed module not available, skip
+            pass
+        except Exception as e:
+            print(f"[Database] Seed error (non-fatal): {e}")
 
 
 # =============================================================================

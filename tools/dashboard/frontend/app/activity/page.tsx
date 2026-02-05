@@ -15,10 +15,14 @@ import {
   WifiOff,
   ChevronDown,
   X,
+  AlertCircle,
+  Inbox,
 } from 'lucide-react';
 
-// Mock data for demo
-const mockActivity: ActivityItem[] = [
+const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+// Demo mode fallback data
+const demoActivity: ActivityItem[] = [
   {
     id: '1',
     type: 'message',
@@ -98,6 +102,8 @@ export default function ActivityPage() {
   const { items, setItems, addItem, isConnected, setConnected, clearItems } =
     useActivityStore();
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isEmpty, setIsEmpty] = useState(false);
   const [typeFilter, setTypeFilter] = useState<ActivityType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<ActivityItem | null>(null);
@@ -106,6 +112,8 @@ export default function ActivityPage() {
   useEffect(() => {
     const loadActivity = async () => {
       setIsLoading(true);
+      setError(null);
+      setIsEmpty(false);
 
       try {
         const res = await api.getActivity({
@@ -115,16 +123,22 @@ export default function ActivityPage() {
         });
 
         if (res.success && res.data) {
-          setItems(
-            res.data.events.map((e) => ({
-              ...e,
-              timestamp: new Date(e.timestamp),
-            }))
-          );
+          const events = res.data.events.map((e) => ({
+            ...e,
+            timestamp: new Date(e.timestamp),
+          }));
+          setItems(events);
+          setIsEmpty(events.length === 0);
+        } else if (res.error) {
+          throw new Error(res.error);
         }
-      } catch {
-        // Use mock data
-        setItems(mockActivity);
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : 'Failed to load activity';
+        setError(errorMsg);
+        // Only use demo data if explicitly in demo mode
+        if (isDemo) {
+          setItems(demoActivity);
+        }
       }
 
       setIsLoading(false);
@@ -175,7 +189,7 @@ export default function ActivityPage() {
     return true;
   });
 
-  const displayItems = filteredItems.length > 0 ? filteredItems : mockActivity;
+  const displayItems = filteredItems.length > 0 ? filteredItems : (isDemo ? demoActivity : []);
 
   // Export to JSON
   const handleExport = useCallback(() => {
@@ -191,6 +205,14 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Error banner */}
+      {error && !isDemo && (
+        <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-status-error flex-shrink-0" />
+          <p className="text-body text-status-error">{error}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -282,6 +304,12 @@ export default function ActivityPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <RefreshCw size={24} className="animate-spin text-text-muted" />
+          </div>
+        ) : displayItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-text-muted">
+            <Inbox size={48} className="mb-4 opacity-50" />
+            <p className="text-body">No activity yet</p>
+            <p className="text-caption">Activity will appear here as you use DexAI</p>
           </div>
         ) : (
           <ActivityFeed
