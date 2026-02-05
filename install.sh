@@ -119,7 +119,7 @@ prompt_install() {
     echo ""
 
     if [ -n "$install_cmd" ]; then
-        read -p "Would you like to install $name now? [Y/n] " -n 1 -r
+        read -p "Would you like to install $name now? [Y/n] " -n 1 -r REPLY </dev/tty
         echo ""
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             return 0  # Yes, install
@@ -324,7 +324,7 @@ offer_docker_install() {
     echo ""
 
     if [ "$OS_TYPE" = "linux" ]; then
-        read -p "Would you like to install Docker now? [Y/n] " -n 1 -r
+        read -p "Would you like to install Docker now? [Y/n] " -n 1 -r REPLY </dev/tty
         echo ""
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             log_info "Installing Docker..."
@@ -561,10 +561,11 @@ try:
 except Exception as e:
     print(f'  Warning: Could not initialize memory database: {e}')
 
-# Initialize security databases
+# Initialize security databases (vault)
 try:
-    from tools.security.vault import init_vault
-    init_vault()
+    from tools.security.vault import get_connection as get_vault_connection
+    conn = get_vault_connection()
+    conn.close()
     print('  Vault initialized')
 except Exception as e:
     print(f'  Warning: Could not initialize vault: {e}')
@@ -761,7 +762,7 @@ launch_wizard() {
 show_deployment_menu
 
 while true; do
-    read -p "Enter your choice [1-3]: " choice
+    read -p "Enter your choice [1-3]: " choice </dev/tty
     case $choice in
         1)
             if install_local; then
