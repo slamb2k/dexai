@@ -10,8 +10,10 @@
 #   bash install.sh
 #
 # Options:
-#   --dry-run     Show what would be done without making changes
-#   --help        Show this help message
+#   --dry-run                    Show what would be done without making changes
+#   --tailscale-key KEY          Tailscale auth key for automatic VPN setup
+#   --tailscale-hostname NAME    Tailscale machine name (default: dexai)
+#   --help                       Show this help message
 #
 # ==============================================================================
 
@@ -36,6 +38,10 @@ MANUAL_DOCS_URL="https://github.com/slamb2k/dexai/blob/main/docs/installation.md
 DRY_RUN=false
 INTERACTIVE=false
 
+# CLI-provided values (for non-interactive installs)
+CLI_TAILSCALE_KEY=""
+CLI_TAILSCALE_HOSTNAME=""
+
 # Check if we can interact with terminal (fails in non-TTY contexts like Claude Code)
 # Test by checking if /dev/tty is a readable character device
 if [ -c /dev/tty ] && [ -r /dev/tty ]; then
@@ -58,14 +64,36 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
+        --tailscale-key)
+            CLI_TAILSCALE_KEY="$2"
+            shift 2
+            ;;
+        --tailscale-key=*)
+            CLI_TAILSCALE_KEY="${1#*=}"
+            shift
+            ;;
+        --tailscale-hostname)
+            CLI_TAILSCALE_HOSTNAME="$2"
+            shift 2
+            ;;
+        --tailscale-hostname=*)
+            CLI_TAILSCALE_HOSTNAME="${1#*=}"
+            shift
+            ;;
         --help)
             echo "DexAI Installation Script"
             echo ""
             echo "Usage: bash install.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --dry-run     Show what would be done without making changes"
-            echo "  --help        Show this help message"
+            echo "  --dry-run                    Show what would be done without making changes"
+            echo "  --tailscale-key KEY          Tailscale auth key for automatic VPN setup"
+            echo "  --tailscale-hostname NAME    Tailscale machine name (default: dexai)"
+            echo "  --help                       Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  bash install.sh --tailscale-key tskey-auth-xxx"
+            echo "  bash install.sh --tailscale-key tskey-auth-xxx --tailscale-hostname my-dexai"
             exit 0
             ;;
         *)
@@ -704,6 +732,33 @@ install_docker() {
     # Ask about remote access setup
     DOCKER_PROFILES=""
     SETUP_URL="http://localhost:3000/setup"
+    TAILSCALE_CONFIGURED=false
+    TS_HOSTNAME="${CLI_TAILSCALE_HOSTNAME:-dexai}"
+
+    # Check if Tailscale was configured via CLI
+    if [ -n "$CLI_TAILSCALE_KEY" ]; then
+        log_info "Tailscale auth key provided via CLI"
+        DOCKER_PROFILES="--profile tailscale"
+
+        # Save to .env
+        if ! grep -q "^TAILSCALE_AUTHKEY=" "$ENV_FILE" 2>/dev/null; then
+            echo "TAILSCALE_AUTHKEY=$CLI_TAILSCALE_KEY" >> "$ENV_FILE"
+        else
+            sed -i.bak "s/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=$CLI_TAILSCALE_KEY/" "$ENV_FILE"
+            rm -f "$ENV_FILE.bak"
+        fi
+
+        # Save hostname to .env
+        if ! grep -q "^TAILSCALE_HOSTNAME=" "$ENV_FILE" 2>/dev/null; then
+            echo "TAILSCALE_HOSTNAME=$TS_HOSTNAME" >> "$ENV_FILE"
+        else
+            sed -i.bak "s/^TAILSCALE_HOSTNAME=.*/TAILSCALE_HOSTNAME=$TS_HOSTNAME/" "$ENV_FILE"
+            rm -f "$ENV_FILE.bak"
+        fi
+
+        log_success "Tailscale configured: hostname=$TS_HOSTNAME"
+        TAILSCALE_CONFIGURED=true
+    fi
 
     if [ "$INTERACTIVE" = true ]; then
         echo ""
@@ -717,7 +772,11 @@ install_docker() {
         read -p "Enable Caddy reverse proxy? (recommended for remote access) [y/N] " -n 1 -r REPLY </dev/tty
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            DOCKER_PROFILES="--profile proxy"
+            if [ -n "$DOCKER_PROFILES" ]; then
+                DOCKER_PROFILES="$DOCKER_PROFILES --profile proxy"
+            else
+                DOCKER_PROFILES="--profile proxy"
+            fi
 
             # Get domain/hostname
             echo ""
@@ -736,45 +795,58 @@ install_docker() {
             fi
         fi
 
-        # Ask about Tailscale
-        echo ""
-        read -p "Enable Tailscale for secure private access? [y/N] " -n 1 -r REPLY </dev/tty
-        echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            if [ -n "$DOCKER_PROFILES" ]; then
-                DOCKER_PROFILES="$DOCKER_PROFILES --profile tailscale"
-            else
-                DOCKER_PROFILES="--profile tailscale"
-            fi
-
+        # Ask about Tailscale (skip if already configured via CLI)
+        if [ "$TAILSCALE_CONFIGURED" = false ]; then
             echo ""
-            echo -e "${YELLOW}Tailscale Setup${NC}"
+            read -p "Enable Tailscale for secure private access? [y/N] " -n 1 -r REPLY </dev/tty
             echo ""
-            echo "You'll need a Tailscale auth key from: https://login.tailscale.com/admin/settings/keys"
-            echo ""
-            read -p "Enter Tailscale auth key (or press Enter to skip): " TS_KEY </dev/tty
-            if [ -n "$TS_KEY" ]; then
-                # Add to .env
-                if ! grep -q "^TAILSCALE_AUTHKEY=" "$ENV_FILE" 2>/dev/null; then
-                    echo "TAILSCALE_AUTHKEY=$TS_KEY" >> "$ENV_FILE"
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                if [ -n "$DOCKER_PROFILES" ]; then
+                    DOCKER_PROFILES="$DOCKER_PROFILES --profile tailscale"
                 else
-                    sed -i.bak "s/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=$TS_KEY/" "$ENV_FILE"
-                    rm -f "$ENV_FILE.bak"
+                    DOCKER_PROFILES="--profile tailscale"
                 fi
-                log_success "Tailscale auth key configured"
 
-                # Get Tailscale hostname for setup URL
-                read -p "Enter your Tailscale machine name (e.g., my-server): " TS_HOSTNAME </dev/tty
-                if [ -n "$TS_HOSTNAME" ]; then
-                    # If using Tailscale without Caddy, update setup URL
-                    if [ "$DOCKER_PROFILES" = "--profile tailscale" ]; then
-                        SETUP_URL="https://$TS_HOSTNAME.<your-tailnet>.ts.net/setup"
+                echo ""
+                echo -e "${YELLOW}Tailscale Setup${NC}"
+                echo ""
+                echo "You'll need a Tailscale auth key from: https://login.tailscale.com/admin/settings/keys"
+                echo ""
+                read -p "Enter Tailscale auth key (or press Enter to skip): " TS_KEY </dev/tty
+                if [ -n "$TS_KEY" ]; then
+                    # Add to .env
+                    if ! grep -q "^TAILSCALE_AUTHKEY=" "$ENV_FILE" 2>/dev/null; then
+                        echo "TAILSCALE_AUTHKEY=$TS_KEY" >> "$ENV_FILE"
+                    else
+                        sed -i.bak "s/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=$TS_KEY/" "$ENV_FILE"
+                        rm -f "$ENV_FILE.bak"
                     fi
+                    log_success "Tailscale auth key configured"
+
+                    # Get Tailscale hostname
+                    echo ""
+                    read -p "Enter Tailscale machine name (default: dexai): " TS_INPUT_HOSTNAME </dev/tty
+                    if [ -n "$TS_INPUT_HOSTNAME" ]; then
+                        TS_HOSTNAME="$TS_INPUT_HOSTNAME"
+                    fi
+
+                    # Save hostname to .env
+                    if ! grep -q "^TAILSCALE_HOSTNAME=" "$ENV_FILE" 2>/dev/null; then
+                        echo "TAILSCALE_HOSTNAME=$TS_HOSTNAME" >> "$ENV_FILE"
+                    else
+                        sed -i.bak "s/^TAILSCALE_HOSTNAME=.*/TAILSCALE_HOSTNAME=$TS_HOSTNAME/" "$ENV_FILE"
+                        rm -f "$ENV_FILE.bak"
+                    fi
+
+                    log_success "Tailscale hostname set to: $TS_HOSTNAME"
+                    TAILSCALE_CONFIGURED=true
+                else
+                    log_warn "Tailscale will start but needs manual authentication"
+                    echo "Run: docker exec -it dexai-tailscale tailscale up"
                 fi
-            else
-                log_warn "Tailscale will start but needs manual authentication"
-                echo "Run: docker exec -it dexai-tailscale tailscale up"
             fi
+        else
+            log_info "Tailscale already configured via CLI (hostname: $TS_HOSTNAME)"
         fi
     fi
 
@@ -803,12 +875,42 @@ install_docker() {
         echo "  - Frontend: http://localhost:3000"
     fi
     if [[ "$DOCKER_PROFILES" == *"tailscale"* ]]; then
-        echo "  - Tailscale: Check 'docker logs dexai-tailscale' for status"
+        echo "  - Tailscale: hostname=$TS_HOSTNAME"
+
+        # Wait for Tailscale to connect and get the actual URL
+        log_info "Waiting for Tailscale to connect..."
+        sleep 3
+
+        # Try to get the Tailscale FQDN
+        TAILSCALE_FQDN=""
+        for i in {1..10}; do
+            TAILSCALE_FQDN=$(docker exec dexai-tailscale tailscale status --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\.$//' || true)
+            if [ -n "$TAILSCALE_FQDN" ]; then
+                break
+            fi
+            sleep 2
+        done
+
+        if [ -n "$TAILSCALE_FQDN" ]; then
+            log_success "Tailscale connected!"
+            echo ""
+            echo -e "  ${GREEN}Tailscale URL:${NC} ${CYAN}https://$TAILSCALE_FQDN${NC}"
+            SETUP_URL="https://$TAILSCALE_FQDN/setup"
+        else
+            echo ""
+            echo -e "${YELLOW}Note:${NC} Tailscale is starting up."
+            echo "  Expected URL: https://$TS_HOSTNAME.<your-tailnet>.ts.net"
+            echo ""
+            echo "  To check status: docker exec dexai-tailscale tailscale status"
+            if [ -z "$CLI_TAILSCALE_KEY" ] && [ "$TAILSCALE_CONFIGURED" = false ]; then
+                echo "  To authenticate: docker exec -it dexai-tailscale tailscale up"
+            fi
+        fi
+
         if [[ "$DOCKER_PROFILES" != *"proxy"* ]]; then
             echo ""
-            echo -e "${YELLOW}Note:${NC} Tailscale Serve is configured as reverse proxy."
-            echo "  Access via: https://<machine-name>.<tailnet>.ts.net"
-            echo "  (Routes /api/* to backend, /* to frontend automatically)"
+            echo -e "${CYAN}Tailscale Serve is configured as reverse proxy:${NC}"
+            echo "  Routes /api/* to backend, /* to frontend automatically"
         fi
     fi
     echo ""
@@ -816,16 +918,45 @@ install_docker() {
     echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD $DOCKER_PROFILES logs -f${NC}  # View logs"
     echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD $DOCKER_PROFILES down${NC}      # Stop services"
     echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD $DOCKER_PROFILES ps${NC}        # Check status"
+    if [[ "$DOCKER_PROFILES" == *"tailscale"* ]]; then
+        echo -e "  ${BLUE}docker exec dexai-tailscale tailscale status${NC}             # Tailscale status"
+    fi
     echo ""
-
-    # Wait for services to be healthy
-    log_info "Waiting for services to start..."
-    sleep 5
 
     # Export setup URL for wizard launcher
     export SETUP_URL
 
     return 0
+}
+
+# Function to open URL in browser (cross-platform)
+open_browser() {
+    local url="$1"
+
+    # Try various methods to open browser
+    if check_command xdg-open; then
+        # Linux with X11/Wayland
+        xdg-open "$url" 2>/dev/null &
+        return 0
+    elif check_command open; then
+        # macOS
+        open "$url" 2>/dev/null &
+        return 0
+    elif check_command wslview; then
+        # WSL (Windows Subsystem for Linux)
+        wslview "$url" 2>/dev/null &
+        return 0
+    elif [ -n "${BROWSER:-}" ]; then
+        # Use $BROWSER env var if set
+        "$BROWSER" "$url" 2>/dev/null &
+        return 0
+    elif check_command sensible-browser; then
+        # Debian/Ubuntu fallback
+        sensible-browser "$url" 2>/dev/null &
+        return 0
+    fi
+
+    return 1
 }
 
 # Function to launch the setup wizard
@@ -844,15 +975,18 @@ launch_wizard() {
         echo -e "  ${CYAN}$wizard_url${NC}"
         echo ""
 
-        # Try to open browser (only works for localhost typically)
-        if [[ "$wizard_url" == *"localhost"* ]]; then
-            if check_command xdg-open; then
-                xdg-open "$wizard_url" 2>/dev/null || true
-            elif check_command open; then
-                open "$wizard_url" 2>/dev/null || true
-            fi
+        # Give services a moment to be fully ready
+        sleep 2
+
+        # Try to open browser
+        if open_browser "$wizard_url"; then
+            log_success "Browser opened"
+        else
+            log_warn "Could not open browser automatically"
+            echo "Please open this URL manually: $wizard_url"
         fi
 
+        echo ""
         echo "Complete the setup wizard to configure your channels and API keys."
     else
         # Run TUI wizard for local install
@@ -908,7 +1042,7 @@ if [ "$INTERACTIVE" = true ]; then
             echo -e "    ${BLUE}DEXAI_DOMAIN=your-hostname docker compose --profile proxy up -d${NC}"
             echo ""
             echo "  Docker with Tailscale:"
-            echo -e "    ${BLUE}TAILSCALE_AUTHKEY=tskey-... docker compose --profile tailscale up -d${NC}"
+            echo -e "    ${BLUE}TAILSCALE_AUTHKEY=tskey-... TAILSCALE_HOSTNAME=my-dexai docker compose --profile tailscale up -d${NC}"
             echo ""
             echo "  Docker with both Caddy + Tailscale:"
             echo -e "    ${BLUE}docker compose --profile proxy --profile tailscale up -d${NC}"
@@ -924,12 +1058,23 @@ if [ "$INTERACTIVE" = true ]; then
     esac
     done
 else
-    # Non-interactive mode: default to local development
-    log_info "Non-interactive mode: defaulting to local development setup"
-    if install_local; then
-        DOCKER_DEPLOYMENT=false
-        # Skip wizard in non-interactive mode
-        log_info "Run 'python -m tools.setup.tui.main' to complete setup"
+    # Non-interactive mode
+    if [ -n "$CLI_TAILSCALE_KEY" ]; then
+        # Tailscale key provided: use Docker deployment
+        log_info "Non-interactive mode with Tailscale: using Docker deployment"
+        if install_docker; then
+            DOCKER_DEPLOYMENT=true
+            echo ""
+            log_info "Setup wizard available at: $SETUP_URL"
+        fi
+    else
+        # No Tailscale key: default to local development
+        log_info "Non-interactive mode: defaulting to local development setup"
+        if install_local; then
+            DOCKER_DEPLOYMENT=false
+            # Skip wizard in non-interactive mode
+            log_info "Run 'python -m tools.setup.tui.main' to complete setup"
+        fi
     fi
 fi
 
