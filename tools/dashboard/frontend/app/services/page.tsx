@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 // Service icons mapping
-const serviceIcons: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+const serviceIcons: Record<string, typeof MessageSquare> = {
   telegram: MessageSquare,
   discord: MessageSquare,
   slack: MessageSquare,
