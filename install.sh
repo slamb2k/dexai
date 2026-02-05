@@ -436,86 +436,67 @@ if [ "$DRY_RUN" = false ]; then
 fi
 
 # ==============================================================================
-# Install Core Python Dependencies
+# Install Core Python Dependencies + Channels
 # ==============================================================================
 
-log_info "Installing core dependencies..."
+log_info "Installing core dependencies with channel support..."
 
+# Install with channels extra so all messaging platforms are available during setup
 case "$PKG_MANAGER" in
     uv)
-        run_cmd uv pip install -e "."
+        run_cmd uv pip install -e ".[channels]"
         ;;
     pip3)
-        run_cmd pip3 install -e "."
+        run_cmd pip3 install -e ".[channels]"
         ;;
     pip)
-        run_cmd pip install -e "."
+        run_cmd pip install -e ".[channels]"
         ;;
     "python3 -m pip")
-        run_cmd python3 -m pip install -e "."
+        run_cmd python3 -m pip install -e ".[channels]"
         ;;
 esac
 
-log_success "Core Python dependencies installed"
+log_success "Core dependencies installed (includes Telegram, Discord, Slack)"
 
 # ==============================================================================
-# Auto-detect and Install Optional Dependencies
+# Install Additional Optional Dependencies (if configured)
 # ==============================================================================
 
-log_info "Detecting enabled features from configuration..."
+# Note: Channel dependencies (Telegram, Discord, Slack) are already installed above.
+# This section handles other optional features like Office integration.
 
 EXTRAS_TO_INSTALL=""
-
-# Check channels.yaml for enabled messaging channels
-CHANNELS_CONFIG="$DEXAI_DIR/args/channels.yaml"
-if [ -f "$CHANNELS_CONFIG" ]; then
-    if grep -q "telegram:" "$CHANNELS_CONFIG" && grep -A1 "telegram:" "$CHANNELS_CONFIG" | grep -q "enabled: true"; then
-        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL telegram"
-        log_info "  Telegram enabled"
-    fi
-    if grep -q "discord:" "$CHANNELS_CONFIG" && grep -A1 "discord:" "$CHANNELS_CONFIG" | grep -q "enabled: true"; then
-        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL discord"
-        log_info "  Discord enabled"
-    fi
-    if grep -q "slack:" "$CHANNELS_CONFIG" && grep -A1 "slack:" "$CHANNELS_CONFIG" | grep -q "enabled: true"; then
-        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL slack"
-        log_info "  Slack enabled"
-    fi
-fi
 
 # Check office_integration.yaml for office features
 OFFICE_CONFIG="$DEXAI_DIR/args/office_integration.yaml"
 if [ -f "$OFFICE_CONFIG" ]; then
     if grep -q "enabled: true" "$OFFICE_CONFIG"; then
-        EXTRAS_TO_INSTALL="$EXTRAS_TO_INSTALL office"
-        log_info "  Office integration enabled"
+        EXTRAS_TO_INSTALL="office"
+        log_info "Office integration enabled in config"
     fi
 fi
 
 # Install detected extras
 if [ -n "$EXTRAS_TO_INSTALL" ]; then
-    EXTRAS_TO_INSTALL=$(echo "$EXTRAS_TO_INSTALL" | xargs)
-    EXTRAS_CSV=$(echo "$EXTRAS_TO_INSTALL" | tr ' ' ',')
-    log_info "Installing optional dependencies: $EXTRAS_CSV..."
+    log_info "Installing optional dependencies: $EXTRAS_TO_INSTALL..."
 
     case "$PKG_MANAGER" in
         uv)
-            run_cmd uv pip install -e ".[$EXTRAS_CSV]"
+            run_cmd uv pip install -e ".[$EXTRAS_TO_INSTALL]"
             ;;
         pip3)
-            run_cmd pip3 install -e ".[$EXTRAS_CSV]"
+            run_cmd pip3 install -e ".[$EXTRAS_TO_INSTALL]"
             ;;
         pip)
-            run_cmd pip install -e ".[$EXTRAS_CSV]"
+            run_cmd pip install -e ".[$EXTRAS_TO_INSTALL]"
             ;;
         "python3 -m pip")
-            run_cmd python3 -m pip install -e ".[$EXTRAS_CSV]"
+            run_cmd python3 -m pip install -e ".[$EXTRAS_TO_INSTALL]"
             ;;
     esac
 
     log_success "Optional dependencies installed"
-else
-    log_info "No optional features enabled in configuration"
 fi
 
 # ==============================================================================
