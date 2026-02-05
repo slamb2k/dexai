@@ -4,7 +4,10 @@
  * Provides typed fetch wrappers for all dashboard API endpoints.
  */
 
-const API_URL = process.env.API_URL || 'http://localhost:8080';
+// API URL configuration:
+// - With Caddy proxy: use '' (empty) for relative URLs - recommended
+// - Without proxy: set NEXT_PUBLIC_API_URL to browser-accessible URL (e.g., http://hostname:8080)
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 // Types
 export interface ApiResponse<T> {

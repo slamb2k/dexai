@@ -2,11 +2,8 @@
 const nextConfig = {
   // Enable standalone output for Docker deployment
   output: 'standalone',
-  // API backend URL for server-side requests
-  env: {
-    API_URL: process.env.API_URL || 'http://localhost:8080',
-    WS_URL: process.env.WS_URL || 'ws://localhost:8080',
-  },
+  // Note: NEXT_PUBLIC_* env vars are automatically exposed to browser
+  // Set NEXT_PUBLIC_API_URL at runtime for remote deployments
   // Disable image optimization for external images
   images: {
     unoptimized: true,

@@ -720,16 +720,93 @@ install_docker() {
         return 1
     fi
 
+    # Ask about remote access setup
+    DOCKER_PROFILES=""
+    SETUP_URL="http://localhost:3000/setup"
+
+    if [ "$INTERACTIVE" = true ]; then
+        echo ""
+        echo -e "${BOLD}Remote Access Setup (optional)${NC}"
+        echo ""
+        echo "  Caddy provides a reverse proxy with automatic HTTPS."
+        echo "  Tailscale provides secure private network access."
+        echo ""
+
+        # Ask about Caddy
+        read -p "Enable Caddy reverse proxy? (recommended for remote access) [y/N] " -n 1 -r REPLY </dev/tty
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            DOCKER_PROFILES="--profile proxy"
+
+            # Get domain/hostname
+            echo ""
+            read -p "Enter hostname or domain (e.g., dexai.example.com or my-server): " DOMAIN </dev/tty
+            if [ -n "$DOMAIN" ]; then
+                export DEXAI_DOMAIN="$DOMAIN"
+                # Add to .env if not already there
+                if ! grep -q "^DEXAI_DOMAIN=" "$ENV_FILE" 2>/dev/null; then
+                    echo "DEXAI_DOMAIN=$DOMAIN" >> "$ENV_FILE"
+                else
+                    sed -i.bak "s/^DEXAI_DOMAIN=.*/DEXAI_DOMAIN=$DOMAIN/" "$ENV_FILE"
+                    rm -f "$ENV_FILE.bak"
+                fi
+                log_success "Domain set to: $DOMAIN"
+                SETUP_URL="http://$DOMAIN/setup"
+            fi
+        fi
+
+        # Ask about Tailscale
+        echo ""
+        read -p "Enable Tailscale for secure private access? [y/N] " -n 1 -r REPLY </dev/tty
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            if [ -n "$DOCKER_PROFILES" ]; then
+                DOCKER_PROFILES="$DOCKER_PROFILES --profile tailscale"
+            else
+                DOCKER_PROFILES="--profile tailscale"
+            fi
+
+            echo ""
+            echo -e "${YELLOW}Tailscale Setup${NC}"
+            echo ""
+            echo "You'll need a Tailscale auth key from: https://login.tailscale.com/admin/settings/keys"
+            echo ""
+            read -p "Enter Tailscale auth key (or press Enter to skip): " TS_KEY </dev/tty
+            if [ -n "$TS_KEY" ]; then
+                # Add to .env
+                if ! grep -q "^TAILSCALE_AUTHKEY=" "$ENV_FILE" 2>/dev/null; then
+                    echo "TAILSCALE_AUTHKEY=$TS_KEY" >> "$ENV_FILE"
+                else
+                    sed -i.bak "s/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=$TS_KEY/" "$ENV_FILE"
+                    rm -f "$ENV_FILE.bak"
+                fi
+                log_success "Tailscale auth key configured"
+
+                # Get Tailscale hostname for setup URL
+                read -p "Enter your Tailscale machine name (e.g., my-server): " TS_HOSTNAME </dev/tty
+                if [ -n "$TS_HOSTNAME" ]; then
+                    # If using Tailscale without Caddy, update setup URL
+                    if [ "$DOCKER_PROFILES" = "--profile tailscale" ]; then
+                        SETUP_URL="https://$TS_HOSTNAME.<your-tailnet>.ts.net/setup"
+                    fi
+                fi
+            else
+                log_warn "Tailscale will start but needs manual authentication"
+                echo "Run: docker exec -it dexai-tailscale tailscale up"
+            fi
+        fi
+    fi
+
     log_info "Building and starting containers..."
 
     # Build images
-    if ! $DOCKER_COMPOSE_CMD build; then
+    if ! $DOCKER_COMPOSE_CMD $DOCKER_PROFILES build; then
         log_error "Failed to build Docker images"
         return 1
     fi
 
     # Start containers
-    if ! $DOCKER_COMPOSE_CMD up -d; then
+    if ! $DOCKER_COMPOSE_CMD $DOCKER_PROFILES up -d; then
         log_error "Failed to start containers"
         return 1
     fi
@@ -737,18 +814,35 @@ install_docker() {
     log_success "Docker deployment complete!"
     echo ""
     echo "Services running:"
-    echo "  - Backend:  http://localhost:8080"
-    echo "  - Frontend: http://localhost:3000"
+    if [[ "$DOCKER_PROFILES" == *"proxy"* ]]; then
+        echo "  - DexAI: http://${DEXAI_DOMAIN:-localhost} (via Caddy)"
+        echo "    Caddy routes /api/* to backend, /* to frontend"
+    else
+        echo "  - Backend:  http://localhost:8080"
+        echo "  - Frontend: http://localhost:3000"
+    fi
+    if [[ "$DOCKER_PROFILES" == *"tailscale"* ]]; then
+        echo "  - Tailscale: Check 'docker logs dexai-tailscale' for status"
+        if [[ "$DOCKER_PROFILES" != *"proxy"* ]]; then
+            echo ""
+            echo -e "${YELLOW}Note:${NC} Tailscale Serve is configured as reverse proxy."
+            echo "  Access via: https://<machine-name>.<tailnet>.ts.net"
+            echo "  (Routes /api/* to backend, /* to frontend automatically)"
+        fi
+    fi
     echo ""
     echo "Useful commands:"
-    echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD logs -f${NC}  # View logs"
-    echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD down${NC}      # Stop services"
-    echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD ps${NC}        # Check status"
+    echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD $DOCKER_PROFILES logs -f${NC}  # View logs"
+    echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD $DOCKER_PROFILES down${NC}      # Stop services"
+    echo -e "  ${BLUE}cd $DEXAI_DIR && $DOCKER_COMPOSE_CMD $DOCKER_PROFILES ps${NC}        # Check status"
     echo ""
 
     # Wait for services to be healthy
     log_info "Waiting for services to start..."
     sleep 5
+
+    # Export setup URL for wizard launcher
+    export SETUP_URL
 
     return 0
 }
@@ -761,16 +855,21 @@ launch_wizard() {
 
     # Check if running in Docker - wizard runs differently
     if [ "${DOCKER_DEPLOYMENT:-false}" = true ]; then
+        # Use SETUP_URL if set, otherwise default
+        local wizard_url="${SETUP_URL:-http://localhost:3000/setup}"
+
         echo "Opening setup wizard in your browser..."
         echo ""
-        echo -e "  ${CYAN}http://localhost:3000/setup${NC}"
+        echo -e "  ${CYAN}$wizard_url${NC}"
         echo ""
 
-        # Try to open browser
-        if check_command xdg-open; then
-            xdg-open "http://localhost:3000/setup" 2>/dev/null || true
-        elif check_command open; then
-            open "http://localhost:3000/setup" 2>/dev/null || true
+        # Try to open browser (only works for localhost typically)
+        if [[ "$wizard_url" == *"localhost"* ]]; then
+            if check_command xdg-open; then
+                xdg-open "$wizard_url" 2>/dev/null || true
+            elif check_command open; then
+                open "$wizard_url" 2>/dev/null || true
+            fi
         fi
 
         echo "Complete the setup wizard to configure your channels and API keys."
@@ -820,9 +919,18 @@ if [ "$INTERACTIVE" = true ]; then
             echo -e "    ${BLUE}source .venv/bin/activate${NC}"
             echo -e "    ${BLUE}make dev${NC}"
             echo ""
-            echo "  Docker deployment:"
+            echo "  Docker deployment (basic):"
             echo -e "    ${BLUE}cd $DEXAI_DIR${NC}"
             echo -e "    ${BLUE}docker compose up -d${NC}"
+            echo ""
+            echo "  Docker with Caddy reverse proxy:"
+            echo -e "    ${BLUE}DEXAI_DOMAIN=your-hostname docker compose --profile proxy up -d${NC}"
+            echo ""
+            echo "  Docker with Tailscale:"
+            echo -e "    ${BLUE}TAILSCALE_AUTHKEY=tskey-... docker compose --profile tailscale up -d${NC}"
+            echo ""
+            echo "  Docker with both Caddy + Tailscale:"
+            echo -e "    ${BLUE}docker compose --profile proxy --profile tailscale up -d${NC}"
             echo ""
             echo "  Setup wizard:"
             echo -e "    ${BLUE}python -m tools.setup.tui.main${NC}"
