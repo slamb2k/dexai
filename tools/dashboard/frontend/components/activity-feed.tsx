@@ -73,6 +73,14 @@ const typeConfig: Record<
   },
 };
 
+// Fallback for unknown types
+const defaultConfig = {
+  icon: Zap,
+  color: 'text-text-muted',
+  bgColor: 'bg-text-muted/10',
+  label: 'UNKNOWN',
+};
+
 export function ActivityFeed({
   items,
   maxItems = 10,
@@ -116,7 +124,7 @@ function ActivityFeedItem({
   showTimestamp = true,
   onClick,
 }: ActivityFeedItemProps) {
-  const config = typeConfig[item.type];
+  const config = typeConfig[item.type] || defaultConfig;
   const Icon = config.icon;
 
   return (
@@ -188,7 +196,7 @@ export function CompactActivityFeed({
   return (
     <div className={cn('space-y-2', className)}>
       {displayItems.map((item) => {
-        const config = typeConfig[item.type];
+        const config = typeConfig[item.type] || defaultConfig;
         return (
           <div key={item.id} className="flex items-center gap-2">
             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', config.bgColor.replace('/10', ''))} />

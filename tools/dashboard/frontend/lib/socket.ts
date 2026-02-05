@@ -4,7 +4,22 @@
  * Handles real-time updates for avatar state, activity, and metrics.
  */
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+// Build WebSocket URL dynamically for Caddy proxy support
+function getWebSocketUrl(): string {
+  // If explicit URL provided, use it
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+
+  // In browser, derive from current location (works with Caddy proxy)
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws`;
+  }
+
+  // Fallback for SSR
+  return 'ws://localhost:8080/ws';
+}
 
 type EventCallback<T = unknown> = (data: T) => void;
 
@@ -46,7 +61,7 @@ class SocketClient {
     }
 
     try {
-      this.ws = new WebSocket(WS_URL);
+      this.ws = new WebSocket(getWebSocketUrl());
 
       this.ws.onopen = () => {
         console.log('[Socket] Connected to WebSocket server');
