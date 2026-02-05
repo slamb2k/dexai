@@ -34,12 +34,12 @@ MANUAL_DOCS_URL="https://github.com/slamb2k/dexai/blob/main/docs/installation.md
 
 # Flags
 DRY_RUN=false
-INTERACTIVE=true
+INTERACTIVE=false
 
 # Check if we can interact with terminal (fails in non-TTY contexts like Claude Code)
-# Test by attempting a zero-timeout read from /dev/tty
-if ! read -t 0 </dev/tty 2>/dev/null; then
-    INTERACTIVE=false
+# Test by attempting to open /dev/tty in a subshell
+if (exec </dev/tty) 2>/dev/null; then
+    INTERACTIVE=true
 fi
 
 # Detected tools (set during checks)
