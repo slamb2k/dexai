@@ -18,7 +18,12 @@ RUN npm ci
 COPY . .
 
 # Build the application
+# NEXT_PUBLIC_API_URL is baked in at build time
+# Default empty = relative URLs (works with Caddy proxy)
+# Set to http://hostname:8080 if not using proxy
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN npm run build
 
 # -----------------------------------------------------------------------------

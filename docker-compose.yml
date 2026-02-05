@@ -45,17 +45,22 @@ services:
   # ---------------------------------------------------------------------------
   # Frontend: Next.js Dashboard
   # ---------------------------------------------------------------------------
+  # NEXT_PUBLIC_API_URL options (baked in at BUILD time):
+  #   - Empty (default): Uses relative URLs - works with Caddy proxy
+  #   - http://localhost:8080: Direct backend access (local dev without proxy)
+  #   - http://your-machine:8080: Direct backend access (remote without proxy)
   frontend:
     build:
       context: ./tools/dashboard/frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
     container_name: dexai-frontend
     restart: unless-stopped
     ports:
       - "${DEXAI_FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://backend:8080
     depends_on:
       backend:
         condition: service_healthy
