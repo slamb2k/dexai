@@ -4,27 +4,17 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Stage 1: Dependencies
-# -----------------------------------------------------------------------------
-FROM node:20-alpine AS deps
-
-WORKDIR /app
-
-# Copy package files
-COPY package.json package-lock.json* ./
-
-# Install dependencies
-RUN npm ci --only=production
-
-# -----------------------------------------------------------------------------
-# Stage 2: Builder
+# Stage 1: Builder
 # -----------------------------------------------------------------------------
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+# Copy package files and install all dependencies (including devDependencies for build)
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source files
 COPY . .
 
 # Build the application
@@ -32,7 +22,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Stage 3: Runtime
+# Stage 2: Runtime
 # -----------------------------------------------------------------------------
 FROM node:20-alpine AS runtime
 
