@@ -61,8 +61,16 @@ const statusConfig: Record<
   },
 };
 
+// Fallback for unknown status
+const defaultStatusConfig = {
+  icon: Circle,
+  color: 'text-text-muted',
+  bgColor: 'bg-text-muted/10',
+  label: 'Unknown',
+};
+
 export function TaskCard({ task, onClick, compact = false, className }: TaskCardProps) {
-  const config = statusConfig[task.status];
+  const config = statusConfig[task.status] || defaultStatusConfig;
   const Icon = config.icon;
 
   if (compact) {
