@@ -111,12 +111,13 @@ services:
   tailscale:
     image: tailscale/tailscale:latest
     container_name: dexai-tailscale
-    hostname: dexai
+    hostname: ${TAILSCALE_HOSTNAME:-dexai}
     restart: unless-stopped
     profiles:
       - tailscale
     environment:
       - TS_AUTHKEY=${TAILSCALE_AUTHKEY:-}
+      - TS_HOSTNAME=${TAILSCALE_HOSTNAME:-dexai}
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=true
       - TS_SERVE_CONFIG=/config/tailscale-serve.json
