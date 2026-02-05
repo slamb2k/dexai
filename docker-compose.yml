@@ -29,8 +29,8 @@ services:
     volumes:
       # Persist SQLite databases
       - dexai-data:/app/data
-      # Mount args for runtime configuration
-      - ./args:/app/args:ro
+      # Mount args for runtime configuration (writable for setup wizard)
+      - ./args:/app/args
       # Mount memory for persistent storage
       - ./memory:/app/memory
     healthcheck:
