@@ -190,8 +190,10 @@ export default function SetupPage() {
   }, [apiKey, addToast]);
 
   // Complete setup
-  const handleComplete = useCallback(async () => {
+  const handleComplete = useCallback(async (forceSkipApiKey = false) => {
     setIsSubmitting(true);
+
+    const shouldSkipApiKey = skipApiKey || forceSkipApiKey;
 
     try {
       // Build channel config based on selected channel type
@@ -207,7 +209,7 @@ export default function SetupPage() {
         channel_config: channelConfig,
         preferences,
         api_key: apiKeyValid ? apiKey : undefined,
-        skip_api_key: skipApiKey,
+        skip_api_key: shouldSkipApiKey,
       });
 
       if (res.success && res.data?.success) {
@@ -734,8 +736,12 @@ export default function SetupPage() {
 
               <div className="text-center">
                 <button
-                  onClick={() => setSkipApiKey(true)}
-                  className="text-caption text-text-muted hover:text-text-secondary"
+                  onClick={() => {
+                    setSkipApiKey(true);
+                    handleComplete(true);
+                  }}
+                  disabled={isSubmitting}
+                  className="text-caption text-text-muted hover:text-text-secondary disabled:opacity-50"
                 >
                   Skip for now — I&apos;ll add it later
                 </button>
