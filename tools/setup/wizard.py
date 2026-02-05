@@ -550,11 +550,12 @@ async def validate_anthropic_key(api_key: str) -> dict[str, Any]:
     try:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=api_key)
+        # Use async client for proper async context
+        client = anthropic.AsyncAnthropic(api_key=api_key)
 
-        # Make a minimal API call to validate
-        client.messages.create(
-            model="claude-3-haiku-20240307",
+        # Make a minimal API call to validate using current model
+        await client.messages.create(
+            model="claude-3-5-haiku-latest",
             max_tokens=10,
             messages=[{"role": "user", "content": "Hi"}],
         )
@@ -574,6 +575,8 @@ async def validate_anthropic_key(api_key: str) -> dict[str, Any]:
                 "success": False,
                 "error": "API key valid but no credits. Set up billing at console.anthropic.com",
             }
+        if "could not find" in error_msg.lower() or "model" in error_msg.lower():
+            return {"success": False, "error": f"Model error: {error_msg}"}
         return {"success": False, "error": f"Validation failed: {error_msg}"}
 
 
