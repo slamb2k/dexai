@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { api, Settings, ServiceStatus } from '@/lib/api';
+import { api, Settings, ServiceStatus, ChannelTokensResponse } from '@/lib/api';
 import { useToastStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
@@ -43,7 +43,7 @@ const defaultSettings: Settings = {
     rememberPreferences: true,
   },
   advanced: {
-    defaultModel: 'claude-3-sonnet',
+    defaultModel: 'claude-3-5-sonnet-20241022',
     costLimitDaily: 1.0,
     costLimitMonthly: 10.0,
     debugMode: false,
@@ -51,13 +51,46 @@ const defaultSettings: Settings = {
 };
 
 const timezones = [
-  { value: 'America/New_York', label: 'Eastern Time (ET)' },
-  { value: 'America/Chicago', label: 'Central Time (CT)' },
-  { value: 'America/Denver', label: 'Mountain Time (MT)' },
-  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
-  { value: 'Europe/London', label: 'London (GMT)' },
+  // Americas
+  { value: 'America/New_York', label: 'New York (ET)' },
+  { value: 'America/Chicago', label: 'Chicago (CT)' },
+  { value: 'America/Denver', label: 'Denver (MT)' },
+  { value: 'America/Los_Angeles', label: 'Los Angeles (PT)' },
+  { value: 'America/Anchorage', label: 'Anchorage (AKT)' },
+  { value: 'America/Sao_Paulo', label: 'São Paulo (BRT)' },
+  { value: 'America/Toronto', label: 'Toronto (ET)' },
+  { value: 'America/Vancouver', label: 'Vancouver (PT)' },
+  // Europe
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
   { value: 'Europe/Paris', label: 'Paris (CET)' },
+  { value: 'Europe/Berlin', label: 'Berlin (CET)' },
+  { value: 'Europe/Amsterdam', label: 'Amsterdam (CET)' },
+  { value: 'Europe/Moscow', label: 'Moscow (MSK)' },
+  // Asia
   { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+  { value: 'Asia/Shanghai', label: 'Shanghai (CST)' },
+  { value: 'Asia/Hong_Kong', label: 'Hong Kong (HKT)' },
+  { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
+  { value: 'Asia/Seoul', label: 'Seoul (KST)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Asia/Kolkata', label: 'India (IST)' },
+  { value: 'Asia/Bangkok', label: 'Bangkok (ICT)' },
+  { value: 'Asia/Jakarta', label: 'Jakarta (WIB)' },
+  // Australia & Pacific
+  { value: 'Australia/Melbourne', label: 'Melbourne (AEST/AEDT)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)' },
+  { value: 'Australia/Brisbane', label: 'Brisbane (AEST)' },
+  { value: 'Australia/Perth', label: 'Perth (AWST)' },
+  { value: 'Australia/Adelaide', label: 'Adelaide (ACST/ACDT)' },
+  { value: 'Pacific/Auckland', label: 'Auckland (NZST/NZDT)' },
+  { value: 'Pacific/Fiji', label: 'Fiji (FJT)' },
+  { value: 'Pacific/Honolulu', label: 'Honolulu (HST)' },
+  // Africa & Middle East
+  { value: 'Africa/Johannesburg', label: 'Johannesburg (SAST)' },
+  { value: 'Africa/Cairo', label: 'Cairo (EET)' },
+  { value: 'Africa/Lagos', label: 'Lagos (WAT)' },
+  // UTC
+  { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
 ];
 
 const languages = [
@@ -68,9 +101,16 @@ const languages = [
 ];
 
 const models = [
-  { value: 'claude-3-opus', label: 'Claude 3 Opus (Most capable)' },
-  { value: 'claude-3-sonnet', label: 'Claude 3 Sonnet (Balanced)' },
-  { value: 'claude-3-haiku', label: 'Claude 3 Haiku (Fastest)' },
+  // Claude 4 models
+  { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5 (Most capable)' },
+  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (Balanced)' },
+  // Claude 3.5 models
+  { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Fast & capable)' },
+  { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Fastest)' },
+  // Claude 3 models (legacy)
+  { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus (Legacy)' },
+  { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet (Legacy)' },
+  { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (Legacy)' },
 ];
 
 // Channel configuration
@@ -100,6 +140,8 @@ export default function SettingsPage() {
   const [channelConfig, setChannelConfig] = useState<ChannelConfig>(defaultChannelConfig);
   const [apiKeys, setApiKeys] = useState<ApiKeysConfig>(defaultApiKeys);
   const [services, setServices] = useState<ServiceStatus[]>([]);
+  const [tokenStatus, setTokenStatus] = useState<ChannelTokensResponse | null>(null);
+  const [tokensModified, setTokensModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -109,23 +151,77 @@ export default function SettingsPage() {
   );
   const { addToast } = useToastStore();
 
+  // Transform API settings to frontend format
+  const transformApiSettings = (apiData: Record<string, unknown>): Settings => {
+    // Handle the nested 'settings' object from API
+    const data = (apiData?.settings || apiData) as Record<string, unknown>;
+
+    return {
+      general: {
+        displayName: (data?.display_name as string) || (data?.displayName as string) || defaultSettings.general.displayName,
+        timezone: (data?.timezone as string) || defaultSettings.general.timezone,
+        language: (data?.language as string) || defaultSettings.general.language,
+      },
+      notifications: {
+        activeHoursStart: ((data?.notifications as Record<string, unknown>)?.quiet_hours_start as string) ||
+          ((data?.notifications as Record<string, unknown>)?.activeHoursStart as string) ||
+          defaultSettings.notifications.activeHoursStart,
+        activeHoursEnd: ((data?.notifications as Record<string, unknown>)?.quiet_hours_end as string) ||
+          ((data?.notifications as Record<string, unknown>)?.activeHoursEnd as string) ||
+          defaultSettings.notifications.activeHoursEnd,
+        hyperfocusEnabled: ((data?.notifications as Record<string, unknown>)?.hyperfocusEnabled as boolean) ??
+          defaultSettings.notifications.hyperfocusEnabled,
+        urgentBypassHyperfocus: ((data?.notifications as Record<string, unknown>)?.urgentBypassHyperfocus as boolean) ??
+          defaultSettings.notifications.urgentBypassHyperfocus,
+      },
+      privacy: {
+        dataRetentionDays: ((data?.privacy as Record<string, unknown>)?.data_retention_days as number) ||
+          ((data?.privacy as Record<string, unknown>)?.dataRetentionDays as number) ||
+          defaultSettings.privacy.dataRetentionDays,
+        rememberConversations: ((data?.privacy as Record<string, unknown>)?.remember_conversations as boolean) ??
+          ((data?.privacy as Record<string, unknown>)?.rememberConversations as boolean) ??
+          defaultSettings.privacy.rememberConversations,
+        rememberPreferences: ((data?.privacy as Record<string, unknown>)?.remember_preferences as boolean) ??
+          ((data?.privacy as Record<string, unknown>)?.rememberPreferences as boolean) ??
+          defaultSettings.privacy.rememberPreferences,
+      },
+      advanced: {
+        defaultModel: ((data?.advanced as Record<string, unknown>)?.defaultModel as string) ||
+          ((data?.advanced as Record<string, unknown>)?.default_model as string) ||
+          defaultSettings.advanced.defaultModel,
+        costLimitDaily: ((data?.advanced as Record<string, unknown>)?.costLimitDaily as number) ??
+          ((data?.advanced as Record<string, unknown>)?.cost_limit_daily as number) ??
+          defaultSettings.advanced.costLimitDaily,
+        costLimitMonthly: ((data?.advanced as Record<string, unknown>)?.costLimitMonthly as number) ??
+          ((data?.advanced as Record<string, unknown>)?.cost_limit_monthly as number) ??
+          defaultSettings.advanced.costLimitMonthly,
+        debugMode: ((data?.advanced as Record<string, unknown>)?.debugMode as boolean) ??
+          ((data?.advanced as Record<string, unknown>)?.debug_mode as boolean) ??
+          defaultSettings.advanced.debugMode,
+      },
+    };
+  };
+
   // Load settings
   useEffect(() => {
     const loadSettings = async () => {
       setIsLoading(true);
       try {
-        const [settingsRes, servicesRes] = await Promise.all([
+        const [settingsRes, servicesRes, tokensRes] = await Promise.all([
           api.getSettings(),
           api.getServices(),
+          api.getChannelTokens(),
         ]);
         if (settingsRes.success && settingsRes.data) {
-          setSettings(settingsRes.data);
+          const transformed = transformApiSettings(settingsRes.data as unknown as Record<string, unknown>);
+          setSettings(transformed);
         }
         if (servicesRes.success && servicesRes.data) {
-          setServices(servicesRes.data);
+          const servicesArray = Array.isArray(servicesRes.data) ? servicesRes.data : [];
+          setServices(servicesArray);
           // Update channel config based on service status
           const newConfig = { ...defaultChannelConfig };
-          servicesRes.data.forEach((service) => {
+          servicesArray.forEach((service) => {
             if (service.name === 'telegram') {
               newConfig.telegram.enabled = service.status === 'running';
             } else if (service.name === 'discord') {
@@ -135,6 +231,16 @@ export default function SettingsPage() {
             }
           });
           setChannelConfig(newConfig);
+        }
+        if (tokensRes.success && tokensRes.data) {
+          setTokenStatus(tokensRes.data);
+          // Update API key validated status based on token status
+          if (tokensRes.data.anthropic?.configured) {
+            setApiKeys((prev) => ({
+              ...prev,
+              anthropic: { ...prev.anthropic, validated: true },
+            }));
+          }
         }
       } catch {
         // Keep defaults
@@ -194,7 +300,76 @@ export default function SettingsPage() {
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      const res = await api.updateSettings(settings);
+      // Transform frontend nested structure to backend flat structure
+      const backendPayload = {
+        display_name: settings.general.displayName,
+        timezone: settings.general.timezone,
+        language: settings.general.language,
+        notifications: {
+          enabled: true,
+          quiet_hours_start: settings.notifications.activeHoursStart,
+          quiet_hours_end: settings.notifications.activeHoursEnd,
+        },
+        privacy: {
+          remember_conversations: settings.privacy.rememberConversations,
+          remember_preferences: settings.privacy.rememberPreferences,
+          data_retention_days: settings.privacy.dataRetentionDays,
+        },
+        theme: 'dark', // TODO: Add theme to frontend settings
+      };
+
+      // Cast to unknown since we're sending backend format, not frontend Settings type
+      const res = await api.updateSettings(backendPayload as unknown as Partial<Settings>);
+
+      // Save channel tokens if they've been modified
+      if (tokensModified) {
+        const tokenPayload: {
+          telegram_token?: string;
+          discord_token?: string;
+          slack_bot_token?: string;
+          slack_app_token?: string;
+          anthropic_key?: string;
+        } = {};
+
+        // Only include tokens that have values (not empty placeholders)
+        if (channelConfig.telegram.token) {
+          tokenPayload.telegram_token = channelConfig.telegram.token;
+        }
+        if (channelConfig.discord.token) {
+          tokenPayload.discord_token = channelConfig.discord.token;
+        }
+        if (channelConfig.slack.botToken) {
+          tokenPayload.slack_bot_token = channelConfig.slack.botToken;
+        }
+        if (channelConfig.slack.appToken) {
+          tokenPayload.slack_app_token = channelConfig.slack.appToken;
+        }
+        if (apiKeys.anthropic.key) {
+          tokenPayload.anthropic_key = apiKeys.anthropic.key;
+        }
+
+        if (Object.keys(tokenPayload).length > 0) {
+          const tokenRes = await api.updateChannelTokens(tokenPayload);
+          if (tokenRes.success && tokenRes.data?.success) {
+            addToast({
+              type: 'success',
+              message: tokenRes.data.message || 'Tokens updated. Restart services to apply.'
+            });
+            setTokensModified(false);
+            // Reload token status
+            const newTokens = await api.getChannelTokens();
+            if (newTokens.success && newTokens.data) {
+              setTokenStatus(newTokens.data);
+            }
+          } else {
+            addToast({
+              type: 'error',
+              message: tokenRes.data?.error || 'Failed to save tokens'
+            });
+          }
+        }
+      }
+
       if (res.success) {
         addToast({ type: 'success', message: 'Settings saved successfully' });
       } else {
@@ -204,7 +379,7 @@ export default function SettingsPage() {
       addToast({ type: 'error', message: 'Failed to save settings' });
     }
     setIsSaving(false);
-  }, [settings, addToast]);
+  }, [settings, channelConfig, apiKeys, tokensModified, addToast]);
 
   // Reset section to defaults
   const handleReset = (section: keyof Settings) => {
@@ -471,20 +646,26 @@ export default function SettingsPage() {
                   <MessageSquare size={16} style={{ color: '#0088cc' }} />
                 </div>
                 <span className="text-body text-text-primary font-medium">Telegram</span>
+                {tokenStatus?.telegram?.configured && (
+                  <span className="badge badge-success text-xs">Configured</span>
+                )}
               </div>
               <ServiceStatusBadge service={getServiceStatus('telegram')} />
             </div>
             <FormField label="Bot Token">
               <input
                 type="password"
-                placeholder="Enter Telegram bot token"
+                placeholder={tokenStatus?.telegram?.configured
+                  ? tokenStatus.telegram.masked_token || 'Token configured'
+                  : 'Enter Telegram bot token'}
                 value={channelConfig.telegram.token}
-                onChange={(e) =>
+                onChange={(e) => {
                   setChannelConfig((prev) => ({
                     ...prev,
                     telegram: { ...prev.telegram, token: e.target.value },
-                  }))
-                }
+                  }));
+                  setTokensModified(true);
+                }}
                 className="input w-full font-mono text-sm"
               />
             </FormField>
@@ -504,20 +685,26 @@ export default function SettingsPage() {
                   <MessageSquare size={16} style={{ color: '#5865F2' }} />
                 </div>
                 <span className="text-body text-text-primary font-medium">Discord</span>
+                {tokenStatus?.discord?.configured && (
+                  <span className="badge badge-success text-xs">Configured</span>
+                )}
               </div>
               <ServiceStatusBadge service={getServiceStatus('discord')} />
             </div>
             <FormField label="Bot Token">
               <input
                 type="password"
-                placeholder="Enter Discord bot token"
+                placeholder={tokenStatus?.discord?.configured
+                  ? tokenStatus.discord.masked_token || 'Token configured'
+                  : 'Enter Discord bot token'}
                 value={channelConfig.discord.token}
-                onChange={(e) =>
+                onChange={(e) => {
                   setChannelConfig((prev) => ({
                     ...prev,
                     discord: { ...prev.discord, token: e.target.value },
-                  }))
-                }
+                  }));
+                  setTokensModified(true);
+                }}
                 className="input w-full font-mono text-sm"
               />
             </FormField>
@@ -537,34 +724,43 @@ export default function SettingsPage() {
                   <MessageSquare size={16} style={{ color: '#4A154B' }} />
                 </div>
                 <span className="text-body text-text-primary font-medium">Slack</span>
+                {tokenStatus?.slack?.configured && (
+                  <span className="badge badge-success text-xs">Configured</span>
+                )}
               </div>
               <ServiceStatusBadge service={getServiceStatus('slack')} />
             </div>
             <FormField label="Bot Token (xoxb-...)">
               <input
                 type="password"
-                placeholder="Enter Slack bot token"
+                placeholder={tokenStatus?.slack?.configured
+                  ? tokenStatus.slack.masked_bot_token || 'Token configured'
+                  : 'Enter Slack bot token'}
                 value={channelConfig.slack.botToken}
-                onChange={(e) =>
+                onChange={(e) => {
                   setChannelConfig((prev) => ({
                     ...prev,
                     slack: { ...prev.slack, botToken: e.target.value },
-                  }))
-                }
+                  }));
+                  setTokensModified(true);
+                }}
                 className="input w-full font-mono text-sm"
               />
             </FormField>
             <FormField label="App Token (xapp-...)">
               <input
                 type="password"
-                placeholder="Enter Slack app token"
+                placeholder={tokenStatus?.slack?.configured
+                  ? tokenStatus.slack.masked_app_token || 'Token configured'
+                  : 'Enter Slack app token'}
                 value={channelConfig.slack.appToken}
-                onChange={(e) =>
+                onChange={(e) => {
                   setChannelConfig((prev) => ({
                     ...prev,
                     slack: { ...prev.slack, appToken: e.target.value },
-                  }))
-                }
+                  }));
+                  setTokensModified(true);
+                }}
                 className="input w-full font-mono text-sm"
               />
             </FormField>
@@ -593,7 +789,12 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-body text-text-primary font-medium">Anthropic API Key</span>
+              <div className="flex items-center gap-2">
+                <span className="text-body text-text-primary font-medium">Anthropic API Key</span>
+                {tokenStatus?.anthropic?.configured && !apiKeys.anthropic.key && (
+                  <span className="badge badge-success text-xs">Configured</span>
+                )}
+              </div>
               {apiKeys.anthropic.validated ? (
                 <span className="badge badge-success flex items-center gap-1">
                   <CheckCircle size={12} />
@@ -610,14 +811,17 @@ export default function SettingsPage() {
               <div className="relative flex-1">
                 <input
                   type={showApiKey ? 'text' : 'password'}
-                  placeholder="sk-ant-..."
+                  placeholder={tokenStatus?.anthropic?.configured
+                    ? tokenStatus.anthropic.masked_key || 'API key configured'
+                    : 'sk-ant-...'}
                   value={apiKeys.anthropic.key}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setApiKeys((prev) => ({
                       ...prev,
                       anthropic: { key: e.target.value, validated: false },
-                    }))
-                  }
+                    }));
+                    setTokensModified(true);
+                  }}
                   className="input w-full pr-10 font-mono text-sm"
                 />
                 <button

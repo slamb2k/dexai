@@ -145,14 +145,14 @@ export function TaskCard({ task, onClick, compact = false, className }: TaskCard
             </span>
           )}
 
-          {task.duration !== undefined && (
+          {task.duration != null && (
             <span className="flex items-center gap-1">
               <Clock size={12} />
               {formatDuration(task.duration)}
             </span>
           )}
 
-          {task.cost !== undefined && (
+          {task.cost != null && (
             <span className="text-text-secondary">
               {formatCurrency(task.cost)}
             </span>

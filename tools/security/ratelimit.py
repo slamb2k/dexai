@@ -251,6 +251,26 @@ def check_rate_limit(
         wait_seconds = (tokens_needed / tokens_per_minute) * 60
 
         conn.close()
+
+        # Log rate limit exceeded to dashboard audit
+        try:
+            from tools.dashboard.backend.database import log_audit
+
+            log_audit(
+                event_type="security.rate_limit",
+                severity="warning",
+                actor=entity_id,
+                target=f"{entity_type}:{entity_id}",
+                details={
+                    "reason": "token_limit",
+                    "current_tokens": round(current_tokens, 2),
+                    "required_tokens": tokens,
+                    "retry_after_seconds": round(wait_seconds, 1),
+                },
+            )
+        except Exception:
+            pass
+
         return {
             "success": True,
             "allowed": False,
@@ -270,6 +290,25 @@ def check_rate_limit(
     cost_limit_hour = limits.get("cost_per_hour", 1.00)
     if new_cost_hour + cost > cost_limit_hour:
         conn.close()
+
+        # Log cost limit exceeded to dashboard audit
+        try:
+            from tools.dashboard.backend.database import log_audit
+
+            log_audit(
+                event_type="security.cost_limit",
+                severity="warning",
+                actor=entity_id,
+                target=f"{entity_type}:{entity_id}",
+                details={
+                    "reason": "cost_limit_hour",
+                    "current_cost": round(new_cost_hour, 4),
+                    "cost_limit": cost_limit_hour,
+                },
+            )
+        except Exception:
+            pass
+
         return {
             "success": True,
             "allowed": False,
@@ -283,6 +322,25 @@ def check_rate_limit(
     cost_limit_day = limits.get("cost_per_day", 10.00)
     if new_cost_day + cost > cost_limit_day:
         conn.close()
+
+        # Log cost limit exceeded to dashboard audit
+        try:
+            from tools.dashboard.backend.database import log_audit
+
+            log_audit(
+                event_type="security.cost_limit",
+                severity="warning",
+                actor=entity_id,
+                target=f"{entity_type}:{entity_id}",
+                details={
+                    "reason": "cost_limit_day",
+                    "current_cost": round(new_cost_day, 4),
+                    "cost_limit": cost_limit_day,
+                },
+            )
+        except Exception:
+            pass
+
         return {
             "success": True,
             "allowed": False,

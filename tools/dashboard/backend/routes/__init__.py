@@ -8,6 +8,8 @@ from fastapi import APIRouter
 
 from .actions import router as actions_router
 from .activity import router as activity_router
+from .audit import router as audit_router
+from .debug import router as debug_router
 from .metrics import router as metrics_router
 from .oauth import router as oauth_router
 from .office import router as office_router
@@ -32,9 +34,11 @@ api_router.include_router(settings_router, prefix="/settings", tags=["settings"]
 api_router.include_router(setup_router, prefix="/setup", tags=["setup"])
 api_router.include_router(office_router, prefix="/office", tags=["office"])
 api_router.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
-api_router.include_router(actions_router, tags=["actions"])
+api_router.include_router(actions_router, prefix="/actions", tags=["actions"])
 api_router.include_router(policies_router, tags=["policies"])
 api_router.include_router(push_router, prefix="/push", tags=["push"])
 api_router.include_router(services_router, tags=["services"])
+api_router.include_router(audit_router, tags=["audit"])
+api_router.include_router(debug_router, tags=["debug"])
 
 __all__ = ["api_router"]

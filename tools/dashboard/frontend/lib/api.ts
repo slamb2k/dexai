@@ -114,6 +114,48 @@ export interface HealthCheck {
   message?: string;
 }
 
+export interface SystemInfo {
+  version: string;
+  uptime_seconds: number;
+  python_version: string;
+  platform: string;
+  databases: Record<string, number>;
+  channels: string[];
+  active_tasks: number;
+  environment: string;
+  debug_mode: boolean;
+  timestamp: string;
+}
+
+// Channel token types
+export interface ChannelTokensResponse {
+  telegram: {
+    configured: boolean;
+    masked_token: string;
+  };
+  discord: {
+    configured: boolean;
+    masked_token: string;
+  };
+  slack: {
+    configured: boolean;
+    masked_bot_token: string;
+    masked_app_token: string;
+  };
+  anthropic: {
+    configured: boolean;
+    masked_key: string;
+  };
+}
+
+export interface ChannelTokensUpdateRequest {
+  telegram_token?: string;
+  discord_token?: string;
+  slack_bot_token?: string;
+  slack_app_token?: string;
+  anthropic_key?: string;
+}
+
 // Setup wizard types
 export interface SetupState {
   is_complete: boolean;
@@ -374,18 +416,69 @@ class ApiClient {
     });
   }
 
+  // Channel token endpoints
+  async getChannelTokens(): Promise<ApiResponse<ChannelTokensResponse>> {
+    return this.request<ChannelTokensResponse>('/api/settings/tokens');
+  }
+
+  async updateChannelTokens(
+    tokens: ChannelTokensUpdateRequest
+  ): Promise<ApiResponse<{ success: boolean; message?: string; error?: string; updated: string[] }>> {
+    return this.request<{ success: boolean; message?: string; error?: string; updated: string[] }>(
+      '/api/settings/tokens',
+      {
+        method: 'PUT',
+        body: JSON.stringify(tokens),
+      }
+    );
+  }
+
   // Health endpoints
   async getHealth(): Promise<ApiResponse<{ checks: HealthCheck[] }>> {
     return this.request<{ checks: HealthCheck[] }>('/api/health');
   }
 
+  // Audit statistics
+  async getAuditStats(
+    days?: number
+  ): Promise<ApiResponse<{
+    period_days: number;
+    total_events: number;
+    by_type: Record<string, number>;
+    by_severity: Record<string, number>;
+    by_day: { day: string; count: number }[];
+  }>> {
+    const query = this.buildQuery({ days });
+    return this.request<{
+      period_days: number;
+      total_events: number;
+      by_type: Record<string, number>;
+      by_severity: Record<string, number>;
+      by_day: { day: string; count: number }[];
+    }>(`/api/audit/stats${query}`);
+  }
+
   // Debug endpoints (admin only)
+  async getSystemInfo(): Promise<ApiResponse<SystemInfo>> {
+    return this.request<SystemInfo>('/api/debug/system');
+  }
+
   async getLogs(
     lines?: number,
-    level?: string
-  ): Promise<ApiResponse<{ logs: string[] }>> {
-    const query = this.buildQuery({ lines, level });
-    return this.request<{ logs: string[] }>(`/api/debug/logs${query}`);
+    level?: string,
+    source?: string
+  ): Promise<ApiResponse<{ logs: string[]; total: number; source: string }>> {
+    const query = this.buildQuery({ lines, level, source });
+    return this.request<{ logs: string[]; total: number; source: string }>(`/api/debug/logs${query}`);
+  }
+
+  async runDebugTool(
+    toolName: string
+  ): Promise<ApiResponse<{ tool: string; success: boolean; message: string; results?: unknown }>> {
+    return this.request<{ tool: string; success: boolean; message: string; results?: unknown }>(
+      `/api/debug/tools/${toolName}`,
+      { method: 'POST' }
+    );
   }
 
   async queryDatabase(

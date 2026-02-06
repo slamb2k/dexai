@@ -17,6 +17,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
+# Load .env file before anything else
+from dotenv import load_dotenv
+load_dotenv()
+
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -72,10 +76,91 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
+    # Initialize channel router and adapters
+    adapters_started = []
+    try:
+        from tools.channels.router import get_router
+
+        router = get_router()
+        logger.info("Channel router initialized")
+
+        # Register SDK message handler for processing messages with Claude
+        try:
+            from tools.channels.sdk_handler import sdk_handler
+            router.add_message_handler(sdk_handler)
+            logger.info("SDK message handler registered")
+        except ImportError as e:
+            logger.warning(f"SDK handler not available: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to register SDK handler: {e}")
+
+        # Try to start configured channel adapters
+        import os
+
+        # Read from environment or .env file
+        def get_env_var(name: str) -> str:
+            value = os.environ.get(name, "")
+            if not value:
+                env_file = PROJECT_ROOT / ".env"
+                if env_file.exists():
+                    with open(env_file) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith("#") and "=" in line:
+                                key, _, val = line.partition("=")
+                                if key.strip() == name:
+                                    return val.strip()
+            return value
+
+        # Register Telegram adapter if configured
+        telegram_token = get_env_var("TELEGRAM_BOT_TOKEN")
+        if telegram_token:
+            try:
+                from tools.channels.telegram_adapter import TelegramAdapter
+
+                telegram_adapter = TelegramAdapter(telegram_token)
+                router.register_adapter(telegram_adapter)
+                await telegram_adapter.connect()
+                logger.info("Telegram adapter registered and connected")
+                adapters_started.append(("telegram", telegram_adapter))
+            except Exception as e:
+                logger.warning(f"Failed to register Telegram adapter: {e}")
+
+        # Register Discord adapter if configured
+        discord_token = get_env_var("DISCORD_BOT_TOKEN")
+        if discord_token:
+            try:
+                from tools.channels.discord_adapter import DiscordAdapter
+
+                discord_adapter = DiscordAdapter(discord_token)
+                router.register_adapter(discord_adapter)
+                await discord_adapter.connect()
+                logger.info("Discord adapter registered and connected")
+                adapters_started.append(("discord", discord_adapter))
+            except Exception as e:
+                logger.warning(f"Failed to register Discord adapter: {e}")
+
+        # Store adapters in app state for access in routes
+        app.state.channel_router = router
+        app.state.adapters = {name: adapter for name, adapter in adapters_started}
+
+    except ImportError as e:
+        logger.warning(f"Channel router not available: {e}")
+    except Exception as e:
+        logger.error(f"Failed to initialize channel router: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down DexAI Dashboard Backend...")
+
+    # Disconnect adapters
+    for name, adapter in adapters_started:
+        try:
+            await adapter.disconnect()
+            logger.info(f"{name} adapter disconnected")
+        except Exception as e:
+            logger.warning(f"Error disconnecting {name} adapter: {e}")
 
 
 # Create FastAPI application

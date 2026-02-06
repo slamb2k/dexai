@@ -22,6 +22,36 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def _read_env_file() -> dict[str, str]:
+    """Read the .env file and return key-value pairs."""
+    env_file = PROJECT_ROOT / ".env"
+    env_vars: dict[str, str] = {}
+    if env_file.exists():
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    env_vars[key.strip()] = value.strip()
+    return env_vars
+
+
+def _get_env_var(name: str) -> str:
+    """
+    Get environment variable, checking both os.environ and .env file.
+
+    Priority: os.environ > .env file
+    """
+    # First check process environment
+    value = os.environ.get(name, "")
+    if value:
+        return value
+
+    # Fall back to .env file
+    env_vars = _read_env_file()
+    return env_vars.get(name, "")
+
+
 router = APIRouter()
 
 
@@ -81,6 +111,8 @@ def check_service_config(service_name: str) -> str:
     """
     Check if a service has required configuration.
 
+    Checks both process environment variables and .env file.
+
     Returns: 'configured', 'unconfigured', or 'partial'
     """
     definition = SERVICE_DEFINITIONS.get(service_name)
@@ -93,7 +125,8 @@ def check_service_config(service_name: str) -> str:
 
     configured_count = 0
     for var in config_vars:
-        if os.getenv(var):
+        # Use _get_env_var which checks both os.environ and .env file
+        if _get_env_var(var):
             configured_count += 1
 
     if configured_count == 0:
