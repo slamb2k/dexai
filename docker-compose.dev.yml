@@ -1,0 +1,73 @@
+# =============================================================================
+# DexAI Development Override - Hot Reload with Agent SDK
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up backend
+#
+# Or use the dev script:
+#   ./scripts/dev.sh docker-dev
+#
+# This mounts your source code into the container and enables hot reload,
+# while still using the Docker environment where the Agent SDK works.
+# =============================================================================
+
+services:
+  backend:
+    # Override the command to enable hot reload
+    command: >
+      /app/.venv/bin/uvicorn
+      tools.dashboard.backend.main:app
+      --host 0.0.0.0
+      --port 8080
+      --reload
+      --reload-dir /app/tools
+      --reload-dir /app/args
+
+    environment:
+      - PYTHONPATH=/app
+      - DEXAI_ENV=development
+      # Watchfiles for better file watching in Docker
+      - WATCHFILES_FORCE_POLLING=true
+
+    volumes:
+      # Mount source code for hot reload (read-only except for data)
+      - ./tools:/app/tools:ro
+      - ./args:/app/args
+      - ./memory:/app/memory
+      - ./context:/app/context:ro
+      - ./goals:/app/goals:ro
+      - ./hardprompts:/app/hardprompts:ro
+      # Keep data persistent
+      - dexai-data:/app/data
+      # Mount .env for environment variables
+      - ./.env:/app/.env:ro
+
+    # Disable health check during development for faster startup
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # Development frontend with hot reload
+  frontend-dev:
+    build:
+      context: ./tools/dashboard/frontend
+      dockerfile: Dockerfile.dev
+    container_name: dexai-frontend-dev
+    ports:
+      - "${DEXAI_FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8080
+    volumes:
+      # Mount frontend source for hot reload
+      - ./tools/dashboard/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - dexai-network
