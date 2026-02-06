@@ -10,8 +10,14 @@
 # Core agent configuration for Claude SDK.
 
 agent:
-  # Model selection (claude-sonnet-4-20250514 recommended for balance)
+  # Model selection - fallback if routing is disabled
+  # When routing is enabled, model is selected based on task complexity
   model: "claude-sonnet-4-20250514"
+
+  # Enable intelligent model routing via args/routing.yaml
+  # Routes simple tasks to cheaper models, complex tasks to more capable ones
+  use_routing: true
+  routing_config: "args/routing.yaml"
 
   # Working directory for file operations
   working_directory: null  # null = PROJECT_ROOT

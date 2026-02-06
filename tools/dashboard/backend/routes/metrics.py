@@ -4,13 +4,21 @@ Metrics Route - Usage Statistics and Cost Tracking
 Provides endpoints for metrics and analytics:
 - GET summary stats (quick stats for dashboard cards)
 - GET time series data for charts
+- GET routing stats (model routing analytics)
 """
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
-from tools.dashboard.backend.database import aggregate_metrics, get_quick_stats
+from tools.dashboard.backend.database import (
+    aggregate_metrics,
+    get_quick_stats,
+    get_routing_stats,
+    get_routing_decisions,
+)
 from tools.dashboard.backend.models import (
     MetricsSummary,
     QuickStats,
@@ -18,6 +26,18 @@ from tools.dashboard.backend.models import (
     TimeSeriesPoint,
     TimeSeriesResponse,
 )
+
+
+# Routing stats response model
+class RoutingStatsResponse(BaseModel):
+    """Response model for routing statistics."""
+    total_queries: int
+    complexity_distribution: dict[str, int]
+    model_distribution: dict[str, int]
+    exacto_percentage: float
+    estimated_savings_usd: float
+    total_cost_usd: float
+    period_days: int
 
 
 router = APIRouter()
@@ -211,3 +231,99 @@ async def record_metric(metric_name: str, value: float, labels: str | None = Non
         pass
 
     return {"success": True, "metric_id": metric_id, "message": "Metric recorded"}
+
+
+@router.get("/system")
+async def get_system_metrics():
+    """
+    Get current system resource metrics.
+
+    Returns CPU, memory, and disk usage percentages.
+    Useful for monitoring system health.
+    """
+    system_metrics = {
+        "cpu_percent": 0.0,
+        "memory_percent": 0.0,
+        "memory_used_mb": 0,
+        "memory_total_mb": 0,
+        "disk_percent": 0.0,
+        "disk_used_gb": 0.0,
+        "disk_total_gb": 0.0,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    try:
+        import psutil
+
+        # CPU usage (non-blocking, uses cached value)
+        system_metrics["cpu_percent"] = psutil.cpu_percent(interval=None)
+
+        # Memory usage
+        memory = psutil.virtual_memory()
+        system_metrics["memory_percent"] = memory.percent
+        system_metrics["memory_used_mb"] = round(memory.used / (1024 * 1024), 1)
+        system_metrics["memory_total_mb"] = round(memory.total / (1024 * 1024), 1)
+
+        # Disk usage
+        disk = psutil.disk_usage("/")
+        system_metrics["disk_percent"] = disk.percent
+        system_metrics["disk_used_gb"] = round(disk.used / (1024 * 1024 * 1024), 2)
+        system_metrics["disk_total_gb"] = round(disk.total / (1024 * 1024 * 1024), 2)
+
+    except ImportError:
+        # psutil not available
+        system_metrics["error"] = "psutil not installed"
+    except Exception as e:
+        system_metrics["error"] = str(e)
+
+    return system_metrics
+
+
+@router.get("/routing", response_model=RoutingStatsResponse)
+async def get_routing_metrics(
+    days: int = Query(7, description="Number of days to include in stats", ge=1, le=90),
+):
+    """
+    Get model routing statistics.
+
+    Returns complexity distribution, model distribution, Exacto usage,
+    and estimated cost savings from intelligent routing.
+    """
+    stats = get_routing_stats(days=days)
+
+    return RoutingStatsResponse(
+        total_queries=stats["total_queries"],
+        complexity_distribution=stats["complexity"],
+        model_distribution=stats["models"],
+        exacto_percentage=stats["exacto_pct"],
+        estimated_savings_usd=stats["estimated_savings_usd"],
+        total_cost_usd=stats["total_cost_usd"],
+        period_days=stats["period_days"],
+    )
+
+
+@router.get("/routing/decisions")
+async def get_routing_decision_history(
+    user_id: str | None = Query(None, description="Filter by user ID"),
+    complexity: str | None = Query(None, description="Filter by complexity level"),
+    limit: int = Query(100, description="Maximum results", ge=1, le=1000),
+    offset: int = Query(0, description="Pagination offset", ge=0),
+):
+    """
+    Get recent routing decisions with optional filters.
+
+    Returns a list of routing decisions for debugging and analysis.
+    """
+    decisions = get_routing_decisions(
+        user_id=user_id,
+        complexity=complexity,
+        limit=limit,
+        offset=offset,
+    )
+
+    return {
+        "decisions": decisions,
+        "count": len(decisions),
+        "limit": limit,
+        "offset": offset,
+    }

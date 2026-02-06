@@ -2,7 +2,7 @@
 DexAI SDK Client
 
 Wraps the Claude Agent SDK with DexAI-specific defaults, ADHD-aware system prompts,
-and integration with the permission system.
+intelligent model routing, and integration with the permission system.
 
 Usage:
     from tools.agent.sdk_client import DexAIClient
@@ -16,16 +16,29 @@ Usage:
         await client.query("Help me with taxes")
         async for message in client.receive_response():
             print(message)
+
+    # With explicit complexity hint:
+    from tools.agent.model_router import TaskComplexity
+    async with DexAIClient(user_id="alice", explicit_complexity=TaskComplexity.TRIVIAL) as client:
+        response = await client.query("hi")  # Routes to cheaper model
 """
 
+from __future__ import annotations
+
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, TYPE_CHECKING
 
 import yaml
 
 from tools.agent import PROJECT_ROOT, CONFIG_PATH
+
+if TYPE_CHECKING:
+    from tools.agent.model_router import TaskComplexity
+
+logger = logging.getLogger(__name__)
 
 
 # Default configuration if file doesn't exist
@@ -157,6 +170,7 @@ class DexAIClient:
     - ADHD-aware system prompts
     - DexAI permission integration
     - User-specific context loading
+    - Intelligent model routing (complexity-based)
     - Cost tracking integration
     """
 
@@ -164,7 +178,8 @@ class DexAIClient:
         self,
         user_id: str,
         working_dir: str | None = None,
-        config: dict | None = None
+        config: dict | None = None,
+        explicit_complexity: "TaskComplexity | None" = None,
     ):
         """
         Initialize DexAI client.
@@ -173,15 +188,20 @@ class DexAIClient:
             user_id: User identifier for permissions and context
             working_dir: Working directory for file operations (default: PROJECT_ROOT)
             config: Optional config override (default: load from args/agent.yaml)
+            explicit_complexity: Optional explicit complexity hint for routing
         """
         self.user_id = user_id
         self.config = config or load_config()
         self.working_dir = working_dir or str(
             self.config.get("agent", {}).get("working_directory") or PROJECT_ROOT
         )
+        self.explicit_complexity = explicit_complexity
         self._client = None
         self._session_id: str | None = None
         self._total_cost: float = 0.0
+        self._router = None
+        self._pending_prompt: str | None = None
+        self._last_routing_decision = None
 
     async def __aenter__(self) -> "DexAIClient":
         """Async context manager entry."""
@@ -192,8 +212,33 @@ class DexAIClient:
         """Async context manager exit."""
         await self._cleanup()
 
+    def _init_router(self):
+        """Initialize the model router if routing is enabled."""
+        agent_config = self.config.get("agent", {})
+
+        # Check if routing is enabled
+        if not agent_config.get("use_routing", True):
+            return None
+
+        try:
+            from tools.agent.model_router import ModelRouter, ROUTING_CONFIG_PATH
+
+            if ROUTING_CONFIG_PATH.exists():
+                router = ModelRouter.from_config(ROUTING_CONFIG_PATH)
+                if router.enabled and router.openrouter_api_key:
+                    logger.info(f"Model router initialized (profile={router.profile.value})")
+                    return router
+                elif not router.openrouter_api_key:
+                    logger.warning("OPENROUTER_API_KEY not set, routing disabled")
+            else:
+                logger.debug("Routing config not found, using default model")
+        except Exception as e:
+            logger.warning(f"Failed to initialize router: {e}")
+
+        return None
+
     async def _init_client(self) -> None:
-        """Initialize the SDK client."""
+        """Initialize the SDK client with intelligent model routing."""
         try:
             from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
         except ImportError:
@@ -212,20 +257,78 @@ class DexAIClient:
         allowed_tools = tools_config.get("allowed_builtin", []).copy()
         allowed_tools.append("mcp__dexai__*")  # Allow all DexAI tools
 
+        # Initialize router
+        self._router = self._init_router()
+
+        # Determine model and env vars via routing
+        model = agent_config.get("model", "claude-sonnet-4-20250514")
+        env = {}
+
+        if self._router and self._pending_prompt:
+            from tools.agent.model_router import TaskComplexity
+
+            # Route the request
+            decision = self._router.route(
+                self._pending_prompt,
+                explicit_complexity=self.explicit_complexity,
+                tool_count=len(allowed_tools),
+            )
+
+            # Build options dict
+            routing_options = self._router.build_options_dict(decision)
+
+            model = routing_options["model"]
+            env = routing_options["env"]
+            self._last_routing_decision = decision
+
+            logger.info(f"Routed to {model}: {routing_options['reasoning']}")
+
+            # Record routing to dashboard
+            self._record_routing_to_dashboard(decision)
+        elif self._router:
+            # No pending prompt yet, use moderate complexity as default
+            from tools.agent.model_router import TaskComplexity
+
+            decision = self._router.route(
+                "",
+                explicit_complexity=self.explicit_complexity or TaskComplexity.MODERATE,
+                tool_count=len(allowed_tools),
+            )
+            routing_options = self._router.build_options_dict(decision)
+            model = routing_options["model"]
+            env = routing_options["env"]
+            self._last_routing_decision = decision
+
         # Build options
         options = ClaudeAgentOptions(
-            model=agent_config.get("model", "claude-sonnet-4-20250514"),
+            model=model,
             allowed_tools=allowed_tools,
             mcp_servers={"dexai": dexai_server},  # Register DexAI tools
             cwd=self.working_dir,
             permission_mode=agent_config.get("permission_mode", "default"),
             system_prompt=build_system_prompt(self.user_id, self.config),
             can_use_tool=create_permission_callback(self.user_id, self.config),
-            max_tokens=agent_config.get("max_tokens", 4096),
+            env=env if env else None,
         )
 
         self._client = ClaudeSDKClient(options=options)
         await self._client.__aenter__()
+
+    def _record_routing_to_dashboard(self, decision) -> None:
+        """Record routing decision to dashboard for analytics."""
+        try:
+            from tools.dashboard.backend.database import record_routing_decision
+            record_routing_decision(
+                user_id=self.user_id,
+                complexity=decision.complexity.value,
+                model=decision.primary_model.routed_id,
+                exacto=decision.primary_model.use_exacto,
+                reasoning=decision.reasoning,
+            )
+        except ImportError:
+            pass  # Dashboard not available
+        except Exception as e:
+            logger.debug(f"Failed to record routing decision: {e}")
 
     async def _cleanup(self) -> None:
         """Clean up the SDK client."""
@@ -250,6 +353,9 @@ class DexAIClient:
             from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
         except ImportError:
             raise ImportError("claude-agent-sdk required")
+
+        # Store prompt for potential re-routing in future queries
+        self._pending_prompt = message
 
         await self._client.query(message)
 
@@ -285,11 +391,23 @@ class DexAIClient:
         if len(text) > max_length * 2:  # Only truncate if way over
             text = text[:max_length * 2] + "..."
 
+        # Extract routing metadata if available
+        model = None
+        complexity = None
+        routing_reasoning = None
+        if self._last_routing_decision:
+            model = self._last_routing_decision.primary_model.routed_id
+            complexity = self._last_routing_decision.complexity.value
+            routing_reasoning = self._last_routing_decision.reasoning
+
         return QueryResult(
             text=text,
             tool_uses=tool_uses,
             cost_usd=total_cost,
             session_total_cost_usd=self._total_cost,
+            model=model,
+            complexity=complexity,
+            routing_reasoning=routing_reasoning,
         )
 
     async def receive_response(self) -> AsyncIterator[Any]:
@@ -333,11 +451,17 @@ class QueryResult:
         tool_uses: list[dict],
         cost_usd: float,
         session_total_cost_usd: float,
+        model: str | None = None,
+        complexity: str | None = None,
+        routing_reasoning: str | None = None,
     ):
         self.text = text
         self.tool_uses = tool_uses
         self.cost_usd = cost_usd
         self.session_total_cost_usd = session_total_cost_usd
+        self.model = model
+        self.complexity = complexity
+        self.routing_reasoning = routing_reasoning
 
     def __str__(self) -> str:
         return self.text

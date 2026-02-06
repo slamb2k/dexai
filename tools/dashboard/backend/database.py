@@ -75,6 +75,9 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dashboard_preferences (
             user_id TEXT PRIMARY KEY,
+            display_name TEXT DEFAULT 'User',
+            timezone TEXT DEFAULT 'UTC',
+            language TEXT DEFAULT 'en',
             theme TEXT DEFAULT 'dark',
             sidebar_collapsed INTEGER DEFAULT 0,
             default_page TEXT DEFAULT 'home',
@@ -84,7 +87,60 @@ def init_db():
         )
     """)
 
+    # Audit log table for security events
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            event_type TEXT NOT NULL,
+            severity TEXT DEFAULT 'info',
+            actor TEXT,
+            target TEXT,
+            details TEXT,
+            ip_address TEXT
+        )
+    """)
+
+    # Migrate existing tables - add new columns if they don't exist
+    for col, default in [
+        ("display_name", "'User'"),
+        ("timezone", "'UTC'"),
+        ("language", "'en'"),
+    ]:
+        try:
+            cursor.execute(
+                f"ALTER TABLE dashboard_preferences ADD COLUMN {col} TEXT DEFAULT {default}"
+            )
+        except Exception:
+            pass  # Column already exists
+
+    # Routing decisions table for model routing analytics
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS routing_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            user_id TEXT,
+            complexity TEXT NOT NULL,
+            model TEXT NOT NULL,
+            exacto INTEGER DEFAULT 0,
+            reasoning TEXT,
+            cost_usd REAL
+        )
+    """)
+
     # Create indexes
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_routing_decisions_timestamp
+        ON routing_decisions(timestamp DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_routing_decisions_complexity
+        ON routing_decisions(complexity)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_routing_decisions_model
+        ON routing_decisions(model)
+    """)
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_dashboard_events_timestamp
         ON dashboard_events(timestamp DESC)
@@ -100,6 +156,18 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_dashboard_metrics_name_time
         ON dashboard_metrics(metric_name, timestamp DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
+        ON audit_log(timestamp DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_audit_log_event_type
+        ON audit_log(event_type)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_audit_log_severity
+        ON audit_log(severity)
     """)
 
     # Initialize dex_state with default if not exists
@@ -536,6 +604,9 @@ def get_preferences(user_id: str) -> dict:
     # Return defaults
     return {
         "user_id": user_id,
+        "display_name": "User",
+        "timezone": "UTC",
+        "language": "en",
         "theme": "dark",
         "sidebar_collapsed": False,
         "default_page": "home",
@@ -573,10 +644,13 @@ def set_preferences(user_id: str, preferences: dict) -> dict:
     cursor.execute(
         """
         INSERT INTO dashboard_preferences
-        (user_id, theme, sidebar_collapsed, default_page, activity_filters,
-         metrics_timeframe, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (user_id, display_name, timezone, language, theme, sidebar_collapsed,
+         default_page, activity_filters, metrics_timeframe, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
+            display_name = excluded.display_name,
+            timezone = excluded.timezone,
+            language = excluded.language,
             theme = excluded.theme,
             sidebar_collapsed = excluded.sidebar_collapsed,
             default_page = excluded.default_page,
@@ -586,6 +660,9 @@ def set_preferences(user_id: str, preferences: dict) -> dict:
     """,
         (
             user_id,
+            updated.get("display_name", "User"),
+            updated.get("timezone", "UTC"),
+            updated.get("language", "en"),
             updated.get("theme", "dark"),
             1 if updated.get("sidebar_collapsed") else 0,
             updated.get("default_page", "home"),
@@ -664,6 +741,17 @@ def get_quick_stats() -> dict:
     )
     active_channels = cursor.fetchone()["count"]
 
+    # Average response time from metrics
+    cursor.execute(
+        """
+        SELECT AVG(metric_value) as avg_time FROM dashboard_metrics
+        WHERE metric_name = 'response_time_ms' AND timestamp >= ?
+    """,
+        (today_start.isoformat(),),
+    )
+    row = cursor.fetchone()
+    avg_response_time = row["avg_time"] if row["avg_time"] else 0.0
+
     conn.close()
 
     # Calculate error rate
@@ -675,6 +763,434 @@ def get_quick_stats() -> dict:
         "messages_today": messages_today,
         "cost_today_usd": round(cost_today, 4),
         "active_channels": active_channels,
-        "avg_response_time_ms": 0.0,  # Would need timing data
+        "avg_response_time_ms": round(avg_response_time, 2),
         "error_rate_percent": round(error_rate, 2),
     }
+
+
+# =============================================================================
+# Audit Log Operations
+# =============================================================================
+
+
+def log_audit(
+    event_type: str,
+    severity: str = "info",
+    actor: str | None = None,
+    target: str | None = None,
+    details: dict | None = None,
+    ip_address: str | None = None,
+) -> int:
+    """
+    Log a security audit event.
+
+    Args:
+        event_type: Type of event (e.g., 'auth.login', 'permission.denied', 'config.changed')
+        severity: Severity level ('info', 'warning', 'error', 'critical')
+        actor: User or system that triggered the event
+        target: Resource affected
+        details: Additional event details as dict
+        ip_address: Source IP address if available
+
+    Returns:
+        Audit log entry ID
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    details_json = json.dumps(details) if details else None
+
+    cursor.execute(
+        """
+        INSERT INTO audit_log
+        (timestamp, event_type, severity, actor, target, details, ip_address)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """,
+        (datetime.now().isoformat(), event_type, severity, actor, target, details_json, ip_address),
+    )
+
+    entry_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return entry_id
+
+
+def get_audit_events(
+    event_type: str | None = None,
+    severity: str | None = None,
+    actor: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[dict]:
+    """
+    Get audit log events with optional filters.
+
+    Returns list of audit event dictionaries.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM audit_log WHERE 1=1"
+    params = []
+
+    if event_type:
+        query += " AND event_type LIKE ?"
+        params.append(f"{event_type}%")
+
+    if severity:
+        query += " AND severity = ?"
+        params.append(severity)
+
+    if actor:
+        query += " AND actor = ?"
+        params.append(actor)
+
+    if start_date:
+        query += " AND timestamp >= ?"
+        params.append(start_date.isoformat())
+
+    if end_date:
+        query += " AND timestamp <= ?"
+        params.append(end_date.isoformat())
+
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    events = []
+    for row in rows:
+        event = dict(row)
+        if event.get("details"):
+            try:
+                event["details"] = json.loads(event["details"])
+            except json.JSONDecodeError:
+                pass
+        events.append(event)
+
+    return events
+
+
+def count_audit_events(
+    event_type: str | None = None,
+    severity: str | None = None,
+    actor: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> int:
+    """Count audit events matching filters."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    query = "SELECT COUNT(*) as count FROM audit_log WHERE 1=1"
+    params = []
+
+    if event_type:
+        query += " AND event_type LIKE ?"
+        params.append(f"{event_type}%")
+
+    if severity:
+        query += " AND severity = ?"
+        params.append(severity)
+
+    if actor:
+        query += " AND actor = ?"
+        params.append(actor)
+
+    if start_date:
+        query += " AND timestamp >= ?"
+        params.append(start_date.isoformat())
+
+    if end_date:
+        query += " AND timestamp <= ?"
+        params.append(end_date.isoformat())
+
+    cursor.execute(query, params)
+    count = cursor.fetchone()["count"]
+    conn.close()
+
+    return count
+
+
+# =============================================================================
+# Task Operations (for channel-spawned tasks)
+# =============================================================================
+
+
+def create_task(
+    source: str,
+    request: str,
+    status: str = "pending",
+) -> str:
+    """
+    Create a new task and return its ID.
+
+    Args:
+        source: Task source (e.g., 'telegram:user123')
+        request: Task request/description
+        status: Initial status ('pending', 'running', 'completed', 'failed')
+
+    Returns:
+        Task ID as string
+    """
+    import uuid
+
+    task_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO dashboard_events
+        (event_type, timestamp, channel, user_id, summary, details, severity)
+        VALUES ('task', ?, ?, ?, ?, ?, 'info')
+    """,
+        (
+            datetime.now().isoformat(),
+            source.split(":")[0] if ":" in source else source,
+            source.split(":")[1] if ":" in source else None,
+            f"Task created: {request[:50]}...",
+            json.dumps({"task_id": task_id, "request": request, "status": status}),
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return task_id
+
+
+def update_task(
+    task_id: str,
+    status: str | None = None,
+    summary: str | None = None,
+) -> bool:
+    """
+    Update task status and/or summary.
+
+    Args:
+        task_id: Task identifier
+        status: New status ('pending', 'running', 'completed', 'failed')
+        summary: Result summary
+
+    Returns:
+        True if updated, False if not found
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Log task update as event
+    cursor.execute(
+        """
+        INSERT INTO dashboard_events
+        (event_type, timestamp, summary, details, severity)
+        VALUES ('task', ?, ?, ?, 'info')
+    """,
+        (
+            datetime.now().isoformat(),
+            f"Task {status or 'updated'}: {summary[:50] if summary else task_id}",
+            json.dumps({"task_id": task_id, "status": status, "summary": summary}),
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return True
+
+
+# =============================================================================
+# Routing Decision Operations
+# =============================================================================
+
+
+def record_routing_decision(
+    user_id: str,
+    complexity: str,
+    model: str,
+    exacto: bool,
+    reasoning: str,
+    cost_usd: float | None = None,
+) -> int:
+    """
+    Record a model routing decision for analytics.
+
+    Args:
+        user_id: User who triggered the request
+        complexity: Classified complexity level (trivial, low, moderate, high, critical)
+        model: Model ID that was selected
+        exacto: Whether Exacto mode was used
+        reasoning: Human-readable routing explanation
+        cost_usd: Optional cost of the request
+
+    Returns:
+        Routing decision ID
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO routing_decisions
+        (timestamp, user_id, complexity, model, exacto, reasoning, cost_usd)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """,
+        (
+            datetime.now().isoformat(),
+            user_id,
+            complexity,
+            model,
+            1 if exacto else 0,
+            reasoning,
+            cost_usd,
+        ),
+    )
+
+    decision_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return decision_id
+
+
+def get_routing_stats(days: int = 7) -> dict:
+    """
+    Get routing statistics for the dashboard.
+
+    Args:
+        days: Number of days to include in stats
+
+    Returns:
+        Dict with complexity distribution, model distribution, and cost savings estimate
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    start_date = (datetime.now() - __import__("datetime").timedelta(days=days)).isoformat()
+
+    # Total query count
+    cursor.execute(
+        "SELECT COUNT(*) as count FROM routing_decisions WHERE timestamp >= ?",
+        (start_date,),
+    )
+    total_queries = cursor.fetchone()["count"]
+
+    # Complexity distribution
+    cursor.execute(
+        """
+        SELECT complexity, COUNT(*) as count
+        FROM routing_decisions
+        WHERE timestamp >= ?
+        GROUP BY complexity
+        ORDER BY count DESC
+    """,
+        (start_date,),
+    )
+    complexity_distribution = {row["complexity"]: row["count"] for row in cursor.fetchall()}
+
+    # Model distribution
+    cursor.execute(
+        """
+        SELECT model, COUNT(*) as count
+        FROM routing_decisions
+        WHERE timestamp >= ?
+        GROUP BY model
+        ORDER BY count DESC
+    """,
+        (start_date,),
+    )
+    model_distribution = {row["model"]: row["count"] for row in cursor.fetchall()}
+
+    # Exacto usage
+    cursor.execute(
+        """
+        SELECT COUNT(*) as count FROM routing_decisions
+        WHERE timestamp >= ? AND exacto = 1
+    """,
+        (start_date,),
+    )
+    exacto_count = cursor.fetchone()["count"]
+
+    # Calculate estimated savings (simplified model)
+    # Assumes: trivial/low could have used Haiku ($0.80/1M input)
+    #          but would have used Sonnet ($3/1M input) without routing
+    # Savings = (queries_downgraded) * (sonnet_cost - haiku_cost) * avg_tokens
+    trivial_low_count = complexity_distribution.get("trivial", 0) + complexity_distribution.get("low", 0)
+    # Rough estimate: 1000 input tokens per query average
+    avg_input_tokens = 1000
+    sonnet_cost_per_token = 3.0 / 1_000_000
+    haiku_cost_per_token = 0.80 / 1_000_000
+    savings_per_query = (sonnet_cost_per_token - haiku_cost_per_token) * avg_input_tokens
+    estimated_savings_usd = round(trivial_low_count * savings_per_query, 4)
+
+    # Total cost if tracked
+    cursor.execute(
+        """
+        SELECT SUM(cost_usd) as total FROM routing_decisions
+        WHERE timestamp >= ? AND cost_usd IS NOT NULL
+    """,
+        (start_date,),
+    )
+    row = cursor.fetchone()
+    total_cost_usd = row["total"] if row["total"] else 0.0
+
+    conn.close()
+
+    return {
+        "total_queries": total_queries,
+        "complexity": complexity_distribution,
+        "models": model_distribution,
+        "exacto_count": exacto_count,
+        "exacto_pct": round((exacto_count / total_queries * 100) if total_queries > 0 else 0, 1),
+        "estimated_savings_usd": estimated_savings_usd,
+        "total_cost_usd": round(total_cost_usd, 4),
+        "period_days": days,
+    }
+
+
+def get_routing_decisions(
+    user_id: str | None = None,
+    complexity: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """
+    Get recent routing decisions with optional filters.
+
+    Args:
+        user_id: Filter by user
+        complexity: Filter by complexity level
+        limit: Maximum results
+        offset: Pagination offset
+
+    Returns:
+        List of routing decision dicts
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM routing_decisions WHERE 1=1"
+    params = []
+
+    if user_id:
+        query += " AND user_id = ?"
+        params.append(user_id)
+
+    if complexity:
+        query += " AND complexity = ?"
+        params.append(complexity)
+
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
