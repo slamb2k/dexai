@@ -108,6 +108,23 @@ def log_session_event(action: str, user_id: str, status: str, session_id: str | 
     except Exception:
         pass
 
+    # Also log to dashboard audit for UI visibility
+    try:
+        from tools.dashboard.backend.database import log_audit
+
+        event_type = f"auth.{action}"
+        severity = "info" if status == "success" else "warning"
+
+        log_audit(
+            event_type=event_type,
+            severity=severity,
+            actor=user_id,
+            target=f"session:{session_id}" if session_id else None,
+            details={"status": status, "action": action},
+        )
+    except Exception:
+        pass
+
 
 def create_session(
     user_id: str,

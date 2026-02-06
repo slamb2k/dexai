@@ -279,6 +279,21 @@ def check_permission(
     except Exception:
         pass
 
+    # Log to dashboard audit if permission denied
+    if not has_permission:
+        try:
+            from tools.dashboard.backend.database import log_audit
+
+            log_audit(
+                event_type="permission.denied",
+                severity="warning",
+                actor=user_id,
+                target=permission,
+                details={"user_permissions": user_permissions},
+            )
+        except Exception:
+            pass
+
     return {
         "success": True,
         "allowed": has_permission,

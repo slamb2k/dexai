@@ -1,96 +1,86 @@
-# Smart Notifications Configuration
-# Protects ADHD users from unnecessary interruptions
-
 smart_notifications:
-  # Flow state protection - detect and protect hyperfocus
   flow_protection:
     enabled: true
-    detection_window_minutes: 15  # Time window for activity analysis
-    min_activity_for_flow: 3      # Min messages in window to consider flow
-    flow_score_threshold: 60      # 0-100, above this = in flow state
-    suppress_low_priority: true   # Always suppress low priority during flow
-    suppress_medium_during_deep_flow: true  # Suppress medium during deep flow
-    deep_flow_threshold: 80       # Score threshold for "deep" flow
-
-  # Transition time - ADHD-appropriate reminder buffers
+    detection_window_minutes: 15
+    min_activity_for_flow: 3
+    flow_score_threshold: 60
+    suppress_low_priority: true
+    suppress_medium_during_deep_flow: true
+    deep_flow_threshold: 80
   transition_time:
-    default_buffer_minutes: 25    # Standard meeting buffer (not 15!)
-    deep_work_buffer_minutes: 30  # Harder to disengage from hyperfocus
-    admin_buffer_minutes: 15      # Lower cognitive load, easier switch
-    social_buffer_minutes: 20     # Emotional preparation needed
-    appointment_buffer_minutes: 35  # Travel + uncertainty buffer
-    learn_from_patterns: true     # Adjust based on actual transitions
-    min_samples_for_learning: 5   # Require this many samples before adjusting
-
-  # Priority tiers - what can interrupt when
+    default_buffer_minutes: 25
+    deep_work_buffer_minutes: 30
+    admin_buffer_minutes: 15
+    social_buffer_minutes: 20
+    appointment_buffer_minutes: 35
+    learn_from_patterns: true
+    min_samples_for_learning: 5
   priority_tiers:
     low:
-      channels: ["inbox"]         # Silent, check when ready
+      channels:
+      - inbox
       suppress_during_flow: true
-      aggregate: true             # Batch together
+      aggregate: true
       aggregate_window_minutes: 30
-      description: "FYI items that can wait"
+      description: FYI items that can wait
     medium:
-      channels: ["gentle_nudge"]
+      channels:
+      - gentle_nudge
       suppress_during_deep_flow: true
       aggregate: false
-      description: "Important but not urgent"
+      description: Important but not urgent
     high:
-      channels: ["interrupt"]
+      channels:
+      - interrupt
       suppress_during_flow: false
-      use_gentle_during_focus: true  # Downgrade channel during manual focus
-      description: "Needs attention soon"
+      use_gentle_during_focus: true
+      description: Needs attention soon
     urgent:
-      channels: ["interrupt", "fallback_sms"]
+      channels:
+      - interrupt
+      - fallback_sms
       suppress_during_flow: false
       always_deliver: true
-      description: "Time-critical, always deliver"
-
-  # Active hours - respect sleep/offline time
+      description: Time-critical, always deliver
   active_hours:
     enabled: true
-    start: "09:00"
-    end: "22:00"
-    timezone: "local"
-    urgent_ignores_hours: true    # Urgent messages always come through
-    queue_outside_hours: true     # Queue non-urgent for morning delivery
-
-  # Batch delivery - reduce notification noise
+    start: 09:00
+    end: '22:00'
+    timezone: local
+    urgent_ignores_hours: true
+    queue_outside_hours: true
   batch_delivery:
     enabled: true
-    natural_break_detection: true  # Deliver when flow naturally ends
-    max_queue_time_minutes: 120    # Never queue longer than this
-    batch_summary_format: "digest" # "digest" = summary, "sequential" = one by one
-    min_batch_size: 2             # Don't batch single items
-
-  # Gentle nudge - non-intrusive notification style
+    natural_break_detection: true
+    max_queue_time_minutes: 120
+    batch_summary_format: digest
+    min_batch_size: 2
   gentle_nudge:
     enabled: true
-    sound: false                  # No audio alert
-    vibration: false              # No vibration
-    persistent: false             # Dismissable
-    visual_only: true             # Badge/indicator only
-
-# Channel mappings for priority tiers
+    sound: false
+    vibration: false
+    persistent: false
+    visual_only: true
+  enabled: true
 channels:
   inbox:
-    type: "silent"
+    type: silent
     badge: true
     sound: false
     popup: false
   gentle_nudge:
-    type: "ambient"
+    type: ambient
     badge: true
     sound: false
     popup: true
     auto_dismiss_seconds: 10
   interrupt:
-    type: "alert"
+    type: alert
     badge: true
     sound: true
     popup: true
     require_acknowledgement: false
   fallback_sms:
-    type: "sms"
+    type: sms
     only_if_offline: true
-    cooldown_minutes: 30          # Don't spam SMS
+    cooldown_minutes: 30

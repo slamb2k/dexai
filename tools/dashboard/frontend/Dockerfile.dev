@@ -1,0 +1,26 @@
+# =============================================================================
+# DexAI Frontend - Development Dockerfile
+# =============================================================================
+# Enables hot reload for Next.js development inside Docker
+# =============================================================================
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies first (cached layer)
+COPY package*.json ./
+RUN npm ci
+
+# Copy source (will be overridden by volume mount)
+COPY . .
+
+# Expose dev server port
+EXPOSE 3000
+
+# Set development environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Run Next.js dev server
+CMD ["npm", "run", "dev"]

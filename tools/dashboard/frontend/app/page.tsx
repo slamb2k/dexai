@@ -79,18 +79,51 @@ export default function HomePage() {
         }
 
         if (metricsRes.success && metricsRes.data) {
+          // Map backend field names (snake_case in quick_stats) to frontend (camelCase)
+          const apiMetrics = metricsRes.data as unknown as {
+            quick_stats?: {
+              tasks_today?: number;
+              messages_today?: number;
+              cost_today_usd?: number;
+            };
+            tasksToday?: number;
+            messagesToday?: number;
+            costToday?: number;
+          };
+          const quickStats = apiMetrics.quick_stats;
           updateMetrics({
-            tasksToday: metricsRes.data.tasksToday,
-            messagesToday: metricsRes.data.messagesToday,
-            costToday: metricsRes.data.costToday,
+            tasksToday: quickStats?.tasks_today ?? apiMetrics.tasksToday ?? 0,
+            messagesToday: quickStats?.messages_today ?? apiMetrics.messagesToday ?? 0,
+            costToday: quickStats?.cost_today_usd ?? apiMetrics.costToday ?? 0,
           });
         }
 
         if (activityRes.success && activityRes.data) {
-          const events = activityRes.data.events.map((e) => ({
-            ...e,
-            timestamp: new Date(e.timestamp),
-          }));
+          // Map backend field names to frontend ActivityItem interface
+          const events = activityRes.data.events.map((e) => {
+            const apiEvent = e as unknown as {
+              id: string | number;
+              event_type?: string;
+              type?: string;
+              timestamp: string;
+              summary: string;
+              channel?: string;
+              details?: string;
+              severity?: string;
+            };
+            // Capitalize channel for display
+            const channelDisplay = apiEvent.channel
+              ? apiEvent.channel.charAt(0).toUpperCase() + apiEvent.channel.slice(1)
+              : undefined;
+            return {
+              id: String(apiEvent.id),
+              type: (apiEvent.event_type || apiEvent.type || 'system') as ActivityItem['type'],
+              timestamp: new Date(apiEvent.timestamp),
+              summary: apiEvent.summary,
+              channel: channelDisplay,
+              details: apiEvent.details,
+            };
+          });
           setItems(events);
           setIsEmpty(events.length === 0);
         } else if (activityRes.error) {
@@ -134,17 +167,44 @@ export default function HomePage() {
     });
 
     const unsubActivity = socketClient.onActivityNew((event) => {
+      // Map backend field names to frontend ActivityItem interface
+      const wsEvent = event as unknown as {
+        id: string | number;
+        event_type?: string;
+        type?: string;
+        timestamp: string;
+        summary: string;
+        channel?: string;
+        details?: string;
+        severity?: string;
+      };
+      const channelDisplay = wsEvent.channel
+        ? wsEvent.channel.charAt(0).toUpperCase() + wsEvent.channel.slice(1)
+        : undefined;
       addItem({
-        ...event,
-        timestamp: new Date(event.timestamp),
+        id: String(wsEvent.id),
+        type: (wsEvent.event_type || wsEvent.type || 'system') as ActivityItem['type'],
+        timestamp: new Date(wsEvent.timestamp),
+        summary: wsEvent.summary,
+        channel: channelDisplay,
+        details: wsEvent.details,
       });
     });
 
     const unsubMetrics = socketClient.onMetricsUpdate((event) => {
+      // Map backend field names (snake_case) to frontend (camelCase)
+      const wsMetrics = event as unknown as {
+        tasks_today?: number;
+        messages_today?: number;
+        cost_today_usd?: number;
+        tasksToday?: number;
+        messagesToday?: number;
+        costToday?: number;
+      };
       updateMetrics({
-        tasksToday: event.tasksToday,
-        messagesToday: event.messagesToday,
-        costToday: event.costToday,
+        tasksToday: wsMetrics.tasks_today ?? wsMetrics.tasksToday ?? 0,
+        messagesToday: wsMetrics.messages_today ?? wsMetrics.messagesToday ?? 0,
+        costToday: wsMetrics.cost_today_usd ?? wsMetrics.costToday ?? 0,
       });
     });
 
@@ -157,19 +217,6 @@ export default function HomePage() {
       socketClient.disconnect();
     };
   }, [setAvatarState, setCurrentTask, addItem, setConnected, updateMetrics]);
-
-  // Demo: cycle through avatar states
-  useEffect(() => {
-    const states: AvatarState[] = ['idle', 'listening', 'thinking', 'working', 'success'];
-    let index = 0;
-
-    const interval = setInterval(() => {
-      index = (index + 1) % states.length;
-      setAvatarState(states[index]);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [setAvatarState]);
 
   const displayActivity = activityItems.length > 0 ? activityItems : (isDemo ? demoActivity : []);
 

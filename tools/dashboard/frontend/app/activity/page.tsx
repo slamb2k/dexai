@@ -123,10 +123,31 @@ export default function ActivityPage() {
         });
 
         if (res.success && res.data) {
-          const events = res.data.events.map((e) => ({
-            ...e,
-            timestamp: new Date(e.timestamp),
-          }));
+          // Map backend field names to frontend ActivityItem interface
+          const events = res.data.events.map((e) => {
+            const apiEvent = e as unknown as {
+              id: string | number;
+              event_type?: string;
+              type?: string;
+              timestamp: string;
+              summary: string;
+              channel?: string;
+              details?: string;
+              severity?: string;
+            };
+            // Capitalize channel for display
+            const channelDisplay = apiEvent.channel
+              ? apiEvent.channel.charAt(0).toUpperCase() + apiEvent.channel.slice(1)
+              : undefined;
+            return {
+              id: String(apiEvent.id),
+              type: (apiEvent.event_type || apiEvent.type || 'system') as ActivityItem['type'],
+              timestamp: new Date(apiEvent.timestamp),
+              summary: apiEvent.summary,
+              channel: channelDisplay,
+              details: apiEvent.details,
+            };
+          });
           setItems(events);
           setIsEmpty(events.length === 0);
         } else if (res.error) {
@@ -160,11 +181,30 @@ export default function ActivityPage() {
     });
 
     const unsubActivity = socketClient.onActivityNew((event) => {
+      // Map backend field names to frontend ActivityItem interface
+      const wsEvent = event as unknown as {
+        id: string | number;
+        event_type?: string;
+        type?: string;
+        timestamp: string;
+        summary: string;
+        channel?: string;
+        details?: string;
+        severity?: string;
+      };
+      const eventType = (wsEvent.event_type || wsEvent.type || 'system') as ActivityItem['type'];
       // Only add if matches current filter
-      if (typeFilter === 'all' || event.type === typeFilter) {
+      if (typeFilter === 'all' || eventType === typeFilter) {
+        const channelDisplay = wsEvent.channel
+          ? wsEvent.channel.charAt(0).toUpperCase() + wsEvent.channel.slice(1)
+          : undefined;
         addItem({
-          ...event,
-          timestamp: new Date(event.timestamp),
+          id: String(wsEvent.id),
+          type: eventType,
+          timestamp: new Date(wsEvent.timestamp),
+          summary: wsEvent.summary,
+          channel: channelDisplay,
+          details: wsEvent.details,
         });
       }
     });
