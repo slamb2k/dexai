@@ -21,6 +21,7 @@
 #   balanced:        Mix providers for cost-quality balance
 #   cost_optimised:  Minimize cost, use budget models where possible
 #   anthropic_only:  Only Anthropic models (safest starting point)
+#   multi_provider:  Best price/performance across all providers (Gemini, Kimi, GLM)
 #   auto_router:     Delegate all routing to OpenRouter's Auto Router
 
 routing:

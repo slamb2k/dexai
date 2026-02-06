@@ -135,6 +135,22 @@ MODELS: dict[str, ModelSpec] = {
         cost_per_1m_input=1.25,
         cost_per_1m_output=10.0,
     ),
+    "kimi-k2": ModelSpec(
+        id="moonshotai/kimi-k2",
+        tier=ModelTier.STANDARD,
+        display_name="Kimi K2",
+        max_context_tokens=128_000,
+        cost_per_1m_input=0.60,
+        cost_per_1m_output=2.40,
+    ),
+    "glm-4-plus": ModelSpec(
+        id="zhipu/glm-4-plus",
+        tier=ModelTier.STANDARD,
+        display_name="GLM-4 Plus",
+        max_context_tokens=128_000,
+        cost_per_1m_input=0.70,
+        cost_per_1m_output=2.80,
+    ),
 
     # --- Efficient ---
     "claude-haiku-4.5": ModelSpec(
@@ -152,6 +168,14 @@ MODELS: dict[str, ModelSpec] = {
         cost_per_1m_input=0.15,
         cost_per_1m_output=0.60,
     ),
+    "gemini-2.5-flash": ModelSpec(
+        id="google/gemini-2.5-flash-preview",
+        tier=ModelTier.EFFICIENT,
+        display_name="Gemini 2.5 Flash",
+        max_context_tokens=1_000_000,
+        cost_per_1m_input=0.075,
+        cost_per_1m_output=0.30,
+    ),
 
     # --- Budget ---
     "deepseek-v3": ModelSpec(
@@ -162,6 +186,15 @@ MODELS: dict[str, ModelSpec] = {
         max_context_tokens=128_000,
         cost_per_1m_input=0.28,
         cost_per_1m_output=0.42,
+    ),
+    "deepseek-r1": ModelSpec(
+        id="deepseek/deepseek-r1",
+        tier=ModelTier.BUDGET,
+        display_name="DeepSeek R1",
+        supports_tool_calling=True,
+        max_context_tokens=64_000,
+        cost_per_1m_input=0.55,
+        cost_per_1m_output=2.19,
     ),
 
     # --- OpenRouter Auto Router ---
@@ -348,6 +381,7 @@ class RoutingProfile(str, Enum):
     BALANCED = "balanced"
     COST_OPTIMISED = "cost_optimised"
     ANTHROPIC_ONLY = "anthropic_only"
+    MULTI_PROVIDER = "multi_provider"
     AUTO_ROUTER = "auto_router"
 
 
@@ -379,6 +413,14 @@ _ROUTING_TABLE: dict[RoutingProfile, dict[TaskComplexity, str]] = {
         TaskComplexity.MODERATE: "claude-sonnet-4.5",
         TaskComplexity.LOW:      "claude-haiku-4.5",
         TaskComplexity.TRIVIAL:  "claude-haiku-4.5",
+    },
+    # Multi-provider: Best price/performance across all providers
+    RoutingProfile.MULTI_PROVIDER: {
+        TaskComplexity.CRITICAL: "claude-sonnet-4.5-exacto",  # Best for critical
+        TaskComplexity.HIGH:     "gemini-2.5-pro",            # Great reasoning, huge context
+        TaskComplexity.MODERATE: "kimi-k2",                   # Good balance, competitive price
+        TaskComplexity.LOW:      "gemini-2.5-flash",          # Very cheap, still capable
+        TaskComplexity.TRIVIAL:  "gemini-2.5-flash",          # Extremely cheap
     },
     RoutingProfile.AUTO_ROUTER: {
         complexity: "auto" for complexity in TaskComplexity
