@@ -24,6 +24,8 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Prevent runaway Node heap usage during builds (helps avoid WSL/host OOM)
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # -----------------------------------------------------------------------------
@@ -40,6 +42,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Set environment variables
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
+    # Prevent runaway Node heap usage at runtime (helps avoid WSL/host OOM)
+    NODE_OPTIONS=--max-old-space-size=4096 \
     PORT=3000 \
     HOSTNAME="0.0.0.0"
 

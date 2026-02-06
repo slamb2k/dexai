@@ -50,8 +50,118 @@ You make smart decisions. Tools execute perfectly.
 | **Security infrastructure** | `tools/security/` | Vault, RBAC, audit, sanitizer, rate limiting |
 | **Office integration** | `tools/office/` + `args/office_integration.yaml` | OAuth, email, calendar, automation |
 | **Agent SDK config** | `args/agent.yaml` | Model, tools, ADHD settings |
+| **Model routing** | `args/routing.yaml` + `tools/agent/model_router/` | OpenRouter integration, complexity-based routing |
+| **Deployment** | `docker-compose.yml`, `Dockerfile`, `install.sh` | Docker, Caddy, Tailscale profiles |
+| **Environment vars** | `.env.example` | All configurable settings with documentation |
 
 **Use `/prime` to load key architectural context into the conversation.**
+
+---
+
+## **Development Environment**
+
+**Python Version:** 3.11+ (3.12 used in Docker)
+
+**Package Manager:** Always use `uv` (not pip/pip3)
+```bash
+# Create venv and install dependencies
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev,channels]"
+
+# Install specific extras
+uv pip install -e ".[telegram]"   # Just Telegram
+uv pip install -e ".[all]"        # Everything
+```
+
+**CLI Entry Point:**
+```bash
+dexai  # Runs tools.cli:main
+```
+
+**Key Dependencies:**
+- `anthropic` - Claude API client
+- `fastapi` + `uvicorn` - Dashboard backend
+- `textual` + `rich` - TUI setup wizard
+- `httpx` - HTTP client
+
+---
+
+## **Docker Deployment**
+
+**Quick Start:**
+```bash
+# Core services (backend + frontend)
+docker compose up -d
+
+# With Caddy reverse proxy (HTTPS)
+docker compose --profile proxy up -d
+
+# With Tailscale VPN
+docker compose --profile tailscale up -d
+```
+
+**Memory Limits:** (prevent OOM in WSL/constrained environments)
+- Backend: 4GB (`mem_limit: 4g`)
+- Frontend: 8GB (`mem_limit: 8g`) + `NODE_OPTIONS=--max-old-space-size=4096`
+
+**Required Environment Variables:** (in `.env`)
+```bash
+# Required
+DEXAI_MASTER_KEY=your-secure-password    # Vault encryption
+ANTHROPIC_API_KEY=sk-ant-...             # Claude API
+OPENAI_API_KEY=sk-...                    # Embeddings
+
+# Optional - channels
+TELEGRAM_BOT_TOKEN=...
+DISCORD_BOT_TOKEN=...
+SLACK_BOT_TOKEN=...
+
+# Optional - deployment
+DEXAI_DOMAIN=localhost                   # For Caddy
+TAILSCALE_AUTHKEY=tskey-auth-...         # For Tailscale
+OPENROUTER_API_KEY=...                   # For model routing
+```
+
+---
+
+## **Intelligent Model Routing**
+
+DexAI uses OpenRouter for multi-provider model routing with complexity-based selection.
+
+**Architecture:**
+```
+User Request → Local Router (complexity classification)
+             → ClaudeAgentOptions.env (model ID)
+             → Agent SDK → OpenRouter → Provider
+```
+
+**Configuration:** `args/routing.yaml`
+
+**Routing Profiles:**
+| Profile | Description |
+|---------|-------------|
+| `anthropic_only` | Only Anthropic models (default, safest) |
+| `quality_first` | Best model per complexity tier |
+| `balanced` | Mix providers for cost-quality balance |
+| `cost_optimised` | Minimize cost, use budget models |
+| `multi_provider` | Best price/performance across all providers |
+| `auto_router` | Delegate to OpenRouter's Auto Router |
+
+**Complexity Tiers:** (based on heuristic scoring)
+- `trivial` (0-1): Greetings, simple questions → Haiku
+- `low` (2-3): Basic requests → Haiku
+- `moderate` (4-6): Typical tasks → Sonnet
+- `high` (7-10): Complex multi-step → Sonnet + Exacto
+- `critical` (11+): Requires best model → Opus
+
+**Key Features:**
+- Up to 73% cost savings on simple tasks
+- Subagent downscaling for trivial parent tasks
+- Exacto for improved tool-calling accuracy
+- ADHD-aware routing (energy level, urgency)
+- Budget controls (per-session, per-day, per-user limits)
+
+**Documentation:** `tools/agent/model_router/ROUTING_ARCHITECTURE.md`
 
 ---
 
@@ -460,17 +570,6 @@ TaskList()
 5. Use `TaskGet` to read full description before starting
 6. Clean up stale tasks periodically
 
-**Environment Setup:**
-
-Set `CLAUDE_CODE_TASK_LIST_ID` to persist task list across sessions:
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-source ~/work/dexai/scripts/claude-tasks.sh
-
-# Then in any project:
-claude-tasks-init  # Sets task list ID for current directory
-```
-
 ---
 
 # **The Continuous Improvement Loop**
@@ -492,6 +591,8 @@ Every failure strengthens the system:
 * `goals/` — Process Layer (what to achieve)
 * `tools/` — Execution Layer (organized by workflow)
 * `tools/agent/` — Claude Agent SDK integration (ADHD-aware client, MCP tools)
+* `tools/agent/model_router/` — Intelligent model routing (OpenRouter, complexity classification)
+* `tools/dashboard/` — Web dashboard (backend: FastAPI, frontend: Next.js)
 * `args/` — Args Layer (behavior settings)
 * `context/` — Context Layer (domain knowledge)
 * `hardprompts/` — Hard Prompts Layer (instruction templates)
@@ -621,6 +722,7 @@ Telegram/Discord/Slack → Router (security pipeline) → SDK Handler → DexAIC
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | DexAIClient | `tools/agent/sdk_client.py` | SDK wrapper with ADHD-aware prompts |
+| ModelRouter | `tools/agent/model_router/model_router.py` | Complexity-based routing via OpenRouter |
 | Permission callback | `tools/agent/permissions.py` | Maps RBAC to SDK tool access |
 | SDK Handler | `tools/channels/sdk_handler.py` | Channel message handler |
 | Memory MCP Tools | `tools/agent/mcp/memory_tools.py` | Hybrid search, commitments, context |

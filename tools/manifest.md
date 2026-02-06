@@ -177,14 +177,6 @@ Master list of all available tools. Check here before creating new scripts.
 
 ---
 
-## Shell Scripts (`scripts/`)
-
-| Script | Description |
-|--------|-------------|
-| `claude-tasks.sh` | Shell helpers for Claude Code task system — aliases for init, status, clear |
-
----
-
 ## Testing Infrastructure (`tests/`)
 
 | File | Description |

@@ -214,6 +214,5 @@ TaskUpdate(taskId="5", addBlockedBy=["3", "4"])
 
 ## Related Files
 
-- `CLAUDE.md` — Section 9: Task System
+- `CLAUDE.md` — Section 10: Task System
 - `args/tasks.yaml` — Task configuration
-- `scripts/claude-tasks.sh` — Shell helpers

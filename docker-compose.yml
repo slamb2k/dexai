@@ -19,6 +19,7 @@ services:
       dockerfile: Dockerfile
     container_name: dexai-backend
     restart: unless-stopped
+    mem_limit: 4g
     ports:
       - "${DEXAI_BACKEND_PORT:-8080}:8080"
     environment:
@@ -57,15 +58,18 @@ services:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
     container_name: dexai-frontend
     restart: unless-stopped
+    mem_limit: 8g
     ports:
       - "${DEXAI_FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=4096
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      # Use 127.0.0.1 instead of localhost to avoid IPv6 ::1 resolution issues
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
