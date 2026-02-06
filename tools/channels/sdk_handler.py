@@ -10,17 +10,22 @@ Features:
 - Stores messages in unified inbox
 - Handles streaming responses
 - Properly truncates for channel limits
+- Intelligent model routing with complexity hints
 
 Usage:
     from tools.channels.sdk_handler import sdk_handler
     router.add_message_handler(sdk_handler)
 """
 
+from __future__ import annotations
+
 import asyncio
+import logging
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 # Ensure project root is in path
 import sys
@@ -28,6 +33,11 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.channels.models import UnifiedMessage
+
+if TYPE_CHECKING:
+    from tools.agent.model_router import TaskComplexity
+
+logger = logging.getLogger(__name__)
 
 
 def _log_to_dashboard(
@@ -98,7 +108,11 @@ class SDKSession:
 
     async def query(self, message: str, channel: str = "cli") -> dict[str, Any]:
         """
-        Send a query to the SDK agent.
+        Send a query to Claude, trying Agent SDK first then falling back to direct API.
+
+        The Agent SDK provides full agentic capabilities (tools, file access, etc.)
+        but requires a native Linux environment. If it fails (e.g., Bun crash on WSL2),
+        we fall back to the direct Anthropic API for basic chat.
 
         Args:
             message: User's message content
@@ -107,22 +121,121 @@ class SDKSession:
         Returns:
             Dict with response content and metadata
         """
+        self._last_activity = datetime.now()
+        self._message_count += 1
+
+        # Try Agent SDK first (full capabilities, works in Docker/native Linux)
+        result = await self._query_with_agent_sdk(message, channel)
+        if result.get("success"):
+            return result
+
+        # Check if it was a Bun/SDK crash (not just a normal error)
+        error = result.get("error", "")
+        is_sdk_crash = any(x in error.lower() for x in [
+            "segmentation fault", "process exited", "bun has crashed",
+            "subprocess", "exited with code"
+        ])
+
+        if is_sdk_crash:
+            # Fall back to direct API (basic chat, works everywhere)
+            _log_to_dashboard(
+                event_type="system",
+                summary="Agent SDK crashed, falling back to direct API",
+                channel=channel,
+                user_id=self.user_id,
+                details={"original_error": error[:200]},
+                severity="warning",
+            )
+            return await self._query_with_direct_api(message, channel)
+
+        # Return the original error if it wasn't an SDK crash
+        return result
+
+    def _infer_complexity(self, message: str) -> "TaskComplexity | None":
+        """
+        Infer complexity from message content for routing hints.
+
+        Returns explicit complexity hint for clear-cut cases, None to let router decide.
+        """
+        try:
+            from tools.agent.model_router import TaskComplexity
+        except ImportError:
+            return None
+
+        message_lower = message.lower().strip()
+
+        # TRIVIAL: Simple greetings, acknowledgments, single-word responses
+        trivial_patterns = [
+            r'^(hi|hey|hello|yo|sup)[\s!.?]*$',
+            r'^(thanks|thank you|thx|ty)[\s!.?]*$',
+            r'^(ok|okay|k|got it|sure|yep|yes|no|nope)[\s!.?]*$',
+            r'^(bye|goodbye|later|cya)[\s!.?]*$',
+            r'^(good morning|good night|gn|gm)[\s!.?]*$',
+            r'^what time is it[\s?]*$',
+            r'^how are you[\s?]*$',
+        ]
+
+        for pattern in trivial_patterns:
+            if re.match(pattern, message_lower):
+                return TaskComplexity.TRIVIAL
+
+        # HIGH: Explicit multi-step, analysis, or complex task indicators
+        high_indicators = [
+            "step by step",
+            "walk me through",
+            "analyze",
+            "analyse",
+            "compare",
+            "evaluate",
+            "design",
+            "architect",
+            "implement",
+            "refactor",
+            "debug",
+            "fix the",
+            "build a",
+            "create a system",
+        ]
+
+        for indicator in high_indicators:
+            if indicator in message_lower:
+                return TaskComplexity.HIGH
+
+        # CRITICAL: Very complex or sensitive operations
+        critical_indicators = [
+            "production",
+            "deploy to",
+            "migration",
+            "security audit",
+            "comprehensive review",
+        ]
+
+        for indicator in critical_indicators:
+            if indicator in message_lower:
+                return TaskComplexity.CRITICAL
+
+        # Let the router's heuristics decide for everything else
+        return None
+
+    async def _query_with_agent_sdk(self, message: str, channel: str) -> dict[str, Any]:
+        """Query using the full Agent SDK (tools, file access, etc.)."""
         try:
             from tools.agent.sdk_client import DexAIClient
         except ImportError:
             return {
                 "success": False,
-                "error": "SDK not installed",
-                "content": "Agent SDK not installed. Please run: uv pip install claude-agent-sdk",
+                "error": "Agent SDK not installed",
+                "content": "",
             }
 
-        self._last_activity = datetime.now()
-        self._message_count += 1
+        # Infer complexity for routing
+        explicit_complexity = self._infer_complexity(message)
 
         try:
             async with DexAIClient(
                 user_id=self.user_id,
-                working_dir=self.working_dir
+                working_dir=self.working_dir,
+                explicit_complexity=explicit_complexity,
             ) as client:
                 result = await client.query(message)
 
@@ -133,8 +246,8 @@ class SDKSession:
 
                 # Truncate if needed
                 content = result.text
-                if len(content) > limit - 100:  # Leave room for truncation message
-                    content = content[:limit - 100] + "\n\n[Response truncated for channel limit]"
+                if len(content) > limit - 100:
+                    content = content[:limit - 100] + "\n\n[Response truncated]"
 
                 return {
                     "success": True,
@@ -143,7 +256,106 @@ class SDKSession:
                     "cost_usd": result.cost_usd,
                     "session_cost_usd": self._total_cost,
                     "message_count": self._message_count,
+                    "mode": "agent_sdk",
+                    "model": result.model,
+                    "complexity": result.complexity,
+                    "routing_reasoning": result.routing_reasoning,
                 }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "content": "",
+            }
+
+    async def _query_with_direct_api(self, message: str, channel: str) -> dict[str, Any]:
+        """Query using direct Anthropic API (basic chat, no tools)."""
+        try:
+            import anthropic
+        except ImportError:
+            return {
+                "success": False,
+                "error": "anthropic not installed",
+                "content": "Anthropic SDK not installed. Please run: uv add anthropic",
+            }
+
+        try:
+            client = anthropic.Anthropic()
+
+            # Get current date/time for context
+            now = datetime.now()
+            date_str = now.strftime("%A, %B %d, %Y")
+            time_str = now.strftime("%I:%M %p")
+
+            # Build system prompt
+            system_prompt = f"""You are Dex, a helpful AI assistant designed for users with ADHD.
+
+CURRENT DATE AND TIME: {date_str} at {time_str}
+
+CORE PRINCIPLES:
+1. ONE THING AT A TIME - Never present lists of options when one clear action will do
+2. BREVITY FIRST - Keep responses short for chat. Details only when asked.
+3. FORWARD-FACING - Focus on what to do, not what wasn't done
+4. NO GUILT LANGUAGE - Avoid "you should have", "overdue", "forgot to"
+5. PRE-SOLVE FRICTION - Identify blockers and solve them proactively
+
+COMMUNICATION STYLE:
+- Be direct and helpful, not enthusiastic or overly positive
+- Use short sentences and paragraphs
+- If breaking down tasks, present ONE step at a time
+- Ask clarifying questions rather than making assumptions
+
+NOTE: Running in fallback mode - file access and tool use unavailable."""
+
+            # Add conversation history if available
+            messages = self._conversation_history.copy() if hasattr(self, '_conversation_history') else []
+            messages.append({"role": "user", "content": message})
+
+            # Call Claude API
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1024,
+                system=system_prompt,
+                messages=messages,
+            )
+
+            # Extract response text
+            content = response.content[0].text if response.content else ""
+
+            # Calculate approximate cost
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            cost_usd = (input_tokens * 3 + output_tokens * 15) / 1_000_000
+
+            self._total_cost += cost_usd
+
+            # Store in conversation history for context
+            if not hasattr(self, '_conversation_history'):
+                self._conversation_history = []
+            self._conversation_history.append({"role": "user", "content": message})
+            self._conversation_history.append({"role": "assistant", "content": content})
+
+            # Keep history manageable (last 10 turns)
+            if len(self._conversation_history) > 20:
+                self._conversation_history = self._conversation_history[-20:]
+
+            # Get channel message limit
+            limit = CHANNEL_MESSAGE_LIMITS.get(channel, DEFAULT_MESSAGE_LIMIT)
+
+            # Truncate if needed
+            if len(content) > limit - 100:
+                content = content[:limit - 100] + "\n\n[Response truncated]"
+
+            return {
+                "success": True,
+                "content": content,
+                "tool_uses": [],
+                "cost_usd": cost_usd,
+                "session_cost_usd": self._total_cost,
+                "message_count": self._message_count,
+                "mode": "direct_api",
+            }
 
         except Exception as e:
             return {

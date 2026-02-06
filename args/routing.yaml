@@ -1,0 +1,242 @@
+# =============================================================================
+# Intelligent Model Routing Configuration
+# =============================================================================
+# Routes all traffic through OpenRouter with complexity-based model selection.
+# Enables cost optimization by routing simple tasks to cheaper models.
+#
+# Key benefits:
+# - Up to 73% cost savings on simple tasks (Haiku vs Sonnet)
+# - Multi-provider support via OpenRouter (Anthropic, OpenAI, Google, DeepSeek)
+# - Subagent downscaling for simple parent tasks
+# - Exacto support for improved tool-calling accuracy
+# - Full observability through Langfuse and OpenRouter dashboard
+
+# -----------------------------------------------------------------------------
+# Routing Profile
+# -----------------------------------------------------------------------------
+# Determines the overall model selection strategy.
+#
+# Profiles:
+#   quality_first:   Always use best available model for each complexity tier
+#   balanced:        Mix providers for cost-quality balance
+#   cost_optimised:  Minimize cost, use budget models where possible
+#   anthropic_only:  Only Anthropic models (safest starting point)
+#   auto_router:     Delegate all routing to OpenRouter's Auto Router
+
+routing:
+  # Active routing profile
+  profile: "anthropic_only"  # Start conservative, upgrade to balanced/cost_optimised later
+
+  # Enable routing (set to false to use direct Anthropic API)
+  enabled: true
+
+  # OpenRouter API key (loaded from environment variable)
+  api_key_env: "OPENROUTER_API_KEY"
+
+  # Fallback to direct Anthropic API if OpenRouter is unavailable
+  fallback_to_direct: true
+
+# -----------------------------------------------------------------------------
+# Budget Controls
+# -----------------------------------------------------------------------------
+# Prevent runaway costs with per-session and daily limits.
+
+budget:
+  # Maximum cost per session in USD (null = no limit)
+  max_per_session_usd: 5.0
+
+  # Maximum cost per day in USD (null = no limit)
+  max_per_day_usd: 50.0
+
+  # Maximum cost per user per day in USD (null = no limit)
+  max_per_user_per_day_usd: 10.0
+
+  # Action when limit reached: "block", "notify", "notify_and_degrade"
+  # - block: Reject all requests
+  # - notify: Allow but log warning
+  # - notify_and_degrade: Allow but switch to cheapest model
+  limit_action: "notify_and_degrade"
+
+# -----------------------------------------------------------------------------
+# Complexity Classification
+# -----------------------------------------------------------------------------
+# Heuristics for determining task complexity from the user's prompt.
+# Higher complexity = more capable (and expensive) model.
+
+complexity:
+  # Keywords that boost complexity score (tool/action indicators)
+  tool_keywords:
+    - "search"
+    - "fetch"
+    - "query"
+    - "database"
+    - "api"
+    - "call"
+    - "invoke"
+    - "create file"
+    - "edit"
+    - "update"
+    - "delete"
+    - "deploy"
+    - "execute"
+
+  # Keywords that boost complexity score (reasoning indicators)
+  reasoning_keywords:
+    - "analyse"
+    - "analyze"
+    - "compare"
+    - "evaluate"
+    - "design"
+    - "architect"
+    - "plan"
+    - "strategy"
+    - "optimise"
+    - "optimize"
+    - "trade-off"
+    - "tradeoff"
+    - "pros and cons"
+    - "recommend"
+    - "debug"
+    - "investigate"
+    - "refactor"
+
+  # Multi-step indicators (suggest sequential operations)
+  multi_step_indicators:
+    - "then"
+    - "after that"
+    - "next"
+    - "finally"
+    - "step by step"
+    - "first"
+    - "second"
+    - "third"
+    - "also"
+    - "additionally"
+
+  # Score thresholds for complexity tiers
+  # Complexity is determined by heuristic scoring:
+  # - +1 per 50 words in prompt
+  # - +2 per tool keyword found
+  # - +2 per reasoning keyword found
+  # - +2 if code context present
+  # - +2 if multi-step indicators found
+  # - +1 if >2 questions in prompt
+  # - +1 if >5 tools available
+  thresholds:
+    trivial_max: 1       # Score 0-1: Trivial (greetings, simple questions)
+    low_max: 3           # Score 2-3: Low (basic requests)
+    moderate_max: 6      # Score 4-6: Moderate (typical tasks)
+    high_max: 10         # Score 7-10: High (complex multi-step)
+    # Score 11+: Critical (requires best model)
+
+# -----------------------------------------------------------------------------
+# Exacto Configuration
+# -----------------------------------------------------------------------------
+# Exacto is OpenRouter's enhanced tool-calling accuracy mode.
+# Improves reliability for complex agentic workloads.
+
+exacto:
+  # Enable Exacto for high-complexity tool use
+  enabled: true
+
+  # Minimum complexity level to use Exacto
+  # Options: trivial, low, moderate, high, critical
+  min_complexity: "high"
+
+  # Minimum number of tools available to trigger Exacto
+  min_tool_count: 3
+
+# -----------------------------------------------------------------------------
+# Custom Routing Table (Optional)
+# -----------------------------------------------------------------------------
+# Override the default model selection for each complexity tier.
+# Uncomment and modify to customize routing behavior.
+#
+# Available model keys:
+#   Anthropic: claude-opus-4.5, claude-sonnet-4.5, claude-sonnet-4.5-exacto, claude-haiku-4.5
+#   OpenAI: gpt-4o, gpt-4o-mini
+#   Google: gemini-2.5-pro
+#   DeepSeek: deepseek-v3
+#   Auto: auto (delegates to OpenRouter's router)
+
+# routing_table:
+#   critical: "claude-opus-4.5"
+#   high: "claude-sonnet-4.5-exacto"
+#   moderate: "claude-sonnet-4.5"
+#   low: "claude-haiku-4.5"
+#   trivial: "claude-haiku-4.5"
+
+# -----------------------------------------------------------------------------
+# Subagent Strategies (Optional)
+# -----------------------------------------------------------------------------
+# Controls how 'sonnet'/'opus'/'haiku' aliases resolve based on parent complexity.
+# This enables cost savings by downgrading subagent models for simple tasks.
+#
+# Each strategy maps the aliases to actual model IDs:
+#   sonnet_model: Model used when subagent requests "sonnet"
+#   opus_model: Model used when subagent requests "opus"
+#   haiku_model: Model used when subagent requests "haiku"
+
+# subagent_strategies:
+#   critical:
+#     sonnet_model: "anthropic/claude-sonnet-4-5"
+#     opus_model: "anthropic/claude-opus-4-5"
+#     haiku_model: "anthropic/claude-haiku-4-5"
+#   high:
+#     sonnet_model: "anthropic/claude-sonnet-4-5"
+#     opus_model: "anthropic/claude-sonnet-4-5"  # Downgrade opus to sonnet
+#     haiku_model: "anthropic/claude-haiku-4-5"
+#   moderate:
+#     sonnet_model: "anthropic/claude-sonnet-4-5"
+#     opus_model: "anthropic/claude-sonnet-4-5"
+#     haiku_model: "anthropic/claude-haiku-4-5"
+#   low:
+#     sonnet_model: "anthropic/claude-haiku-4-5"  # Downgrade sonnet to haiku
+#     opus_model: "anthropic/claude-sonnet-4-5"
+#     haiku_model: "anthropic/claude-haiku-4-5"
+#   trivial:
+#     sonnet_model: "anthropic/claude-haiku-4-5"
+#     opus_model: "anthropic/claude-haiku-4-5"  # Downgrade opus to haiku
+#     haiku_model: "anthropic/claude-haiku-4-5"
+
+# -----------------------------------------------------------------------------
+# ADHD-Specific Routing (DexAI Extension)
+# -----------------------------------------------------------------------------
+# Factor in ADHD-relevant signals for model selection.
+
+adhd:
+  # Consider user's energy level in routing decisions
+  energy_aware: true
+
+  # When energy is low, prefer simpler responses (downgrade model)
+  low_energy_downgrade: true
+
+  # Boost complexity for tasks marked as important/urgent
+  urgency_boost: true
+
+# -----------------------------------------------------------------------------
+# Observability
+# -----------------------------------------------------------------------------
+# Monitoring and tracing for routing decisions.
+
+observability:
+  # Langfuse OTEL tracing (recommended for production)
+  langfuse:
+    enabled: false  # Set to true when keys are configured
+    public_key_env: "LANGFUSE_PUBLIC_KEY"
+    secret_key_env: "LANGFUSE_SECRET_KEY"
+    base_url: "https://cloud.langfuse.com"
+
+  # Helicone proxy (adds latency, use sparingly)
+  helicone:
+    enabled: false
+    api_key_env: "HELICONE_API_KEY"
+
+  # Local statistics (always enabled)
+  local_stats: true
+
+  # Log routing decisions to console
+  log_routing_decisions: true
+
+  # Log decisions to dashboard events table
+  log_to_dashboard: true

@@ -502,14 +502,33 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | Tool | Description |
 |------|-------------|
 | `__init__.py` | Module exports, path constants (PROJECT_ROOT, DATA_DIR, CONFIG_PATH) |
-| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, context loading, cost tracking |
+| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, intelligent routing, context loading, cost tracking |
 | `permissions.py` | SDK `can_use_tool` callback mapping DexAI RBAC to tool permissions |
+
+### Model Router (`tools/agent/model_router/`)
+
+Intelligent model routing framework for cost-optimized, complexity-based model selection.
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Module exports for routing framework |
+| `model_router.py` | OpenRouter-first model router with complexity classification, subagent strategies, and YAML config loading |
+| `examples.py` | Usage examples for the routing framework |
+
+**Key Features:**
+- **Complexity Classification**: Routes trivial tasks to Haiku (73% savings), complex tasks to Sonnet/Opus
+- **Multi-Provider Support**: OpenRouter transport for Anthropic, OpenAI, Google, DeepSeek models
+- **Subagent Downscaling**: Automatically uses cheaper models for subagent work when parent task is simple
+- **Exacto Mode**: Enhanced tool-calling accuracy for complex agentic workloads
+- **Observability**: Langfuse OTEL tracing and OpenRouter dashboard integration
+
+**Configuration:** `args/routing.yaml`
 
 ### Channel Handler
 
 | Tool | Description |
 |------|-------------|
-| `tools/channels/sdk_handler.py` | Message handler using DexAIClient, session management, channel-aware truncation |
+| `tools/channels/sdk_handler.py` | Message handler using DexAIClient, session management, complexity hints, channel-aware truncation |
 
 ### MCP Tools (`tools/agent/mcp/`)
 
