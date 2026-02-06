@@ -258,6 +258,26 @@ async def update_settings(updates: SettingsUpdate, user_id: str = "default"):
     # Get updated settings
     result = await get_settings(user_id)
 
+    # Log settings change to audit
+    try:
+        from tools.dashboard.backend.database import log_audit
+
+        changed_fields = list(update_dict.keys())
+        if updates.notifications is not None:
+            changed_fields.append("notifications")
+        if updates.privacy is not None:
+            changed_fields.append("privacy")
+
+        log_audit(
+            event_type="config.changed",
+            severity="info",
+            actor=user_id,
+            target="settings",
+            details={"changed_fields": changed_fields},
+        )
+    except Exception:
+        pass
+
     return UpdateResponse(
         success=True, settings=result.settings, message="Settings updated successfully"
     )
@@ -318,3 +338,219 @@ async def get_feature_flags():
     features = dashboard_config.get("features", {})
 
     return {"flags": features, "defaults": dashboard_config.get("defaults", {})}
+
+
+# =============================================================================
+# Channel Token Management
+# =============================================================================
+
+
+def _mask_token(token: str | None) -> str:
+    """Mask a token for display, showing only first 4 and last 4 chars."""
+    if not token:
+        return ""
+    if len(token) <= 12:
+        return "*" * len(token)
+    return f"{token[:4]}{'*' * (len(token) - 8)}{token[-4:]}"
+
+
+def _read_env_file() -> dict[str, str]:
+    """Read the .env file and return key-value pairs."""
+    env_file = PROJECT_ROOT / ".env"
+    env_vars: dict[str, str] = {}
+    if env_file.exists():
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    env_vars[key.strip()] = value.strip()
+    return env_vars
+
+
+def _write_env_file(updates: dict[str, str]) -> bool:
+    """
+    Update specific keys in the .env file, preserving comments and structure.
+
+    Args:
+        updates: Dict of key-value pairs to update/add
+
+    Returns:
+        True if successful
+    """
+    import os
+    import tempfile
+
+    env_file = PROJECT_ROOT / ".env"
+    lines: list[str] = []
+    updated_keys: set[str] = set()
+
+    # Read existing file
+    if env_file.exists():
+        with open(env_file) as f:
+            for line in f:
+                original_line = line
+                stripped = line.strip()
+
+                # Check if this line has a key we want to update
+                if stripped and not stripped.startswith("#") and "=" in stripped:
+                    key, _, _ = stripped.partition("=")
+                    key = key.strip()
+                    if key in updates:
+                        # Replace the value
+                        lines.append(f"{key}={updates[key]}\n")
+                        updated_keys.add(key)
+                        continue
+
+                lines.append(original_line)
+
+    # Add any new keys that weren't in the file
+    for key, value in updates.items():
+        if key not in updated_keys:
+            lines.append(f"{key}={value}\n")
+
+    # Write atomically
+    try:
+        fd, temp_path = tempfile.mkstemp(suffix=".env", dir=PROJECT_ROOT)
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.writelines(lines)
+            os.replace(temp_path, env_file)
+            return True
+        except Exception:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).error(f"Failed to update .env: {e}")
+        return False
+
+
+@router.get("/tokens")
+async def get_channel_tokens():
+    """
+    Get channel token status (masked for security).
+
+    Returns whether tokens are configured and their masked values.
+    Does NOT return actual token values for security.
+    """
+    import os
+
+    # First check environment variables (runtime)
+    telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    discord_token = os.environ.get("DISCORD_BOT_TOKEN", "")
+    slack_bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+    slack_app_token = os.environ.get("SLACK_APP_TOKEN", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    # If not in env, check .env file
+    if not any([telegram_token, discord_token, slack_bot_token, slack_app_token]):
+        env_vars = _read_env_file()
+        telegram_token = telegram_token or env_vars.get("TELEGRAM_BOT_TOKEN", "")
+        discord_token = discord_token or env_vars.get("DISCORD_BOT_TOKEN", "")
+        slack_bot_token = slack_bot_token or env_vars.get("SLACK_BOT_TOKEN", "")
+        slack_app_token = slack_app_token or env_vars.get("SLACK_APP_TOKEN", "")
+        anthropic_key = anthropic_key or env_vars.get("ANTHROPIC_API_KEY", "")
+
+    return {
+        "telegram": {
+            "configured": bool(telegram_token),
+            "masked_token": _mask_token(telegram_token),
+        },
+        "discord": {
+            "configured": bool(discord_token),
+            "masked_token": _mask_token(discord_token),
+        },
+        "slack": {
+            "configured": bool(slack_bot_token),
+            "masked_bot_token": _mask_token(slack_bot_token),
+            "masked_app_token": _mask_token(slack_app_token),
+        },
+        "anthropic": {
+            "configured": bool(anthropic_key),
+            "masked_key": _mask_token(anthropic_key),
+        },
+    }
+
+
+class TokenUpdateRequest(BaseModel):
+    """Request to update channel tokens."""
+
+    telegram_token: str | None = None
+    discord_token: str | None = None
+    slack_bot_token: str | None = None
+    slack_app_token: str | None = None
+    anthropic_key: str | None = None
+
+
+@router.put("/tokens")
+async def update_channel_tokens(request: TokenUpdateRequest):
+    """
+    Update channel tokens in the .env file.
+
+    Only updates tokens that are provided (non-None and non-empty).
+    Empty strings are ignored to prevent accidental deletion.
+    """
+    updates: dict[str, str] = {}
+
+    if request.telegram_token:
+        updates["TELEGRAM_BOT_TOKEN"] = request.telegram_token
+
+    if request.discord_token:
+        updates["DISCORD_BOT_TOKEN"] = request.discord_token
+
+    if request.slack_bot_token:
+        updates["SLACK_BOT_TOKEN"] = request.slack_bot_token
+
+    if request.slack_app_token:
+        updates["SLACK_APP_TOKEN"] = request.slack_app_token
+
+    if request.anthropic_key:
+        updates["ANTHROPIC_API_KEY"] = request.anthropic_key
+
+    if not updates:
+        return {"success": True, "message": "No tokens to update", "updated": []}
+
+    success = _write_env_file(updates)
+
+    # Log token update to audit (security-sensitive operation)
+    try:
+        from tools.dashboard.backend.database import log_audit
+
+        # Map env var names to channel names for clearer logging
+        channel_map = {
+            "TELEGRAM_BOT_TOKEN": "telegram",
+            "DISCORD_BOT_TOKEN": "discord",
+            "SLACK_BOT_TOKEN": "slack",
+            "SLACK_APP_TOKEN": "slack",
+            "ANTHROPIC_API_KEY": "anthropic",
+        }
+        channels_updated = list({channel_map.get(k, k) for k in updates.keys()})
+
+        log_audit(
+            event_type="config.tokens_updated",
+            severity="warning",  # Token changes are security-relevant
+            actor="system",
+            target="tokens",
+            details={
+                "channels": channels_updated,
+                "success": success,
+            },
+        )
+    except Exception:
+        pass
+
+    if success:
+        return {
+            "success": True,
+            "message": "Tokens updated. Restart services to apply changes.",
+            "updated": list(updates.keys()),
+        }
+    else:
+        return {
+            "success": False,
+            "error": "Failed to update .env file",
+            "updated": [],
+        }

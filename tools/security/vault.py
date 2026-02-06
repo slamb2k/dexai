@@ -163,6 +163,23 @@ def log_access(action: str, key: str, namespace: str, status: str, user: str | N
         # Don't fail if audit logging fails
         pass
 
+    # Also log to dashboard audit for UI visibility
+    try:
+        from tools.dashboard.backend.database import log_audit
+
+        event_type = f"data.{action}"
+        severity = "info" if status == "success" else "warning"
+
+        log_audit(
+            event_type=event_type,
+            severity=severity,
+            actor=user,
+            target=f"vault:{namespace}/{key}",
+            details={"status": status, "action": action, "namespace": namespace},
+        )
+    except Exception:
+        pass
+
 
 def set_secret(
     key: str,

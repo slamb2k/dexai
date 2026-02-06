@@ -123,7 +123,7 @@ services:
       - TS_AUTHKEY=${TAILSCALE_AUTHKEY:-}
       - TS_HOSTNAME=${TAILSCALE_HOSTNAME:-dexai}
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_USERSPACE=true
+      - TS_USERSPACE=false
       - TS_SERVE_CONFIG=/config/tailscale-serve.json
     volumes:
       - tailscale-state:/var/lib/tailscale

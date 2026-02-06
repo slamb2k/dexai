@@ -23,6 +23,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -75,6 +76,34 @@ def _record_dashboard_metric(
         record_metric(metric_name, metric_value, labels)
     except Exception:
         pass
+
+
+def _update_dex_state(
+    state: str,
+    current_task: str = None,
+    broadcast: bool = True,
+) -> None:
+    """
+    Update Dex avatar state in database and optionally broadcast to WebSocket clients.
+
+    Valid states: idle, listening, thinking, working, success, error, sleeping, hyperfocus, waiting
+
+    Fails silently to prevent state updates from breaking message flow.
+    """
+    try:
+        from tools.dashboard.backend.database import set_dex_state
+
+        set_dex_state(state, current_task)
+
+        if broadcast:
+            try:
+                from tools.dashboard.backend.websocket import sync_broadcast_state_change
+
+                sync_broadcast_state_change(state, current_task)
+            except Exception:
+                pass  # WebSocket broadcast failed, state still saved
+    except Exception:
+        pass  # Never let state updates break message flow
 
 
 class ChannelAdapter(ABC):
@@ -348,6 +377,11 @@ class MessageRouter:
         Returns:
             Dict with success status and processing results
         """
+        start_time = time.time()
+
+        # Update state to thinking while processing
+        _update_dex_state("thinking", f"Processing message from {message.channel}")
+
         # Run security checks
         allowed, reason, context = await self.security_pipeline(message)
 
@@ -382,6 +416,17 @@ class MessageRouter:
                 details={"reason": reason, "message_id": message.id},
                 severity="warning",
             )
+            # Return to idle state after blocking
+            _update_dex_state("idle", None)
+
+            # Record response time for blocked messages
+            elapsed_ms = (time.time() - start_time) * 1000
+            _record_dashboard_metric(
+                metric_name="response_time_ms",
+                metric_value=elapsed_ms,
+                labels={"channel": message.channel, "success": "false", "reason": reason},
+            )
+
             return {"success": False, "reason": reason, "context": context}
 
         # Log successful inbound message to dashboard
@@ -413,6 +458,9 @@ class MessageRouter:
         except Exception as e:
             context["storage_error"] = str(e)
 
+        # Update state to working while executing handlers
+        _update_dex_state("working", f"Handling message from {message.channel}")
+
         # Dispatch to handlers
         handler_results = []
         for handler in self.message_handlers:
@@ -441,6 +489,17 @@ class MessageRouter:
                     )
                 except Exception:
                     pass
+
+        # Return to idle state after processing
+        _update_dex_state("idle", None)
+
+        # Record response time metric
+        elapsed_ms = (time.time() - start_time) * 1000
+        _record_dashboard_metric(
+            metric_name="response_time_ms",
+            metric_value=elapsed_ms,
+            labels={"channel": message.channel, "success": "true"},
+        )
 
         return {"success": True, "message_id": message.id, "handlers": handler_results}
 
@@ -476,6 +535,9 @@ class MessageRouter:
             # Ensure message has an ID
             if not message.id:
                 message.id = str(uuid.uuid4())
+
+            # Update state while sending
+            _update_dex_state("working", f"Sending response to {channel}")
 
             result = await adapter.send_message(message)
 
@@ -524,6 +586,9 @@ class MessageRouter:
                 labels={"channel": channel, "success": str(result.get("success", False))},
             )
 
+            # Return to idle after sending
+            _update_dex_state("idle", None)
+
             return result
 
         except Exception as e:
@@ -539,6 +604,9 @@ class MessageRouter:
                 )
             except Exception:
                 pass
+            # Set error state briefly, then idle
+            _update_dex_state("error", f"Failed to send to {channel}")
+            _update_dex_state("idle", None)
             return {"success": False, "error": str(e)}
 
     async def broadcast(

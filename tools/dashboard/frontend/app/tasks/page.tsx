@@ -82,10 +82,11 @@ const statusOptions: { value: TaskStatus | 'all'; label: string }[] = [
 
 const channelOptions = [
   { value: 'all', label: 'All Channels' },
-  { value: 'Telegram', label: 'Telegram' },
-  { value: 'Discord', label: 'Discord' },
-  { value: 'Email', label: 'Email' },
-  { value: 'Web', label: 'Web' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'discord', label: 'Discord' },
+  { value: 'slack', label: 'Slack' },
+  { value: 'email', label: 'Email' },
+  { value: 'web', label: 'Web' },
 ];
 
 export default function TasksPage() {
@@ -111,11 +112,34 @@ export default function TasksPage() {
         });
 
         if (res.success && res.data) {
-          const taskList = res.data.tasks.map((t) => ({
-            ...t,
-            startTime: t.startTime ? new Date(t.startTime) : undefined,
-            endTime: t.endTime ? new Date(t.endTime) : undefined,
-          }));
+          // Map backend field names to frontend Task interface
+          const taskList = res.data.tasks.map((t) => {
+            // Backend returns created_at/completed_at, frontend expects startTime/endTime
+            const apiTask = t as unknown as {
+              id: string;
+              request: string;
+              status: string;
+              channel?: string;
+              created_at?: string;
+              completed_at?: string;
+              duration_seconds?: number;
+              cost_usd?: number;
+            };
+            // Capitalize channel name for display
+            const channelDisplay = apiTask.channel
+              ? apiTask.channel.charAt(0).toUpperCase() + apiTask.channel.slice(1)
+              : undefined;
+            return {
+              id: apiTask.id,
+              request: apiTask.request,
+              status: apiTask.status as Task['status'],
+              channel: channelDisplay,
+              startTime: apiTask.created_at ? new Date(apiTask.created_at) : undefined,
+              endTime: apiTask.completed_at ? new Date(apiTask.completed_at) : undefined,
+              duration: apiTask.duration_seconds,
+              cost: apiTask.cost_usd,
+            };
+          });
           setTasks(taskList);
           setIsEmpty(taskList.length === 0);
         } else if (res.error) {
@@ -139,7 +163,8 @@ export default function TasksPage() {
   // Filter tasks
   const filteredTasks = tasks.filter((task) => {
     if (statusFilter !== 'all' && task.status !== statusFilter) return false;
-    if (channelFilter !== 'all' && task.channel !== channelFilter) return false;
+    // Case-insensitive channel comparison (filter is lowercase, display is capitalized)
+    if (channelFilter !== 'all' && task.channel?.toLowerCase() !== channelFilter) return false;
     return true;
   });
 

@@ -134,8 +134,15 @@ export default function AuditPage() {
           limit: 50,
         });
         if (res.success && res.data) {
-          setEvents(res.data.events);
-          setIsEmpty(res.data.events.length === 0);
+          // Map events and stringify details if it's an object
+          const mappedEvents = res.data.events.map((e) => ({
+            ...e,
+            details: typeof e.details === 'object' && e.details !== null
+              ? JSON.stringify(e.details, null, 2)
+              : e.details,
+          }));
+          setEvents(mappedEvents);
+          setIsEmpty(mappedEvents.length === 0);
         } else if (res.error) {
           throw new Error(res.error);
         }
