@@ -1,5 +1,117 @@
 # Memory System Configuration
 # Settings for persistent memory, embeddings, and search
+#
+# DexAI supports multiple memory backends with cloud and self-hosted options.
+# See goals/memory_providers_design.md for architecture details.
+#
+# Provider Options:
+#   - native: Local SQLite + hybrid search (default, no dependencies)
+#   - mem0: Mem0 cloud or self-hosted (graph memory, 24+ vector DBs)
+#   - zep: Zep cloud or self-hosted (temporal knowledge graph)
+#   - simplemem: SimpleMem cloud (semantic compression, 30x fewer tokens)
+#   - claudemem: ClaudeMem local (progressive disclosure, auto-capture)
+
+# =============================================================================
+# Provider Configuration
+# =============================================================================
+provider:
+  # Active provider
+  active: "native"  # Options: native, mem0, zep, simplemem, claudemem
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Native Provider (LOCAL mode only)
+  # No external dependencies - uses local SQLite + OpenAI embeddings
+  # ─────────────────────────────────────────────────────────────────────────
+  native:
+    database_path: "data/memory.db"
+    context_database_path: "data/context.db"
+    # Uses embedding settings below
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Mem0 Provider (CLOUD or SELF_HOSTED mode)
+  # Cloud: app.mem0.ai - no infrastructure needed
+  # Self-hosted: requires vector store (Qdrant, Chroma, etc.)
+  # ─────────────────────────────────────────────────────────────────────────
+  mem0:
+    # Deployment mode: "cloud" or "self_hosted"
+    mode: "cloud"
+
+    # Cloud mode configuration
+    cloud:
+      api_key: "${MEM0_API_KEY}"
+      org_id: "${MEM0_ORG_ID}"
+      project_id: "${MEM0_PROJECT_ID}"
+
+    # Self-hosted mode configuration
+    self_hosted:
+      vector_store:
+        provider: "qdrant"
+        config:
+          host: "localhost"
+          port: 6333
+      embedder:
+        provider: "openai"
+        model: "text-embedding-3-small"
+      llm:
+        provider: "anthropic"
+        model: "claude-sonnet-4-20250514"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Zep Provider (CLOUD or SELF_HOSTED mode)
+  # Cloud: getzep.com - managed service, <200ms latency
+  # Self-hosted: requires Neo4j + OpenSearch
+  # ─────────────────────────────────────────────────────────────────────────
+  zep:
+    mode: "cloud"
+    cloud:
+      api_key: "${ZEP_API_KEY}"
+      project_id: "${ZEP_PROJECT_ID}"
+    self_hosted:
+      api_url: "http://localhost:8000"
+      api_key: "${ZEP_SELF_HOSTED_API_KEY}"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SimpleMem Provider (CLOUD mode only)
+  # Features: semantic compression, 30x fewer tokens, +26% F1
+  # ─────────────────────────────────────────────────────────────────────────
+  simplemem:
+    api_url: "https://mcp.simplemem.cloud"
+    api_key: "${SIMPLEMEM_API_KEY}"
+    user_id: "${SIMPLEMEM_USER_ID}"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ClaudeMem Provider (LOCAL mode only)
+  # Source: https://github.com/thedotmack/claude-mem
+  # Requires: Node.js 18+, Bun
+  # ─────────────────────────────────────────────────────────────────────────
+  claudemem:
+    data_dir: "~/.claude-mem"
+    worker_port: 37777
+    auto_capture:
+      enabled: true
+      session_start: true
+      post_tool_use: true
+      session_end: true
+
+# =============================================================================
+# Fallback Configuration
+# =============================================================================
+fallback:
+  enabled: true
+  provider: "native"
+  log_fallback: true
+  retry_primary_after: 300
+  max_failures: 3
+
+# =============================================================================
+# ADHD-specific Settings (applied regardless of provider)
+# =============================================================================
+adhd:
+  language_filter: true
+  forward_facing: true
+  max_context_injection: 5
+  reminder_style: "gentle"
+  context_stale_hours: 168
 
 # =============================================================================
 # Embedding Settings

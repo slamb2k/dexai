@@ -203,3 +203,21 @@ costs:
 
   # Action when limit reached
   limit_action: "notify_and_degrade"  # Options: block, notify, notify_and_degrade
+
+# -----------------------------------------------------------------------------
+# Skills Configuration
+# -----------------------------------------------------------------------------
+# Self-modification capabilities through skills system.
+
+skills:
+  # Allow agent to create new skills
+  allow_self_modification: true
+
+  # Directory where agent can create skills (relative to project root)
+  writable_directory: ".claude/skills"
+
+  # Skills that cannot be modified by the agent (system skills)
+  protected_skills:
+    - prime
+    - ship
+    - sync
