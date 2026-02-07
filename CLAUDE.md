@@ -49,7 +49,9 @@ You make smart decisions. Tools execute perfectly.
 | **Competitive context** | `context/gap_analysis.md` | Why features exist, market positioning |
 | **Security infrastructure** | `tools/security/` | Vault, RBAC, audit, sanitizer, rate limiting |
 | **Office integration** | `tools/office/` + `args/office_integration.yaml` | OAuth, email, calendar, automation |
-| **Agent SDK config** | `args/agent.yaml` | Model, tools, ADHD settings |
+| **Agent SDK config** | `args/agent.yaml` | Model, tools, ADHD settings, subagents |
+| **ADHD subagents** | `tools/agent/subagents.py` | Task decomposer, energy matcher, friction solver |
+| **Session manager** | `tools/channels/session_manager.py` | ClaudeSDKClient session continuity |
 | **Model routing** | `args/routing.yaml` + `tools/agent/model_router/` | OpenRouter integration, complexity-based routing |
 | **Deployment** | `docker-compose.yml`, `Dockerfile`, `install.sh` | Docker, Caddy, Tailscale profiles |
 | **Environment vars** | `.env.example` | All configurable settings with documentation |
@@ -723,32 +725,55 @@ DexAI uses the Claude Agent SDK for agentic capabilities while preserving unique
 
 **Architecture:**
 ```
-Telegram/Discord/Slack → Router (security pipeline) → SDK Handler → DexAIClient
+Telegram/Discord/Slack → Router (security pipeline) → SessionManager → DexAIClient
                                                            ↓
                                                     Claude Agent SDK
                                                     (Read, Write, Bash, etc.)
                                                            +
-                                                    DexAI MCP Tools
-                                                    (ADHD-specific features)
+                                                    ADHD Subagents        DexAI MCP Tools
+                                                    (task-decomposer,     (memory, tasks,
+                                                     energy-matcher, etc.) ADHD comms)
 ```
 
 **Key Components:**
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| DexAIClient | `tools/agent/sdk_client.py` | SDK wrapper with ADHD-aware prompts |
+| DexAIClient | `tools/agent/sdk_client.py` | SDK wrapper with ADHD-aware prompts, subagent registration |
+| SessionManager | `tools/channels/session_manager.py` | ClaudeSDKClient-based session continuity |
+| ADHD Subagents | `tools/agent/subagents.py` | Specialized agents for ADHD support |
+| Security Hooks | `tools/agent/hooks.py` | PreToolUse security, audit, context saving |
 | ModelRouter | `tools/agent/model_router/model_router.py` | Complexity-based routing via OpenRouter |
 | Permission callback | `tools/agent/permissions.py` | Maps RBAC to SDK tool access |
-| SDK Handler | `tools/channels/sdk_handler.py` | Channel message handler |
+| SDK Handler | `tools/channels/sdk_handler.py` | Channel message handler using SessionManager |
 | Memory MCP Tools | `tools/agent/mcp/memory_tools.py` | Hybrid search, commitments, context |
 | Task MCP Tools | `tools/agent/mcp/task_tools.py` | Decomposition, friction, current step |
 | ADHD MCP Tools | `tools/agent/mcp/adhd_tools.py` | Response formatting, language filter |
+
+**ADHD Subagents:**
+
+Specialized agents registered via SDK's `agents` parameter:
+
+| Subagent | Model | Purpose |
+|----------|-------|---------|
+| `task-decomposer` | haiku | Break overwhelming tasks into 5-15 min chunks |
+| `energy-matcher` | haiku | Match tasks to current energy level |
+| `commitment-tracker` | haiku | Track promises with RSD-safe surfacing |
+| `friction-solver` | sonnet | Identify and pre-solve hidden blockers |
+
+**Security Hooks (PreToolUse):**
+
+Defense-in-depth via SDK hooks:
+- **Bash security**: Blocks dangerous patterns (rm -rf, sudo su, fork bombs)
+- **File path security**: Prevents writes to protected paths (/etc, ~/.ssh)
+- **Audit logging**: All tool usage logged for security trail
 
 **What SDK Provides (Use These):**
 - File operations: Read, Write, Edit, Glob, Grep, LS
 - Command execution: Bash (sandboxed)
 - Web access: WebSearch, WebFetch
 - Task tracking: TaskCreate, TaskList, TaskUpdate, TaskGet
+- Session resumption: `resume` parameter for context continuity
 
 **What DexAI Adds (Unique Value):**
 - Hybrid memory search (BM25 + semantic embeddings)
@@ -759,8 +784,10 @@ Telegram/Discord/Slack → Router (security pipeline) → SDK Handler → DexAIC
 - Current step (ONE action, not lists)
 - Energy matching (route tasks to capacity)
 - RSD-safe language filtering
+- ADHD-specific subagents (via SDK agents parameter)
+- Security hooks (PreToolUse blocking of dangerous commands)
 
-**Configuration:** `args/agent.yaml`
+**Configuration:** `args/agent.yaml` (includes `subagents:` section)
 
 ---
 

@@ -5,9 +5,10 @@ Lifecycle hooks for Claude Agent SDK integration.
 
 Hooks provide pre/post tool execution callbacks and session lifecycle events.
 DexAI uses these for:
+- Security checks via PreToolUse (defense-in-depth)
 - Context saving on session stop (ADHD-critical for resumption)
 - Audit logging of tool usage
-- Security checks as defense-in-depth
+- Dashboard recording for analytics
 
 Usage:
     from tools.agent.hooks import create_hooks
@@ -16,8 +17,11 @@ Usage:
     options = ClaudeAgentOptions(hooks=hooks, ...)
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -26,6 +30,234 @@ from typing import Any, Callable
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Dangerous Command Patterns (for security hooks)
+# =============================================================================
+
+# Patterns that should ALWAYS be blocked
+DANGEROUS_BASH_PATTERNS = [
+    # Destructive filesystem operations
+    r"rm\s+(-rf?|--recursive)\s+[/~]",  # rm -rf / or ~
+    r"rm\s+(-rf?|--recursive)\s+\*",     # rm -rf *
+    r":\(\)\{\s*:\|\:\s*&\s*\};:",       # Fork bomb
+    r">\s*/dev/sd[a-z]",                  # Write to raw disk
+    r"mkfs\.",                            # Format filesystem
+    r"dd\s+.*of=/dev/",                   # dd to device
+
+    # Privilege escalation
+    r"sudo\s+su\s*$",                     # sudo su (become root)
+    r"sudo\s+-i",                         # sudo -i (root shell)
+    r"chmod\s+.*777\s+/",                 # chmod 777 /
+
+    # Credential theft
+    r"cat\s+.*\.ssh/",                    # Read SSH keys
+    r"cat\s+.*/\.env",                    # Read env files from root paths
+    r"cat\s+.*passwd",                    # Read password file
+    r"cat\s+.*shadow",                    # Read shadow file
+
+    # Network exfiltration
+    r"curl\s+.*\|\s*bash",               # Pipe to bash
+    r"wget\s+.*\|\s*bash",               # Pipe to bash
+    r"curl\s+.*\|\s*sh",                  # Pipe to sh
+    r"wget\s+.*\|\s*sh",                  # Pipe to sh
+
+    # Crypto/mining patterns
+    r"xmrig",                             # Mining software
+    r"cpuminer",                          # Mining software
+]
+
+# Patterns that should trigger a warning but not block
+SUSPICIOUS_BASH_PATTERNS = [
+    r"sudo\s+",                           # Any sudo usage
+    r"chmod\s+777",                       # Overly permissive chmod
+    r"curl\s+.*-o",                       # Download to file
+    r"wget\s+",                           # Download
+    r"pip\s+install",                     # Installing packages
+    r"npm\s+install\s+-g",                # Global npm install
+]
+
+# File paths that should never be written to
+PROTECTED_PATHS = [
+    "/etc/",
+    "/usr/",
+    "/bin/",
+    "/sbin/",
+    "/boot/",
+    "/root/",
+    "/var/log/",
+    "/sys/",
+    "/proc/",
+    "~/.ssh/",
+    "~/.gnupg/",
+]
+
+
+# =============================================================================
+# PreToolUse Security Hooks
+# =============================================================================
+
+
+def create_bash_security_hook(
+    user_id: str,
+    block_dangerous: bool = True,
+    log_suspicious: bool = True,
+) -> Callable[[dict, str, Any], dict]:
+    """
+    Create a PreToolUse security hook for Bash commands.
+
+    Blocks dangerous patterns and logs suspicious ones.
+    This provides defense-in-depth beyond RBAC permissions.
+
+    Args:
+        user_id: User identifier for logging
+        block_dangerous: Whether to block dangerous patterns
+        log_suspicious: Whether to log suspicious patterns
+
+    Returns:
+        Hook callback function
+    """
+
+    def bash_security_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
+        """
+        Security hook for Bash command execution.
+
+        Returns empty dict to proceed, or denial response to block.
+        """
+        tool_name = input_data.get("tool_name", "")
+        if tool_name != "Bash":
+            return {}
+
+        command = input_data.get("tool_input", {}).get("command", "")
+        if not command:
+            return {}
+
+        # Check for dangerous patterns
+        if block_dangerous:
+            for pattern in DANGEROUS_BASH_PATTERNS:
+                if re.search(pattern, command, re.IGNORECASE):
+                    logger.warning(
+                        f"BLOCKED dangerous command for {user_id}: {command[:100]}"
+                    )
+                    _log_security_event(
+                        user_id=user_id,
+                        event="dangerous_command_blocked",
+                        command=command,
+                        pattern=pattern,
+                    )
+                    return {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": (
+                                f"Security: Command matches dangerous pattern. "
+                                f"This command type is blocked for safety."
+                            ),
+                        }
+                    }
+
+        # Log suspicious patterns
+        if log_suspicious:
+            for pattern in SUSPICIOUS_BASH_PATTERNS:
+                if re.search(pattern, command, re.IGNORECASE):
+                    logger.info(
+                        f"Suspicious command for {user_id}: {command[:100]}"
+                    )
+                    _log_security_event(
+                        user_id=user_id,
+                        event="suspicious_command",
+                        command=command,
+                        pattern=pattern,
+                    )
+                    break  # Only log once
+
+        return {}
+
+    return bash_security_hook
+
+
+def create_file_path_security_hook(
+    user_id: str,
+) -> Callable[[dict, str, Any], dict]:
+    """
+    Create a PreToolUse security hook for file path validation.
+
+    Blocks writes to protected system paths.
+
+    Args:
+        user_id: User identifier for logging
+
+    Returns:
+        Hook callback function
+    """
+
+    def file_path_security_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
+        """
+        Security hook for file write operations.
+
+        Returns empty dict to proceed, or denial response to block.
+        """
+        tool_name = input_data.get("tool_name", "")
+        if tool_name not in ("Write", "Edit", "NotebookEdit"):
+            return {}
+
+        tool_input = input_data.get("tool_input", {})
+        file_path = tool_input.get("file_path", "") or tool_input.get("notebook_path", "")
+
+        if not file_path:
+            return {}
+
+        # Expand ~ to home directory for checking
+        expanded_path = file_path.replace("~", str(Path.home()))
+
+        # Check against protected paths
+        for protected in PROTECTED_PATHS:
+            protected_expanded = protected.replace("~", str(Path.home()))
+            if expanded_path.startswith(protected_expanded):
+                logger.warning(
+                    f"BLOCKED write to protected path for {user_id}: {file_path}"
+                )
+                _log_security_event(
+                    user_id=user_id,
+                    event="protected_path_blocked",
+                    file_path=file_path,
+                    protected_prefix=protected,
+                )
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            f"Security: Cannot write to protected path {protected}. "
+                            f"This path is protected for system safety."
+                        ),
+                    }
+                }
+
+        return {}
+
+    return file_path_security_hook
+
+
+def _log_security_event(
+    user_id: str,
+    event: str,
+    **details,
+) -> None:
+    """Log a security event to the audit trail."""
+    try:
+        from tools.security import audit
+
+        audit.log_event(
+            event_type="security",
+            action=event,
+            user_id=user_id,
+            status="blocked" if "blocked" in event else "warning",
+            details=details,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log security event: {e}")
 
 
 # =============================================================================
@@ -310,6 +542,7 @@ def create_dashboard_hook() -> Callable[[dict, str, Any], dict]:
 def create_hooks(
     user_id: str,
     channel: str = "direct",
+    enable_security: bool = True,
     enable_audit: bool = True,
     enable_dashboard: bool = True,
     enable_context_save: bool = True,
@@ -322,6 +555,7 @@ def create_hooks(
     Args:
         user_id: User identifier
         channel: Communication channel
+        enable_security: Enable PreToolUse security checks (dangerous command blocking)
         enable_audit: Enable PreToolUse audit logging
         enable_dashboard: Enable PostToolUse dashboard recording
         enable_context_save: Enable Stop context saving
@@ -333,6 +567,21 @@ def create_hooks(
 
     # PreToolUse hooks
     pre_hooks = []
+
+    # Security hooks (run first for defense-in-depth)
+    if enable_security:
+        # Bash security - block dangerous commands
+        pre_hooks.append({
+            "matcher": "Bash",
+            "hooks": [create_bash_security_hook(user_id)],
+        })
+        # File path security - block writes to protected paths
+        pre_hooks.append({
+            "matcher": "Write|Edit|NotebookEdit",
+            "hooks": [create_file_path_security_hook(user_id)],
+        })
+
+    # Audit hooks (run after security checks)
     if enable_audit:
         pre_hooks.append({
             "hooks": [create_audit_hook(user_id)],

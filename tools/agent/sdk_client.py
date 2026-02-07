@@ -40,6 +40,7 @@ from tools.agent.system_prompt import (
     PromptMode,
     SessionType,
 )
+from tools.agent.subagents import get_agents_for_sdk
 
 if TYPE_CHECKING:
     from tools.agent.model_router import TaskComplexity
@@ -543,14 +544,25 @@ class DexAIClient:
                     "allowUnixSockets": network_config.get("allow_unix_sockets", []),
                 }
 
-        # Build hooks for lifecycle events
+        # Build hooks for lifecycle events (including security)
         hooks = create_hooks(
             user_id=self.user_id,
             channel=self.channel,
+            enable_security=True,  # Block dangerous commands
             enable_audit=True,
             enable_dashboard=True,
             enable_context_save=True,
         )
+
+        # Get subagent definitions if enabled
+        subagents_config = self.config.get("subagents", {})
+        agents = None
+        if subagents_config.get("enabled", True):
+            try:
+                agents = get_agents_for_sdk()
+                logger.debug(f"Registered {len(agents)} ADHD subagents")
+            except Exception as e:
+                logger.warning(f"Failed to load subagents: {e}")
 
         # Build options with session-aware system prompt
         options_kwargs = {
@@ -573,6 +585,10 @@ class DexAIClient:
             ),
             "env": env or {},
         }
+
+        # Add subagents if loaded
+        if agents:
+            options_kwargs["agents"] = agents
 
         # Add sandbox if configured
         if sandbox_settings:

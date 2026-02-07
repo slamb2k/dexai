@@ -68,6 +68,8 @@ Pluggable memory backend system supporting multiple storage providers.
 | `telegram.py` | Telegram bot adapter using python-telegram-bot (polling mode) |
 | `discord.py` | Discord bot adapter using discord.py (slash commands) |
 | `slack.py` | Slack app adapter using slack-bolt (Socket Mode) |
+| `session_manager.py` | ClaudeSDKClient-based session manager for continuous conversations with SDK resumption support |
+| `sdk_handler.py` | Message handler using DexAIClient, session management via SessionManager, complexity hints, channel-aware truncation |
 
 ---
 
@@ -517,10 +519,11 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | Tool | Description |
 |------|-------------|
 | `__init__.py` | Module exports, path constants (PROJECT_ROOT, DATA_DIR, CONFIG_PATH) |
-| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, intelligent routing, context loading, cost tracking, session resumption |
+| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, intelligent routing, subagent registration, cost tracking, session resumption |
 | `permissions.py` | SDK `can_use_tool` callback with PermissionResult types, AskUserQuestion handling, RBAC integration |
 | `system_prompt.py` | SystemPromptBuilder for dynamic system prompt generation from workspace files + runtime context |
-| `hooks.py` | SDK lifecycle hooks for context saving (Stop), audit logging (PreToolUse), dashboard recording (PostToolUse) |
+| `hooks.py` | SDK lifecycle hooks: security (PreToolUse blocking), audit logging, dashboard recording (PostToolUse), context saving (Stop) |
+| `subagents.py` | ADHD-specific subagent definitions (task-decomposer, energy-matcher, commitment-tracker, friction-solver) for SDK agents parameter |
 
 ### System Prompt Architecture
 
@@ -579,9 +582,7 @@ Intelligent model routing framework for cost-optimized, complexity-based model s
 
 ### Channel Handler
 
-| Tool | Description |
-|------|-------------|
-| `tools/channels/sdk_handler.py` | Message handler using DexAIClient, session management, complexity hints, channel-aware truncation |
+Channel message handling is provided by `tools/channels/sdk_handler.py` — see Channel Tools section above.
 
 ### MCP Tools (`tools/agent/mcp/`)
 

@@ -181,6 +181,35 @@ sandbox:
     allow_unix_sockets: []
 
 # -----------------------------------------------------------------------------
+# Subagents Configuration
+# -----------------------------------------------------------------------------
+# ADHD-specific subagents for specialized tasks.
+# These are registered via the SDK's agents parameter and can be invoked
+# via the Task tool with the appropriate subagent_type.
+
+subagents:
+  # Enable ADHD-specific subagents
+  enabled: true
+
+  # Available subagents (defined in tools/agent/subagents.py):
+  # - task-decomposer: Break tasks into 5-15 min chunks
+  # - energy-matcher: Match tasks to energy levels
+  # - commitment-tracker: Track promises RSD-safely
+  # - friction-solver: Pre-solve hidden blockers
+
+  # Model selection for subagents
+  # Use haiku for simple tasks (low cost, fast response)
+  # Use sonnet for complex analysis
+  default_model: "haiku"
+
+  # Tools available to subagents (subset for safety)
+  allowed_tools:
+    - "Read"
+    - "Glob"
+    - "Grep"
+    - "mcp__dexai__*"
+
+# -----------------------------------------------------------------------------
 # Security Integration
 # -----------------------------------------------------------------------------
 # How agent integrates with DexAI security layer.
