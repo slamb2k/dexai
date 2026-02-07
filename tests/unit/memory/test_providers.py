@@ -8,11 +8,11 @@ Tests the pluggable memory provider architecture including:
 - Provider factory function
 """
 
-import pytest
+import tempfile
 from datetime import datetime
 from pathlib import Path
-import tempfile
-import os
+
+import pytest
 
 
 # ============================================================================
@@ -25,7 +25,7 @@ class TestMemoryEntry:
 
     def test_create_basic_entry(self):
         """Test creating a basic memory entry."""
-        from tools.memory.providers.base import MemoryEntry, MemoryType, MemorySource
+        from tools.memory.providers.base import MemoryEntry, MemorySource, MemoryType
 
         entry = MemoryEntry(
             id="test-1",
@@ -41,7 +41,7 @@ class TestMemoryEntry:
 
     def test_entry_to_dict(self):
         """Test converting entry to dictionary."""
-        from tools.memory.providers.base import MemoryEntry, MemoryType, MemorySource
+        from tools.memory.providers.base import MemoryEntry, MemoryType
 
         entry = MemoryEntry(
             id="test-2",
@@ -93,7 +93,7 @@ class TestSearchFilters:
 
     def test_filters_to_dict(self):
         """Test converting filters to dictionary."""
-        from tools.memory.providers.base import SearchFilters, MemoryType
+        from tools.memory.providers.base import MemoryType, SearchFilters
 
         filters = SearchFilters(
             types=[MemoryType.FACT, MemoryType.PREFERENCE],
@@ -130,7 +130,7 @@ class TestProviderFactory:
 
     def test_get_native_provider(self):
         """Test getting native provider."""
-        from tools.memory.providers import get_provider, NativeProvider
+        from tools.memory.providers import NativeProvider, get_provider
 
         provider = get_provider("native")
         assert isinstance(provider, NativeProvider)
@@ -163,8 +163,8 @@ class TestNativeProvider:
 
     def test_provider_properties(self):
         """Test native provider properties."""
-        from tools.memory.providers.native import NativeProvider
         from tools.memory.providers.base import DeploymentMode
+        from tools.memory.providers.native import NativeProvider
 
         provider = NativeProvider()
 
@@ -228,8 +228,8 @@ class TestClaudeMemProvider:
 
     def test_provider_properties(self):
         """Test ClaudeMem provider properties."""
-        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
         from tools.memory.providers.base import DeploymentMode
+        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
 
         provider = ClaudeMemProvider()
 
@@ -252,8 +252,8 @@ class TestClaudeMemProvider:
     @pytest.mark.asyncio
     async def test_add_and_get(self, temp_db):
         """Test adding and retrieving a memory."""
-        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
         from tools.memory.providers.base import MemoryType
+        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
 
         provider = ClaudeMemProvider({"database_path": temp_db})
         await provider.bootstrap()
@@ -278,8 +278,8 @@ class TestClaudeMemProvider:
     @pytest.mark.asyncio
     async def test_search(self, temp_db):
         """Test searching memories."""
-        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
         from tools.memory.providers.base import MemoryType
+        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
 
         provider = ClaudeMemProvider({
             "database_path": temp_db,
@@ -302,8 +302,8 @@ class TestClaudeMemProvider:
     @pytest.mark.asyncio
     async def test_update_and_delete(self, temp_db):
         """Test updating and deleting a memory."""
-        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
         from tools.memory.providers.base import MemoryType
+        from tools.memory.providers.claudemem_provider import ClaudeMemProvider
 
         provider = ClaudeMemProvider({"database_path": temp_db})
         await provider.bootstrap()
@@ -331,8 +331,9 @@ class TestClaudeMemProvider:
     @pytest.mark.asyncio
     async def test_commitments(self, temp_db):
         """Test commitment tracking."""
+        from datetime import timedelta
+
         from tools.memory.providers.claudemem_provider import ClaudeMemProvider
-        from datetime import datetime, timedelta
 
         provider = ClaudeMemProvider({"database_path": temp_db})
         await provider.bootstrap()
@@ -435,8 +436,9 @@ class TestMemoryService:
     async def test_service_add_and_search(self):
         """Test adding and searching through service."""
         import uuid
-        from tools.memory.service import MemoryService
+
         from tools.memory.providers.base import MemoryType
+        from tools.memory.service import MemoryService
 
         service = MemoryService()
         await service.initialize()
