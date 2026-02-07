@@ -18,6 +18,29 @@ Master list of all available tools. Check here before creating new scripts.
 | `context_capture.py` | Auto-snapshot context on task switches for ADHD working memory (Phase 2) |
 | `context_resume.py` | Generate ADHD-friendly "you were here..." resumption prompts (Phase 2) |
 | `commitments.py` | Track promises from conversations to prevent relationship damage (Phase 2) |
+| `service.py` | MemoryService facade — provider-agnostic memory operations with ADHD transforms |
+
+### Memory Providers (`tools/memory/providers/`)
+
+Pluggable memory backend system supporting multiple storage providers.
+
+| Provider | Description |
+|----------|-------------|
+| `base.py` | Abstract MemoryProvider base class, data structures (MemoryEntry, SearchFilters, etc.) |
+| `native.py` | NativeProvider — Local SQLite with hybrid BM25 + semantic search (default) |
+| `mem0_provider.py` | Mem0Provider — Graph-based memory (cloud or self-hosted with Qdrant) |
+| `zep_provider.py` | ZepProvider — Temporal knowledge graph (cloud or self-hosted with Neo4j) |
+| `simplemem_provider.py` | SimpleMemProvider — Cloud-only semantic compression API |
+| `claudemem_provider.py` | ClaudeMemProvider — Local progressive disclosure memory |
+
+**Provider Features:**
+- **Native**: Local-only, SQLite, hybrid search, no external dependencies
+- **Mem0**: Cloud + self-hosted, graph memory, automatic organization
+- **Zep**: Cloud + self-hosted, temporal graph, bi-temporal modeling
+- **SimpleMem**: Cloud-only, semantic compression, intent-aware retrieval
+- **ClaudeMem**: Local-only, progressive disclosure, ADHD-optimized retrieval
+
+**Configuration:** `args/memory.yaml`
 
 ---
 
@@ -527,6 +550,8 @@ Intelligent model routing framework for cost-optimized, complexity-based model s
 Custom MCP tools exposing DexAI's unique ADHD features to the SDK agent.
 
 #### Memory MCP Tools
+
+Provider-agnostic memory tools using MemoryService facade. Works with any configured provider (native, Mem0, Zep, SimpleMem, ClaudeMem).
 
 | Tool | Description |
 |------|-------------|
