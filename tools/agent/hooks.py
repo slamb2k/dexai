@@ -9,27 +9,271 @@ DexAI uses these for:
 - Context saving on session stop (ADHD-critical for resumption)
 - Audit logging of tool usage
 - Dashboard recording for analytics
+- Performance monitoring of hook execution times
 
 Usage:
-    from tools.agent.hooks import create_hooks
+    from tools.agent.hooks import create_hooks, get_hook_performance_summary
 
     hooks = create_hooks(user_id="alice", channel="telegram")
     options = ClaudeAgentOptions(hooks=hooks, ...)
+
+    # Check hook performance
+    summary = get_hook_performance_summary()
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import re
+import statistics
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 logger = logging.getLogger(__name__)
+
+# Type variable for decorator
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+# =============================================================================
+# Performance Monitoring Infrastructure
+# =============================================================================
+
+
+class HookMetrics:
+    """
+    Singleton for tracking hook execution timing metrics.
+
+    Thread-safe collection of timing data for all hooks.
+    """
+
+    _instance: HookMetrics | None = None
+    _lock = threading.Lock()
+
+    def __new__(cls) -> HookMetrics:
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialize()
+        return cls._instance
+
+    def _initialize(self) -> None:
+        """Initialize instance variables."""
+        self.timings: dict[str, list[float]] = {}  # hook_name -> [times_ms]
+        self.slow_threshold_ms: float = 50.0
+        self._timings_lock = threading.Lock()
+
+    def record(self, hook_name: str, duration_ms: float) -> None:
+        """
+        Record a hook execution time.
+
+        Args:
+            hook_name: Name of the hook
+            duration_ms: Execution duration in milliseconds
+        """
+        with self._timings_lock:
+            if hook_name not in self.timings:
+                self.timings[hook_name] = []
+            self.timings[hook_name].append(duration_ms)
+
+        # Log warning for slow hooks
+        if duration_ms > self.slow_threshold_ms:
+            logger.warning(
+                f"Slow hook detected: {hook_name} took {duration_ms:.2f}ms "
+                f"(threshold: {self.slow_threshold_ms}ms)"
+            )
+
+    def get_stats(self, hook_name: str) -> dict:
+        """
+        Get statistics for a specific hook.
+
+        Args:
+            hook_name: Name of the hook
+
+        Returns:
+            Dict with avg, p50, p95, p99, count, min, max
+        """
+        with self._timings_lock:
+            times = self.timings.get(hook_name, [])
+
+        if not times:
+            return {
+                "hook_name": hook_name,
+                "count": 0,
+                "avg_ms": 0.0,
+                "p50_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "min_ms": 0.0,
+                "max_ms": 0.0,
+            }
+
+        sorted_times = sorted(times)
+        count = len(times)
+
+        def percentile(data: list[float], p: float) -> float:
+            """Calculate percentile from sorted data."""
+            if not data:
+                return 0.0
+            k = (len(data) - 1) * (p / 100)
+            f = int(k)
+            c = f + 1 if f + 1 < len(data) else f
+            return data[f] + (k - f) * (data[c] - data[f]) if f != c else data[f]
+
+        return {
+            "hook_name": hook_name,
+            "count": count,
+            "avg_ms": statistics.mean(times),
+            "p50_ms": percentile(sorted_times, 50),
+            "p95_ms": percentile(sorted_times, 95),
+            "p99_ms": percentile(sorted_times, 99),
+            "min_ms": min(times),
+            "max_ms": max(times),
+        }
+
+    def get_slow_calls(self) -> list[dict]:
+        """
+        Get list of hooks that have had slow calls.
+
+        Returns:
+            List of dicts with hook_name, slow_count, avg_slow_time, max_time
+        """
+        slow_calls = []
+
+        with self._timings_lock:
+            for hook_name, times in self.timings.items():
+                slow_times = [t for t in times if t > self.slow_threshold_ms]
+                if slow_times:
+                    slow_calls.append({
+                        "hook_name": hook_name,
+                        "slow_count": len(slow_times),
+                        "total_count": len(times),
+                        "avg_slow_ms": statistics.mean(slow_times),
+                        "max_ms": max(slow_times),
+                        "threshold_ms": self.slow_threshold_ms,
+                    })
+
+        return sorted(slow_calls, key=lambda x: x["max_ms"], reverse=True)
+
+    def summary(self) -> dict:
+        """
+        Get summary of all hook performance.
+
+        Returns:
+            Dict with all hooks statistics and overall metrics
+        """
+        with self._timings_lock:
+            hook_names = list(self.timings.keys())
+
+        stats = {}
+        total_calls = 0
+        total_time_ms = 0.0
+
+        for hook_name in hook_names:
+            hook_stats = self.get_stats(hook_name)
+            stats[hook_name] = hook_stats
+            total_calls += hook_stats["count"]
+            total_time_ms += hook_stats["avg_ms"] * hook_stats["count"]
+
+        return {
+            "hooks": stats,
+            "slow_calls": self.get_slow_calls(),
+            "total_calls": total_calls,
+            "total_time_ms": total_time_ms,
+            "slow_threshold_ms": self.slow_threshold_ms,
+            "hooks_count": len(hook_names),
+        }
+
+    def reset(self) -> None:
+        """Reset all collected metrics."""
+        with self._timings_lock:
+            self.timings.clear()
+        logger.info("Hook metrics reset")
+
+    def set_slow_threshold(self, threshold_ms: float) -> None:
+        """
+        Set the threshold for slow hook warnings.
+
+        Args:
+            threshold_ms: Threshold in milliseconds
+        """
+        self.slow_threshold_ms = threshold_ms
+
+
+# Module-level singleton instance
+_metrics = HookMetrics()
+
+
+def get_hook_metrics() -> HookMetrics:
+    """Get the global HookMetrics singleton."""
+    return _metrics
+
+
+def get_hook_performance_summary() -> dict:
+    """
+    Get hook performance summary for dashboard.
+
+    This is the main interface for external monitoring.
+
+    Returns:
+        Dict with complete performance summary
+    """
+    return _metrics.summary()
+
+
+def timed_hook(hook_name: str) -> Callable[[F], F]:
+    """
+    Decorator that wraps a sync hook function to track execution time.
+
+    Args:
+        hook_name: Name to use for recording metrics
+
+    Returns:
+        Decorated function
+    """
+    def decorator(func: F) -> F:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.perf_counter()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                _metrics.record(hook_name, duration_ms)
+        return wrapper  # type: ignore
+    return decorator
+
+
+def async_timed_hook(hook_name: str) -> Callable[[F], F]:
+    """
+    Decorator that wraps an async hook function to track execution time.
+
+    Args:
+        hook_name: Name to use for recording metrics
+
+    Returns:
+        Decorated async function
+    """
+    def decorator(func: F) -> F:
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            start_time = time.perf_counter()
+            try:
+                return await func(*args, **kwargs)
+            finally:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                _metrics.record(hook_name, duration_ms)
+        return wrapper  # type: ignore
+    return decorator
 
 
 # =============================================================================
@@ -116,9 +360,10 @@ def create_bash_security_hook(
         log_suspicious: Whether to log suspicious patterns
 
     Returns:
-        Hook callback function
+        Hook callback function (wrapped with timing)
     """
 
+    @timed_hook("bash_security_hook")
     def bash_security_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
         """
         Security hook for Bash command execution.
@@ -189,9 +434,10 @@ def create_file_path_security_hook(
         user_id: User identifier for logging
 
     Returns:
-        Hook callback function
+        Hook callback function (wrapped with timing)
     """
 
+    @timed_hook("file_path_security_hook")
     def file_path_security_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
         """
         Security hook for file write operations.
@@ -265,6 +511,7 @@ def _log_security_event(
 # =============================================================================
 
 
+@async_timed_hook("save_context_on_stop")
 async def save_context_on_stop(
     user_id: str,
     channel: str,
@@ -357,9 +604,10 @@ def create_stop_hook(
         channel: Communication channel
 
     Returns:
-        Hook callback function
+        Hook callback function (wrapped with timing)
     """
 
+    @timed_hook("stop_hook")
     def stop_hook(input_data: dict) -> dict:
         """
         Stop hook callback.
@@ -419,9 +667,10 @@ def create_audit_hook(
         user_id: User identifier
 
     Returns:
-        Hook callback function
+        Hook callback function (wrapped with timing)
     """
 
+    @timed_hook("audit_hook")
     def audit_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
         """
         Audit hook callback for PreToolUse.
@@ -498,9 +747,10 @@ def create_dashboard_hook() -> Callable[[dict, str, Any], dict]:
     Records tool results to the dashboard for analytics.
 
     Returns:
-        Hook callback function
+        Hook callback function (wrapped with timing)
     """
 
+    @timed_hook("dashboard_hook")
     def dashboard_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
         """
         Dashboard hook callback for PostToolUse.
@@ -619,7 +869,7 @@ def create_hooks(
 
 
 def main():
-    """CLI interface for testing hooks."""
+    """CLI interface for testing hooks and viewing metrics."""
     import argparse
     import json
 
@@ -628,8 +878,62 @@ def main():
     parser.add_argument("--channel", default="cli", help="Channel")
     parser.add_argument("--test-stop", action="store_true", help="Test stop hook")
     parser.add_argument("--show-config", action="store_true", help="Show hooks config")
+    parser.add_argument("--show-metrics", action="store_true", help="Show hook performance metrics")
+    parser.add_argument("--reset-metrics", action="store_true", help="Reset all performance metrics")
+    parser.add_argument(
+        "--set-threshold",
+        type=float,
+        metavar="MS",
+        help="Set slow hook threshold in milliseconds"
+    )
 
     args = parser.parse_args()
+
+    if args.reset_metrics:
+        _metrics.reset()
+        print("Hook performance metrics reset.")
+        return
+
+    if args.set_threshold:
+        _metrics.set_slow_threshold(args.set_threshold)
+        print(f"Slow hook threshold set to {args.set_threshold}ms")
+        return
+
+    if args.show_metrics:
+        summary = get_hook_performance_summary()
+        print("Hook Performance Metrics")
+        print("=" * 60)
+        print(f"Total hooks tracked: {summary['hooks_count']}")
+        print(f"Total calls: {summary['total_calls']}")
+        print(f"Total time: {summary['total_time_ms']:.2f}ms")
+        print(f"Slow threshold: {summary['slow_threshold_ms']}ms")
+        print()
+
+        if summary["hooks"]:
+            print("Per-Hook Statistics:")
+            print("-" * 60)
+            for hook_name, stats in summary["hooks"].items():
+                print(f"\n  {hook_name}:")
+                print(f"    Calls: {stats['count']}")
+                print(f"    Avg:   {stats['avg_ms']:.3f}ms")
+                print(f"    P50:   {stats['p50_ms']:.3f}ms")
+                print(f"    P95:   {stats['p95_ms']:.3f}ms")
+                print(f"    P99:   {stats['p99_ms']:.3f}ms")
+                print(f"    Min:   {stats['min_ms']:.3f}ms")
+                print(f"    Max:   {stats['max_ms']:.3f}ms")
+        else:
+            print("No hook metrics recorded yet.")
+
+        if summary["slow_calls"]:
+            print()
+            print("Slow Calls Detected:")
+            print("-" * 60)
+            for slow in summary["slow_calls"]:
+                print(f"\n  {slow['hook_name']}:")
+                print(f"    Slow calls: {slow['slow_count']}/{slow['total_count']}")
+                print(f"    Avg slow:   {slow['avg_slow_ms']:.3f}ms")
+                print(f"    Max:        {slow['max_ms']:.3f}ms")
+        return
 
     if args.show_config:
         hooks = create_hooks(args.user, args.channel)
@@ -644,6 +948,12 @@ def main():
         stop_hook = create_stop_hook(args.user, args.channel)
         result = stop_hook({"test": True})
         print(f"Result: {json.dumps(result, indent=2)}")
+
+        # Show metrics after test
+        print("\nMetrics after test:")
+        summary = get_hook_performance_summary()
+        for hook_name, stats in summary["hooks"].items():
+            print(f"  {hook_name}: {stats['count']} calls, avg {stats['avg_ms']:.3f}ms")
 
 
 if __name__ == "__main__":
