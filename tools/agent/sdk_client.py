@@ -29,11 +29,17 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, AsyncIterator, TYPE_CHECKING
+from typing import Any, AsyncIterator, Optional, TYPE_CHECKING
 
 import yaml
 
 from tools.agent import PROJECT_ROOT, CONFIG_PATH
+from tools.agent.system_prompt import (
+    SystemPromptBuilder,
+    PromptContext,
+    PromptMode,
+    SessionType,
+)
 
 if TYPE_CHECKING:
     from tools.agent.model_router import TaskComplexity
@@ -154,24 +160,64 @@ def _get_memory_service():
         return None
 
 
-def build_system_prompt(user_id: str, config: dict) -> str:
+def build_system_prompt(
+    user_id: str,
+    config: dict,
+    channel: str = "direct",
+    session_type: str = "main",
+    prompt_mode: Optional[str] = None,
+) -> str:
     """
     Build the system prompt with user-specific context.
 
-    Uses MemoryService for provider-agnostic memory access with fallback
-    to legacy direct imports if MemoryService is unavailable.
+    Uses SystemPromptBuilder for workspace-based prompts with session-based
+    file filtering, then adds runtime context (memory, commitments, energy)
+    for main sessions via MemoryService.
 
     Args:
         user_id: User identifier for context loading
         config: Agent configuration
+        channel: Communication channel (direct, telegram, discord, slack)
+        session_type: Session type (main, subagent, heartbeat, cron)
+        prompt_mode: Prompt mode override (full, minimal, none). If None, uses session default.
 
     Returns:
         Complete system prompt string
     """
-    prompt_config = config.get("system_prompt", {})
-    parts = [prompt_config.get("base", DEFAULT_CONFIG["system_prompt"]["base"])]
+    # Build base prompt from workspace files with session-based filtering
+    builder = SystemPromptBuilder(config.get("system_prompt", {}))
+    context = PromptContext(
+        user_id=user_id,
+        session_type=SessionType(session_type),
+        prompt_mode=PromptMode(prompt_mode) if prompt_mode else None,
+        channel=channel,
+        workspace_root=PROJECT_ROOT,
+    )
+    prompt = builder.build(context)
 
-    # Try to get memory service (with fallback to legacy)
+    # Only add runtime context for sessions that include it (main sessions with full mode)
+    if context.include_runtime_context:
+        prompt = _add_runtime_context(prompt, user_id, config)
+
+    return prompt
+
+
+def _add_runtime_context(prompt: str, user_id: str, config: dict) -> str:
+    """
+    Add runtime context (memory, commitments, energy, skills) to prompt.
+
+    Args:
+        prompt: Base prompt from SystemPromptBuilder
+        user_id: User identifier
+        config: Agent configuration
+
+    Returns:
+        Prompt with runtime context added
+    """
+    parts = [prompt]
+    prompt_config = config.get("system_prompt", {})
+
+    # Try to get memory service
     memory_service = _get_memory_service()
 
     # Include memory context
@@ -321,11 +367,17 @@ class DexAIClient:
     Claude Agent SDK client wrapper with DexAI integration.
 
     Provides:
-    - ADHD-aware system prompts
+    - ADHD-aware system prompts with session-based file filtering
     - DexAI permission integration
     - User-specific context loading
     - Intelligent model routing (complexity-based)
     - Cost tracking integration
+
+    Session Types:
+    - main: Full interactive session (all files + runtime context)
+    - subagent: Task-focused agent (PERSONA + AGENTS only, no personal context)
+    - heartbeat: Proactive check-in (PERSONA + AGENTS + HEARTBEAT)
+    - cron: Scheduled job (PERSONA + AGENTS only)
     """
 
     def __init__(
@@ -334,6 +386,8 @@ class DexAIClient:
         working_dir: str | None = None,
         config: dict | None = None,
         explicit_complexity: "TaskComplexity | None" = None,
+        session_type: str = "main",
+        channel: str = "direct",
     ):
         """
         Initialize DexAI client.
@@ -343,6 +397,8 @@ class DexAIClient:
             working_dir: Working directory for file operations (default: PROJECT_ROOT)
             config: Optional config override (default: load from args/agent.yaml)
             explicit_complexity: Optional explicit complexity hint for routing
+            session_type: Session type (main, subagent, heartbeat, cron)
+            channel: Communication channel (direct, telegram, discord, slack)
         """
         self.user_id = user_id
         self.config = config or load_config()
@@ -350,6 +406,8 @@ class DexAIClient:
             self.config.get("agent", {}).get("working_directory") or PROJECT_ROOT
         )
         self.explicit_complexity = explicit_complexity
+        self.session_type = session_type
+        self.channel = channel
         self._client = None
         self._session_id: str | None = None
         self._total_cost: float = 0.0
@@ -453,14 +511,19 @@ class DexAIClient:
             env = routing_options["env"]
             self._last_routing_decision = decision
 
-        # Build options
+        # Build options with session-aware system prompt
         options = ClaudeAgentOptions(
             model=model,
             allowed_tools=allowed_tools,
             mcp_servers={"dexai": dexai_server},  # Register DexAI tools
             cwd=self.working_dir,
             permission_mode=agent_config.get("permission_mode", "default"),
-            system_prompt=build_system_prompt(self.user_id, self.config),
+            system_prompt=build_system_prompt(
+                user_id=self.user_id,
+                config=self.config,
+                channel=self.channel,
+                session_type=self.session_type,
+            ),
             can_use_tool=create_permission_callback(self.user_id, self.config),
             env=env or {},
         )
@@ -626,18 +689,29 @@ class QueryResult:
 # =============================================================================
 
 
-async def quick_query(user_id: str, message: str) -> str:
+async def quick_query(
+    user_id: str,
+    message: str,
+    session_type: str = "main",
+    channel: str = "direct",
+) -> str:
     """
     Quick one-shot query without context management.
 
     Args:
         user_id: User identifier
         message: Message to send
+        session_type: Session type (main, subagent, heartbeat, cron)
+        channel: Communication channel
 
     Returns:
         Response text
     """
-    async with DexAIClient(user_id=user_id) as client:
+    async with DexAIClient(
+        user_id=user_id,
+        session_type=session_type,
+        channel=channel,
+    ) as client:
         result = await client.query(message)
         return result.text
 
@@ -657,6 +731,10 @@ def main():
     parser.add_argument("--query", help="Query to send")
     parser.add_argument("--interactive", action="store_true", help="Interactive mode")
     parser.add_argument("--show-config", action="store_true", help="Show configuration")
+    parser.add_argument("--session", default="main",
+                        choices=["main", "subagent", "heartbeat", "cron"],
+                        help="Session type (controls prompt content)")
+    parser.add_argument("--channel", default="direct", help="Channel (direct, telegram, discord)")
 
     args = parser.parse_args()
 
@@ -667,7 +745,12 @@ def main():
 
     if args.query:
         async def run_query():
-            result = await quick_query(args.user, args.query)
+            result = await quick_query(
+                args.user,
+                args.query,
+                session_type=args.session,
+                channel=args.channel,
+            )
             print(result)
             return result
 
@@ -675,8 +758,13 @@ def main():
 
     elif args.interactive:
         async def interactive():
-            async with DexAIClient(user_id=args.user) as client:
-                print("DexAI Interactive Mode (type 'exit' to quit)")
+            async with DexAIClient(
+                user_id=args.user,
+                session_type=args.session,
+                channel=args.channel,
+            ) as client:
+                print(f"DexAI Interactive Mode (session={args.session}, channel={args.channel})")
+                print("Type 'exit' to quit")
                 print("-" * 40)
 
                 while True:

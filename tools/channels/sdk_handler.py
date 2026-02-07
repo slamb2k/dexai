@@ -89,18 +89,29 @@ class SDKSession:
     Manages an SDK session for a user.
 
     Maintains state across messages for conversation continuity.
+    Supports session-type-based prompt filtering (main, subagent, heartbeat, cron).
     """
 
-    def __init__(self, user_id: str, working_dir: str | None = None):
+    def __init__(
+        self,
+        user_id: str,
+        working_dir: str | None = None,
+        session_type: str = "main",
+        channel: str = "direct",
+    ):
         """
         Initialize SDK session.
 
         Args:
             user_id: User identifier for permissions and context
             working_dir: Working directory for file operations
+            session_type: Session type (main, subagent, heartbeat, cron)
+            channel: Communication channel (direct, telegram, discord, slack)
         """
         self.user_id = user_id
         self.working_dir = working_dir or str(PROJECT_ROOT)
+        self.session_type = session_type
+        self.channel = channel
         self._client = None
         self._last_activity: datetime = datetime.now()
         self._message_count: int = 0
@@ -236,6 +247,8 @@ class SDKSession:
                 user_id=self.user_id,
                 working_dir=self.working_dir,
                 explicit_complexity=explicit_complexity,
+                session_type=self.session_type,
+                channel=self.channel,
             ) as client:
                 result = await client.query(message)
 
@@ -371,16 +384,22 @@ NOTE: Running in fallback mode - file access and tool use unavailable."""
         return datetime.now() - self._last_activity > timedelta(minutes=60)
 
 
-# Store active sessions by user
+# Store active sessions by user+channel
 _sessions: dict[str, SDKSession] = {}
 
 
-def get_session(user_id: str) -> SDKSession:
+def get_session(
+    user_id: str,
+    channel: str = "direct",
+    session_type: str = "main",
+) -> SDKSession:
     """
     Get or create an SDK session for a user.
 
     Args:
         user_id: User identifier
+        channel: Communication channel
+        session_type: Session type (main, subagent, heartbeat, cron)
 
     Returns:
         SDKSession instance
@@ -388,16 +407,50 @@ def get_session(user_id: str) -> SDKSession:
     # Clean up stale sessions periodically
     _cleanup_stale_sessions()
 
-    if user_id not in _sessions:
-        _sessions[user_id] = SDKSession(user_id)
-    return _sessions[user_id]
+    # Key includes channel to support different sessions per channel
+    session_key = f"{user_id}:{channel}"
+
+    if session_key not in _sessions:
+        _sessions[session_key] = SDKSession(
+            user_id=user_id,
+            session_type=session_type,
+            channel=channel,
+        )
+    return _sessions[session_key]
 
 
 def _cleanup_stale_sessions() -> None:
     """Remove stale sessions to free memory."""
-    stale = [uid for uid, session in _sessions.items() if session.is_stale]
-    for uid in stale:
-        del _sessions[uid]
+    stale = [key for key, session in _sessions.items() if session.is_stale]
+    for key in stale:
+        del _sessions[key]
+
+
+def _detect_session_type(message: UnifiedMessage, context: dict) -> str:
+    """
+    Detect the appropriate session type based on message context.
+
+    Args:
+        message: Inbound message
+        context: Security and routing context
+
+    Returns:
+        Session type string (main, subagent, heartbeat, cron)
+    """
+    # Check if this is a heartbeat message
+    if context.get("is_heartbeat"):
+        return "heartbeat"
+
+    # Check if this is a cron/scheduled job
+    if context.get("is_cron") or context.get("is_scheduled"):
+        return "cron"
+
+    # Check if this is a subagent spawn (from Task tool)
+    if context.get("is_subagent") or context.get("spawned_by_task"):
+        return "subagent"
+
+    # Default to main session for interactive user messages
+    return "main"
 
 
 async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
@@ -405,6 +458,7 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
     Handle incoming messages using the SDK client.
 
     This is the main handler function registered with the router.
+    Automatically detects session type based on message context.
 
     Args:
         message: Inbound UnifiedMessage from a channel adapter
@@ -413,8 +467,15 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
     Returns:
         Dict with success status and processing results
     """
-    # Get or create session for this user
-    session = get_session(message.user_id)
+    # Detect session type from context
+    session_type = _detect_session_type(message, context)
+
+    # Get or create session for this user+channel
+    session = get_session(
+        user_id=message.user_id,
+        channel=message.channel,
+        session_type=session_type,
+    )
 
     # Query the agent
     result = await session.query(message.content, message.channel)
@@ -566,12 +627,20 @@ async def sdk_handler_streaming(
         await send_chunk("Agent SDK not installed.")
         return {"success": False, "error": "SDK not installed"}
 
-    session = get_session(message.user_id)
+    # Detect session type
+    session_type = _detect_session_type(message, context)
+    session = get_session(
+        user_id=message.user_id,
+        channel=message.channel,
+        session_type=session_type,
+    )
 
     try:
         async with DexAIClient(
             user_id=message.user_id,
-            working_dir=session.working_dir
+            working_dir=session.working_dir,
+            session_type=session_type,
+            channel=message.channel,
         ) as client:
             await client._client.query(message.content)
 
@@ -609,6 +678,9 @@ def main():
     parser.add_argument("--user", default="test_user", help="User ID")
     parser.add_argument("--message", help="Message to send")
     parser.add_argument("--channel", default="cli", help="Channel name")
+    parser.add_argument("--session", default="main",
+                        choices=["main", "subagent", "heartbeat", "cron"],
+                        help="Session type")
     parser.add_argument("--interactive", action="store_true", help="Interactive mode")
 
     args = parser.parse_args()
@@ -617,7 +689,7 @@ def main():
         if args.interactive:
             print("SDK Handler Interactive Test")
             print("-" * 40)
-            print(f"User: {args.user}, Channel: {args.channel}")
+            print(f"User: {args.user}, Channel: {args.channel}, Session: {args.session}")
             print("Type 'exit' to quit\n")
 
             while True:
