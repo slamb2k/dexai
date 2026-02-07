@@ -8,12 +8,21 @@ This module provides persistent memory capabilities:
 - Vector embeddings for semantic search
 - Hybrid search combining BM25 and vector similarity
 
+Pluggable Provider Architecture:
+- Native: Local SQLite + hybrid search (default)
+- Mem0: Cloud or self-hosted with graph memory
+- Zep: Cloud or self-hosted temporal knowledge graph
+- SimpleMem: Cloud-only semantic compression
+- ClaudeMem: Local progressive disclosure
+
 Phase 2 additions (External Working Memory for ADHD):
 - context_capture.py: Auto-snapshot context on task switches
 - context_resume.py: Generate "you were here..." prompts
 - commitments.py: Track promises from conversations
 
 Components:
+    - service.py: MemoryService facade (main entry point)
+    - providers/: Pluggable provider implementations
     - memory_db.py: SQLite CRUD operations
     - memory_read.py: Load memory at session start
     - memory_write.py: Write to daily logs and database
@@ -23,6 +32,17 @@ Components:
     - context_capture.py: Context snapshot capture (Phase 2)
     - context_resume.py: Context resumption prompts (Phase 2)
     - commitments.py: Commitment tracking (Phase 2)
+
+Usage:
+    # New way (recommended) - use MemoryService
+    from tools.memory.service import MemoryService, get_memory_service
+
+    service = await get_memory_service()
+    await service.add("User prefers dark mode", type=MemoryType.PREFERENCE)
+    results = await service.search("user preferences")
+
+    # Legacy way - direct module access (still supported)
+    from tools.memory import hybrid_search, add_entry
 """
 
 from .commitments import (
