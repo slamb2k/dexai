@@ -281,10 +281,12 @@ class TestClaudeMemProvider:
         from tools.memory.providers.base import MemoryType
         from tools.memory.providers.claudemem_provider import ClaudeMemProvider
 
-        provider = ClaudeMemProvider({
-            "database_path": temp_db,
-            "embedding_model": "none",  # Skip embeddings for test
-        })
+        provider = ClaudeMemProvider(
+            {
+                "database_path": temp_db,
+                "embedding_model": "none",  # Skip embeddings for test
+            }
+        )
         await provider.bootstrap()
 
         # Add test memories
