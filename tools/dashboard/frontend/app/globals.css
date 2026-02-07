@@ -2,52 +2,171 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CSS Variables for Design System */
+/* ==========================================================================
+   Crystal Theme Design System
+   ========================================================================== */
+
+/* CSS Variables - Dark Mode (Default) */
 :root {
-  /* Core Colors */
-  --bg-primary: #0a0a0f;
-  --bg-surface: #12121a;
-  --bg-elevated: #1a1a2e;
-  --bg-input: #0f0f16;
+  /* Core Background Colors - Crystal Dark */
+  --bg-primary: #000000;
+  --bg-surface: rgba(255, 255, 255, 0.02);
+  --bg-elevated: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-input: rgba(255, 255, 255, 0.03);
+
+  /* Glass Panel Effect */
+  --glass-bg: rgba(255, 255, 255, 0.02);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-hover: rgba(255, 255, 255, 0.08);
 
   /* Accent Colors */
-  --accent-primary: #3b82f6;
-  --accent-glow: #60a5fa;
+  --accent-primary: #10b981;
+  --accent-glow: #34d399;
   --accent-secondary: #06b6d4;
+  --accent-muted: rgba(16, 185, 129, 0.2);
 
   /* Status Colors */
   --status-success: #10b981;
   --status-warning: #f59e0b;
   --status-error: #ef4444;
   --status-info: #3b82f6;
+  --status-hyperfocus: #a855f7;
 
-  /* Text Colors */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-disabled: #475569;
+  /* Text Colors - Opacity Hierarchy */
+  --text-primary: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-disabled: rgba(255, 255, 255, 0.2);
 
   /* Border Colors */
-  --border-default: #1e293b;
-  --border-focus: #3b82f6;
+  --border-default: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-focus: rgba(16, 185, 129, 0.5);
+
+  /* Energy Indicator Colors */
+  --energy-low: #f59e0b;
+  --energy-medium: #3b82f6;
+  --energy-high: #10b981;
+
+  /* Shadow Colors */
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --glow-emerald: rgba(16, 185, 129, 0.3);
+  --glow-blue: rgba(59, 130, 246, 0.3);
+  --glow-purple: rgba(168, 85, 247, 0.3);
 }
 
-/* Base styles */
+/* CSS Variables - Light Mode */
+.light {
+  /* Core Background Colors - Crystal Light */
+  --bg-primary: #fafafa;
+  --bg-surface: rgba(0, 0, 0, 0.02);
+  --bg-elevated: rgba(0, 0, 0, 0.04);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --bg-input: rgba(0, 0, 0, 0.03);
+
+  /* Glass Panel Effect */
+  --glass-bg: rgba(0, 0, 0, 0.02);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-hover: rgba(0, 0, 0, 0.08);
+
+  /* Accent Colors - Same for both modes */
+  --accent-primary: #10b981;
+  --accent-glow: #059669;
+  --accent-secondary: #0891b2;
+  --accent-muted: rgba(16, 185, 129, 0.15);
+
+  /* Status Colors - Slightly darker for light mode */
+  --status-success: #059669;
+  --status-warning: #d97706;
+  --status-error: #dc2626;
+  --status-info: #2563eb;
+  --status-hyperfocus: #9333ea;
+
+  /* Text Colors - Opacity Hierarchy */
+  --text-primary: rgba(0, 0, 0, 0.9);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-muted: rgba(0, 0, 0, 0.4);
+  --text-disabled: rgba(0, 0, 0, 0.2);
+
+  /* Border Colors */
+  --border-default: rgba(0, 0, 0, 0.06);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-focus: rgba(16, 185, 129, 0.5);
+
+  /* Energy Indicator Colors */
+  --energy-low: #d97706;
+  --energy-medium: #2563eb;
+  --energy-high: #059669;
+
+  /* Shadow Colors */
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --glow-emerald: rgba(16, 185, 129, 0.2);
+  --glow-blue: rgba(59, 130, 246, 0.2);
+  --glow-purple: rgba(168, 85, 247, 0.2);
+}
+
+/* ==========================================================================
+   Base Styles
+   ========================================================================== */
+
 html,
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
 }
 
-/* Custom scrollbar for dark theme */
+/* Crystal Grid Background Pattern */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.5;
+  z-index: -1;
+}
+
+/* Conic gradient accent in top corner */
+body::after {
+  content: '';
+  position: fixed;
+  top: -50%;
+  right: -25%;
+  width: 80%;
+  height: 100%;
+  pointer-events: none;
+  background: conic-gradient(
+    from 180deg at 50% 50%,
+    transparent 0deg,
+    var(--glow-emerald) 60deg,
+    transparent 120deg,
+    var(--glow-blue) 180deg,
+    transparent 240deg,
+    var(--glow-purple) 300deg,
+    transparent 360deg
+  );
+  opacity: 0.15;
+  filter: blur(100px);
+  z-index: -1;
+}
+
+/* ==========================================================================
+   Custom Scrollbar
+   ========================================================================== */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-surface);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -59,7 +178,10 @@ body {
   background: var(--text-muted);
 }
 
-/* Focus styles */
+/* ==========================================================================
+   Focus Styles
+   ========================================================================== */
+
 *:focus {
   outline: none;
 }
@@ -69,92 +191,222 @@ body {
   outline-offset: 2px;
 }
 
-/* Utility classes */
+/* ==========================================================================
+   Component Layer
+   ========================================================================== */
+
 @layer components {
-  /* Card component */
+  /* Crystal Card - Glass Panel Effect */
+  .crystal-card {
+    @apply relative overflow-hidden;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: all 0.2s ease;
+  }
+
+  .crystal-card:hover {
+    background: var(--glass-hover);
+    border-color: var(--border-default);
+  }
+
+  .crystal-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      transparent 50%,
+      transparent 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Legacy card support (backwards compatible) */
   .card {
-    @apply bg-bg-surface border border-border-default rounded-card shadow-card;
-    @apply transition-all duration-200;
+    @apply crystal-card;
   }
 
-  .card:hover {
-    @apply shadow-glow-blue;
-  }
-
-  /* Button variants */
+  /* Button Variants */
   .btn {
-    @apply px-4 py-2 rounded-button font-medium transition-all duration-200;
-    @apply focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary;
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent-primary;
   }
 
   .btn-primary {
-    @apply bg-accent-primary text-white hover:bg-accent-glow;
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-glow);
+    box-shadow: 0 0 20px var(--glow-emerald);
   }
 
   .btn-secondary {
-    @apply bg-transparent border border-accent-primary text-accent-primary;
-    @apply hover:bg-accent-primary hover:text-white;
+    @apply bg-transparent border;
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+  }
+
+  .btn-secondary:hover {
+    background: var(--accent-muted);
   }
 
   .btn-ghost {
-    @apply bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated;
+    @apply bg-transparent;
+    color: var(--text-secondary);
   }
 
-  /* Input styles */
+  .btn-ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  /* Action Button - For current step actions */
+  .btn-action {
+    @apply px-6 py-3 rounded-xl font-medium transition-all duration-200;
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  .btn-action:hover {
+    background: var(--accent-glow);
+    box-shadow: 0 0 30px var(--glow-emerald);
+    transform: translateY(-1px);
+  }
+
+  .btn-action:active {
+    transform: translateY(0);
+  }
+
+  /* Input Styles */
   .input {
-    @apply bg-bg-input border border-border-default rounded-button px-3 py-2;
-    @apply text-text-primary placeholder:text-text-muted;
-    @apply focus:border-border-focus focus:shadow-glow-blue;
-    @apply transition-all duration-200;
+    @apply rounded-lg px-3 py-2 transition-all duration-200;
+    background: var(--bg-input);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
   }
 
-  /* Badge variants */
+  .input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .input:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-muted);
+  }
+
+  /* Badge Variants */
   .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded text-caption font-medium;
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium;
   }
 
   .badge-success {
-    @apply bg-status-success/20 text-status-success;
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--status-success);
   }
 
   .badge-warning {
-    @apply bg-status-warning/20 text-status-warning;
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--status-warning);
   }
 
   .badge-error {
-    @apply bg-status-error/20 text-status-error;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--status-error);
   }
 
   .badge-info {
-    @apply bg-status-info/20 text-status-info;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--status-info);
   }
 
-  /* Status indicator dot */
+  .badge-hyperfocus {
+    background: rgba(168, 85, 247, 0.15);
+    color: var(--status-hyperfocus);
+  }
+
+  /* Status Indicator Dots */
   .status-dot {
     @apply w-2 h-2 rounded-full;
   }
 
   .status-dot-success {
-    @apply bg-status-success shadow-glow-green;
+    background: var(--status-success);
+    box-shadow: 0 0 8px var(--glow-emerald);
   }
 
   .status-dot-warning {
-    @apply bg-status-warning shadow-glow-amber;
+    background: var(--status-warning);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
   }
 
   .status-dot-error {
-    @apply bg-status-error shadow-glow-red;
+    background: var(--status-error);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
   }
 
   .status-dot-info {
-    @apply bg-status-info shadow-glow-blue;
+    background: var(--status-info);
+    box-shadow: 0 0 8px var(--glow-blue);
+  }
+
+  /* Energy Level Indicator */
+  .energy-indicator {
+    @apply flex items-center gap-1;
+  }
+
+  .energy-bolt {
+    @apply w-4 h-4 transition-opacity duration-200;
+  }
+
+  .energy-bolt.active {
+    opacity: 1;
+  }
+
+  .energy-bolt.inactive {
+    opacity: 0.2;
+  }
+
+  /* Flow State Badge */
+  .flow-badge {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium;
+    background: rgba(168, 85, 247, 0.15);
+    color: var(--status-hyperfocus);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+  }
+
+  .flow-badge.active {
+    animation: flow-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes flow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 20px 4px rgba(168, 85, 247, 0.2);
+    }
   }
 }
 
-/* Animation utilities */
+/* ==========================================================================
+   Animation Utilities
+   ========================================================================== */
+
 @layer utilities {
   .animate-fade-in {
-    animation: fadeIn 0.3s ease-in-out;
+    animation: fadeIn 0.3s ease-out;
   }
 
   @keyframes fadeIn {
@@ -181,5 +433,49 @@ body {
       opacity: 1;
       transform: scale(1);
     }
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-glow-pulse {
+    animation: glowPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes glowPulse {
+    0%, 100% {
+      opacity: 0.5;
+      filter: brightness(1);
+    }
+    50% {
+      opacity: 1;
+      filter: brightness(1.2);
+    }
+  }
+
+  /* Backdrop blur utility */
+  .backdrop-blur-crystal {
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-glow) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 }

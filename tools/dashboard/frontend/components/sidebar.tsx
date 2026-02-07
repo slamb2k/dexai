@@ -4,29 +4,40 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home,
-  ListTodo,
+  CheckSquare,
+  Brain,
+  MessageSquare,
+  Mail,
   Activity,
-  BarChart3,
-  Shield,
   Settings,
   Bug,
   ChevronLeft,
   ChevronRight,
-  Wand2,
-  Server,
+  Sparkles,
+  LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-const navItems = [
+interface NavItem {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  badge?: number;
+  admin?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: '/', icon: Home, label: 'Home' },
-  { href: '/tasks', icon: ListTodo, label: 'Tasks' },
+  { href: '/tasks', icon: CheckSquare, label: 'Tasks' },
+  { href: '/memory', icon: Brain, label: 'Memory' },
+  { href: '/channels', icon: MessageSquare, label: 'Channels' },
+  { href: '/office', icon: Mail, label: 'Office' },
   { href: '/activity', icon: Activity, label: 'Activity' },
-  { href: '/metrics', icon: BarChart3, label: 'Metrics' },
-  { href: '/audit', icon: Shield, label: 'Audit' },
-  { href: '/services', icon: Server, label: 'Services' },
+];
+
+const bottomNavItems: NavItem[] = [
   { href: '/settings', icon: Settings, label: 'Settings' },
-  { href: '/setup', icon: Wand2, label: 'Setup' },
   { href: '/debug', icon: Bug, label: 'Debug', admin: true },
 ];
 
@@ -37,68 +48,141 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'bg-bg-surface border-r border-border-default flex flex-col transition-all duration-300',
+        'flex flex-col transition-all duration-300 ease-in-out',
+        'bg-bg-surface/50 backdrop-blur-crystal',
+        'border-r border-border-default',
         collapsed ? 'w-16' : 'w-56'
       )}
     >
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-border-default">
         {!collapsed && (
-          <span className="text-section-header font-semibold text-text-primary">
-            DexAI
-          </span>
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-accent-primary/20 flex items-center justify-center group-hover:bg-accent-primary/30 transition-colors">
+              <Sparkles className="w-4 h-4 text-accent-primary" />
+            </div>
+            <span className="text-section-header font-semibold text-text-primary">
+              DexAI
+            </span>
+          </Link>
+        )}
+        {collapsed && (
+          <Link href="/" className="mx-auto">
+            <div className="w-8 h-8 rounded-lg bg-accent-primary/20 flex items-center justify-center hover:bg-accent-primary/30 transition-colors">
+              <Sparkles className="w-4 h-4 text-accent-primary" />
+            </div>
+          </Link>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-button hover:bg-bg-elevated text-text-muted hover:text-text-primary transition-colors"
+          className={cn(
+            'p-1.5 rounded-lg transition-colors',
+            'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+            collapsed && 'hidden'
+          )}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          <ChevronLeft size={18} />
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4">
+      <nav className="flex-1 py-4 overflow-y-auto">
         <ul className="space-y-1 px-2">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
-
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-button transition-all duration-200',
-                    isActive
-                      ? 'bg-accent-primary/10 text-accent-primary'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated',
-                    collapsed && 'justify-center'
-                  )}
-                >
-                  <Icon size={20} className={isActive ? 'text-accent-primary' : ''} />
-                  {!collapsed && (
-                    <span className="text-body">{item.label}</span>
-                  )}
-                  {isActive && !collapsed && (
-                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-primary" />
-                  )}
-                </Link>
-              </li>
-            );
-          })}
+          {navItems.map((item) => (
+            <NavLink
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              collapsed={collapsed}
+            />
+          ))}
         </ul>
       </nav>
 
       {/* Bottom section */}
-      <div className="p-4 border-t border-border-default">
+      <div className="border-t border-border-default py-4">
+        <ul className="space-y-1 px-2">
+          {bottomNavItems.map((item) => (
+            <NavLink
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              collapsed={collapsed}
+            />
+          ))}
+        </ul>
+
+        {/* Version info */}
         {!collapsed && (
-          <div className="text-caption text-text-muted">
-            <p>DexAI v0.1.0</p>
-            <p className="text-text-disabled">Phase 7 Dashboard</p>
+          <div className="px-4 mt-4">
+            <p className="text-caption text-text-disabled">
+              DexAI v0.1.0
+            </p>
           </div>
         )}
       </div>
+
+      {/* Expand button when collapsed */}
+      {collapsed && (
+        <button
+          onClick={() => setCollapsed(false)}
+          className="p-4 text-text-muted hover:text-text-primary transition-colors"
+          aria-label="Expand sidebar"
+        >
+          <ChevronRight size={18} className="mx-auto" />
+        </button>
+      )}
     </aside>
+  );
+}
+
+function NavLink({
+  item,
+  pathname,
+  collapsed,
+}: {
+  item: NavItem;
+  pathname: string;
+  collapsed: boolean;
+}) {
+  const isActive = pathname === item.href;
+  const Icon = item.icon;
+
+  return (
+    <li>
+      <Link
+        href={item.href}
+        className={cn(
+          'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200',
+          isActive
+            ? 'bg-accent-muted text-accent-primary'
+            : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+          collapsed && 'justify-center px-2'
+        )}
+        title={collapsed ? item.label : undefined}
+      >
+        <Icon
+          size={20}
+          className={cn(
+            'flex-shrink-0 transition-colors',
+            isActive && 'text-accent-primary'
+          )}
+        />
+        {!collapsed && (
+          <>
+            <span className="text-body flex-1">{item.label}</span>
+            {item.badge !== undefined && item.badge > 0 && (
+              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-accent-primary text-white">
+                {item.badge}
+              </span>
+            )}
+            {isActive && (
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" />
+            )}
+          </>
+        )}
+      </Link>
+    </li>
   );
 }
