@@ -146,6 +146,18 @@ export interface ChannelTokensResponse {
     configured: boolean;
     masked_key: string;
   };
+  openrouter: {
+    configured: boolean;
+    masked_key: string;
+  };
+  openai: {
+    configured: boolean;
+    masked_key: string;
+  };
+  google: {
+    configured: boolean;
+    masked_key: string;
+  };
 }
 
 export interface ChannelTokensUpdateRequest {
@@ -154,6 +166,9 @@ export interface ChannelTokensUpdateRequest {
   slack_bot_token?: string;
   slack_app_token?: string;
   anthropic_key?: string;
+  openrouter_key?: string;
+  openai_key?: string;
+  google_key?: string;
 }
 
 // Setup wizard types
@@ -829,10 +844,13 @@ class ApiClient {
     });
   }
 
-  async validateApiKey(api_key: string): Promise<ApiResponse<{ success: boolean; error?: string }>> {
+  async validateApiKey(
+    api_key: string,
+    provider: string = 'anthropic'
+  ): Promise<ApiResponse<{ success: boolean; error?: string }>> {
     return this.request<{ success: boolean; error?: string }>('/api/setup/apikey/validate', {
       method: 'POST',
-      body: JSON.stringify({ api_key }),
+      body: JSON.stringify({ api_key, provider }),
     });
   }
 

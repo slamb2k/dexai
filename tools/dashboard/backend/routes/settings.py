@@ -444,15 +444,20 @@ async def get_channel_tokens():
     slack_bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
     slack_app_token = os.environ.get("SLACK_APP_TOKEN", "")
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    google_key = os.environ.get("GOOGLE_API_KEY", "")
 
     # If not in env, check .env file
-    if not any([telegram_token, discord_token, slack_bot_token, slack_app_token]):
-        env_vars = _read_env_file()
-        telegram_token = telegram_token or env_vars.get("TELEGRAM_BOT_TOKEN", "")
-        discord_token = discord_token or env_vars.get("DISCORD_BOT_TOKEN", "")
-        slack_bot_token = slack_bot_token or env_vars.get("SLACK_BOT_TOKEN", "")
-        slack_app_token = slack_app_token or env_vars.get("SLACK_APP_TOKEN", "")
-        anthropic_key = anthropic_key or env_vars.get("ANTHROPIC_API_KEY", "")
+    env_vars = _read_env_file()
+    telegram_token = telegram_token or env_vars.get("TELEGRAM_BOT_TOKEN", "")
+    discord_token = discord_token or env_vars.get("DISCORD_BOT_TOKEN", "")
+    slack_bot_token = slack_bot_token or env_vars.get("SLACK_BOT_TOKEN", "")
+    slack_app_token = slack_app_token or env_vars.get("SLACK_APP_TOKEN", "")
+    anthropic_key = anthropic_key or env_vars.get("ANTHROPIC_API_KEY", "")
+    openrouter_key = openrouter_key or env_vars.get("OPENROUTER_API_KEY", "")
+    openai_key = openai_key or env_vars.get("OPENAI_API_KEY", "")
+    google_key = google_key or env_vars.get("GOOGLE_API_KEY", "")
 
     return {
         "telegram": {
@@ -472,6 +477,18 @@ async def get_channel_tokens():
             "configured": bool(anthropic_key),
             "masked_key": _mask_token(anthropic_key),
         },
+        "openrouter": {
+            "configured": bool(openrouter_key),
+            "masked_key": _mask_token(openrouter_key),
+        },
+        "openai": {
+            "configured": bool(openai_key),
+            "masked_key": _mask_token(openai_key),
+        },
+        "google": {
+            "configured": bool(google_key),
+            "masked_key": _mask_token(google_key),
+        },
     }
 
 
@@ -483,6 +500,9 @@ class TokenUpdateRequest(BaseModel):
     slack_bot_token: str | None = None
     slack_app_token: str | None = None
     anthropic_key: str | None = None
+    openrouter_key: str | None = None
+    openai_key: str | None = None
+    google_key: str | None = None
 
 
 # =============================================================================
@@ -600,6 +620,15 @@ async def update_channel_tokens(request: TokenUpdateRequest):
     if request.anthropic_key:
         updates["ANTHROPIC_API_KEY"] = request.anthropic_key
 
+    if request.openrouter_key:
+        updates["OPENROUTER_API_KEY"] = request.openrouter_key
+
+    if request.openai_key:
+        updates["OPENAI_API_KEY"] = request.openai_key
+
+    if request.google_key:
+        updates["GOOGLE_API_KEY"] = request.google_key
+
     if not updates:
         return {"success": True, "message": "No tokens to update", "updated": []}
 
@@ -609,15 +638,18 @@ async def update_channel_tokens(request: TokenUpdateRequest):
     try:
         from tools.dashboard.backend.database import log_audit
 
-        # Map env var names to channel names for clearer logging
-        channel_map = {
+        # Map env var names to provider names for clearer logging
+        provider_map = {
             "TELEGRAM_BOT_TOKEN": "telegram",
             "DISCORD_BOT_TOKEN": "discord",
             "SLACK_BOT_TOKEN": "slack",
             "SLACK_APP_TOKEN": "slack",
             "ANTHROPIC_API_KEY": "anthropic",
+            "OPENROUTER_API_KEY": "openrouter",
+            "OPENAI_API_KEY": "openai",
+            "GOOGLE_API_KEY": "google",
         }
-        channels_updated = list({channel_map.get(k, k) for k in updates.keys()})
+        providers_updated = list({provider_map.get(k, k) for k in updates.keys()})
 
         log_audit(
             event_type="config.tokens_updated",
@@ -625,7 +657,7 @@ async def update_channel_tokens(request: TokenUpdateRequest):
             actor="system",
             target="tokens",
             details={
-                "channels": channels_updated,
+                "providers": providers_updated,
                 "success": success,
             },
         )
