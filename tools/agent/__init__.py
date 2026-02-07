@@ -60,6 +60,13 @@ __all__ = [
     "get_schema",
     "list_schemas",
     "create_custom_schema",
+    # Model selector exports (lazy loaded)
+    "ModelSelector",
+    "get_model_for_agent",
+    "score_task_complexity",
+    # Skill tracker exports (lazy loaded)
+    "SkillTracker",
+    "SkillUsageData",
 ]
 
 
@@ -126,6 +133,39 @@ def __getattr__(name):
             "get_schema": get_schema,
             "list_schemas": list_schemas,
             "create_custom_schema": create_custom_schema,
+        }[name]
+
+    # Model selector components
+    model_selector_exports = (
+        "ModelSelector",
+        "get_model_for_agent",
+        "score_task_complexity",
+    )
+    if name in model_selector_exports:
+        from tools.agent.model_selector import (
+            ModelSelector,
+            get_model_for_agent,
+            score_task_complexity,
+        )
+        return {
+            "ModelSelector": ModelSelector,
+            "get_model_for_agent": get_model_for_agent,
+            "score_task_complexity": score_task_complexity,
+        }[name]
+
+    # Skill tracker components
+    skill_tracker_exports = (
+        "SkillTracker",
+        "SkillUsageData",
+    )
+    if name in skill_tracker_exports:
+        from tools.agent.skill_tracker import (
+            SkillTracker,
+            SkillUsageData,
+        )
+        return {
+            "SkillTracker": SkillTracker,
+            "SkillUsageData": SkillUsageData,
         }[name]
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

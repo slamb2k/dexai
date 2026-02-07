@@ -3,7 +3,7 @@
 > **Purpose**: Analyze DexAI's current SDK integration and identify opportunities to better leverage the Claude Agent SDK's capabilities.
 >
 > **Date**: 2026-02-08
-> **Status**: Phase 2 Complete - Core Integration Implemented
+> **Status**: Phase 4 Complete - All SDK Alignment Phases Implemented
 
 ---
 
@@ -752,13 +752,41 @@ If platform-native slash commands are needed later (Discord `/commands`, Slack s
 - Added convenience functions: `quick_decompose()`, `quick_energy_match()`, `quick_friction_check()`, `quick_current_step()`
 - Updated module exports in `__init__.py` for schema access
 
-### Phase 4: Optimization (Ongoing)
+### Phase 4: Optimization ✅ COMPLETE
 
-| Task | Impact | Effort |
-|------|--------|--------|
-| Tune subagent model selection (haiku vs sonnet) | Medium | Low |
-| Monitor and optimize hook performance | Low | Low |
-| Refine skill definitions based on usage | Low | Ongoing |
+| Task | Impact | Effort | Status |
+|------|--------|--------|--------|
+| Tune subagent model selection (haiku vs sonnet) | Medium | Low | ✅ `tools/agent/model_selector.py` |
+| Monitor and optimize hook performance | Low | Low | ✅ `HookMetrics` in `hooks.py` |
+| Refine skill definitions based on usage | Low | Ongoing | ✅ `tools/agent/skill_tracker.py` |
+
+**Implementation Details:**
+
+**1. Model Selector (`tools/agent/model_selector.py`):**
+- `ModelSelector` class with complexity scoring (0-10 scale)
+- Heuristics: message length, technical terms, multi-step indicators, codebase references, question complexity
+- Model selection logic: <3 = haiku, 3-6 = agent default, 7-10 = sonnet
+- `friction-solver` always gets sonnet (complex analysis is its job)
+- `get_model_for_agent()` convenience function for sdk_client.py integration
+- CLI: `python -m tools.agent.model_selector --task "..." --agent task-decomposer`
+
+**2. Hook Performance Monitoring (`HookMetrics` in `hooks.py`):**
+- `HookMetrics` singleton for thread-safe timing collection
+- `@timed_hook` decorator for sync hooks, `@async_timed_hook` for async
+- Tracks avg, p50, p95, p99 latencies per hook
+- Auto-logs warnings when hooks exceed threshold (default 50ms)
+- `get_hook_performance_summary()` function for dashboard integration
+- CLI: `python -m tools.agent.hooks --show-metrics`
+
+**3. Skill Usage Tracker (`tools/agent/skill_tracker.py`):**
+- `SkillTracker` class with persistent JSON storage (`data/skill_usage.json`)
+- Tracks: activations, trigger patterns, outcomes (helpful/ignored), user ratings (1-5)
+- `get_refinement_suggestions()` generates actionable recommendations:
+  - Low success rate (<50%) → review trigger conditions
+  - High ignore rate (>40%) → less aggressive activation
+  - Problematic triggers → remove/refine specific patterns
+  - Positive patterns → document what's working
+- CLI: `python -m tools.agent.skill_tracker --stats --suggestions`
 
 ---
 
