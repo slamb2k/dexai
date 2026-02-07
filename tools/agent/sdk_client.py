@@ -368,10 +368,13 @@ class DexAIClient:
 
     Provides:
     - ADHD-aware system prompts with session-based file filtering
-    - DexAI permission integration
+    - DexAI permission integration with AskUserQuestion support
     - User-specific context loading
     - Intelligent model routing (complexity-based)
     - Cost tracking integration
+    - SDK session resumption for context continuity
+    - Lifecycle hooks for context saving
+    - Sandbox configuration for safe Bash execution
 
     Session Types:
     - main: Full interactive session (all files + runtime context)
@@ -388,6 +391,8 @@ class DexAIClient:
         explicit_complexity: "TaskComplexity | None" = None,
         session_type: str = "main",
         channel: str = "direct",
+        resume_session_id: str | None = None,
+        ask_user_handler: Optional[callable] = None,
     ):
         """
         Initialize DexAI client.
@@ -399,6 +404,8 @@ class DexAIClient:
             explicit_complexity: Optional explicit complexity hint for routing
             session_type: Session type (main, subagent, heartbeat, cron)
             channel: Communication channel (direct, telegram, discord, slack)
+            resume_session_id: Optional session ID to resume (SDK session resumption)
+            ask_user_handler: Optional async callable to handle AskUserQuestion
         """
         self.user_id = user_id
         self.config = config or load_config()
@@ -408,6 +415,8 @@ class DexAIClient:
         self.explicit_complexity = explicit_complexity
         self.session_type = session_type
         self.channel = channel
+        self.resume_session_id = resume_session_id
+        self.ask_user_handler = ask_user_handler
         self._client = None
         self._session_id: str | None = None
         self._total_cost: float = 0.0
@@ -450,7 +459,7 @@ class DexAIClient:
         return None
 
     async def _init_client(self) -> None:
-        """Initialize the SDK client with intelligent model routing."""
+        """Initialize the SDK client with intelligent model routing, hooks, and sandbox."""
         try:
             from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
         except ImportError:
@@ -458,12 +467,14 @@ class DexAIClient:
                 "claude-agent-sdk required. Install with: uv pip install claude-agent-sdk"
             )
 
-        # Import permission callback and DexAI tools
+        # Import permission callback, hooks, and DexAI tools
         from tools.agent.permissions import create_permission_callback
+        from tools.agent.hooks import create_hooks
         from tools.agent.sdk_tools import dexai_server
 
         agent_config = self.config.get("agent", {})
         tools_config = self.config.get("tools", {})
+        sandbox_config = self.config.get("sandbox", {})
 
         # Build allowed tools list: built-in + DexAI tools
         allowed_tools = tools_config.get("allowed_builtin", []).copy()
@@ -511,22 +522,72 @@ class DexAIClient:
             env = routing_options["env"]
             self._last_routing_decision = decision
 
+        # Build sandbox settings if enabled
+        sandbox_settings = None
+        if sandbox_config.get("enabled", False):
+            sandbox_settings = {
+                "enabled": True,
+                "autoAllowBashIfSandboxed": sandbox_config.get(
+                    "auto_allow_bash_if_sandboxed", True
+                ),
+                "excludedCommands": sandbox_config.get("excluded_commands", []),
+                "allowUnsandboxedCommands": sandbox_config.get(
+                    "allow_unsandboxed_commands", True
+                ),
+            }
+            # Add network settings if present
+            network_config = sandbox_config.get("network", {})
+            if network_config:
+                sandbox_settings["network"] = {
+                    "allowLocalBinding": network_config.get("allow_local_binding", True),
+                    "allowUnixSockets": network_config.get("allow_unix_sockets", []),
+                }
+
+        # Build hooks for lifecycle events
+        hooks = create_hooks(
+            user_id=self.user_id,
+            channel=self.channel,
+            enable_audit=True,
+            enable_dashboard=True,
+            enable_context_save=True,
+        )
+
         # Build options with session-aware system prompt
-        options = ClaudeAgentOptions(
-            model=model,
-            allowed_tools=allowed_tools,
-            mcp_servers={"dexai": dexai_server},  # Register DexAI tools
-            cwd=self.working_dir,
-            permission_mode=agent_config.get("permission_mode", "default"),
-            system_prompt=build_system_prompt(
+        options_kwargs = {
+            "model": model,
+            "allowed_tools": allowed_tools,
+            "mcp_servers": {"dexai": dexai_server},
+            "cwd": self.working_dir,
+            "permission_mode": agent_config.get("permission_mode", "default"),
+            "system_prompt": build_system_prompt(
                 user_id=self.user_id,
                 config=self.config,
                 channel=self.channel,
                 session_type=self.session_type,
             ),
-            can_use_tool=create_permission_callback(self.user_id, self.config),
-            env=env or {},
-        )
+            "can_use_tool": create_permission_callback(
+                user_id=self.user_id,
+                config=self.config,
+                channel=self.channel,
+                ask_user_handler=self.ask_user_handler,
+            ),
+            "env": env or {},
+        }
+
+        # Add sandbox if configured
+        if sandbox_settings:
+            options_kwargs["sandbox"] = sandbox_settings
+
+        # Add hooks if any
+        if hooks:
+            options_kwargs["hooks"] = hooks
+
+        # Add session resumption if we have a session ID
+        if self.resume_session_id:
+            options_kwargs["resume"] = self.resume_session_id
+            logger.info(f"Resuming session: {self.resume_session_id}")
+
+        options = ClaudeAgentOptions(**options_kwargs)
 
         self._client = ClaudeSDKClient(options=options)
         await self._client.__aenter__()
@@ -557,6 +618,8 @@ class DexAIClient:
         """
         Send a query to the agent.
 
+        Captures session_id from SDK for future session resumption.
+
         Args:
             message: User message to send
 
@@ -581,6 +644,13 @@ class DexAIClient:
         total_cost = 0.0
 
         async for msg in self._client.receive_response():
+            # Capture session_id from init message for future resumption
+            if hasattr(msg, "type") and msg.type == "system":
+                if hasattr(msg, "subtype") and msg.subtype == "init":
+                    if hasattr(msg, "session_id"):
+                        self._session_id = msg.session_id
+                        logger.debug(f"Captured session_id: {self._session_id}")
+
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
                     if isinstance(block, TextBlock):
@@ -657,6 +727,15 @@ class DexAIClient:
     def total_cost(self) -> float:
         """Total cost for this session in USD."""
         return self._total_cost
+
+    @property
+    def session_id(self) -> str | None:
+        """
+        Session ID from SDK for resumption.
+
+        Use this to resume the session later by passing to resume_session_id.
+        """
+        return self._session_id
 
 
 class QueryResult:
