@@ -27,6 +27,7 @@ const sizeConfig = {
   xl: { container: 200, avatar: 160, eye: 12, particle: 6 },
 };
 
+// Using CSS variables for theme-aware colors
 const stateConfig: Record<
   AvatarState,
   {
@@ -35,35 +36,40 @@ const stateConfig: Record<
     label: string;
     eyeState: 'open' | 'half' | 'closed';
     expression: 'neutral' | 'happy' | 'concerned' | 'determined' | 'alert' | 'patient';
+    cssColor: string;
   }
 > = {
   idle: {
-    color: '#3b82f6',
-    glowColor: 'rgba(59, 130, 246, 0.3)',
-    label: 'Ready',
+    color: '#10b981', // Emerald - accent-primary
+    glowColor: 'rgba(16, 185, 129, 0.3)',
+    label: 'Ready to help',
     eyeState: 'open',
     expression: 'neutral',
+    cssColor: 'var(--accent-primary)',
   },
   listening: {
-    color: '#60a5fa',
-    glowColor: 'rgba(96, 165, 250, 0.4)',
+    color: '#34d399', // Lighter emerald
+    glowColor: 'rgba(52, 211, 153, 0.4)',
     label: 'Listening',
     eyeState: 'open',
     expression: 'alert',
+    cssColor: 'var(--accent-glow)',
   },
   thinking: {
-    color: '#06b6d4',
+    color: '#06b6d4', // Cyan
     glowColor: 'rgba(6, 182, 212, 0.4)',
     label: 'Thinking',
     eyeState: 'half',
     expression: 'determined',
+    cssColor: 'var(--accent-secondary)',
   },
   working: {
-    color: '#3b82f6',
-    glowColor: 'rgba(59, 130, 246, 0.5)',
+    color: '#10b981',
+    glowColor: 'rgba(16, 185, 129, 0.5)',
     label: 'Working',
     eyeState: 'open',
     expression: 'determined',
+    cssColor: 'var(--accent-primary)',
   },
   success: {
     color: '#10b981',
@@ -71,27 +77,31 @@ const stateConfig: Record<
     label: 'Done!',
     eyeState: 'open',
     expression: 'happy',
+    cssColor: 'var(--status-success)',
   },
   error: {
     color: '#ef4444',
     glowColor: 'rgba(239, 68, 68, 0.4)',
-    label: 'Error',
+    label: 'Something went wrong',
     eyeState: 'open',
     expression: 'concerned',
+    cssColor: 'var(--status-error)',
   },
   sleeping: {
-    color: '#3b82f6',
-    glowColor: 'rgba(59, 130, 246, 0.1)',
+    color: '#10b981',
+    glowColor: 'rgba(16, 185, 129, 0.1)',
     label: 'Sleeping',
     eyeState: 'closed',
     expression: 'neutral',
+    cssColor: 'var(--accent-primary)',
   },
   hyperfocus: {
     color: '#a855f7',
     glowColor: 'rgba(168, 85, 247, 0.4)',
-    label: 'Protecting Focus',
+    label: 'In the zone',
     eyeState: 'open',
     expression: 'determined',
+    cssColor: 'var(--status-hyperfocus)',
   },
   waiting: {
     color: '#f59e0b',
@@ -99,6 +109,7 @@ const stateConfig: Record<
     label: 'Waiting',
     eyeState: 'half',
     expression: 'patient',
+    cssColor: 'var(--status-warning)',
   },
 };
 
@@ -112,7 +123,7 @@ export function DexAvatar({
   const sizes = sizeConfig[size];
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-4">
       {/* Avatar container */}
       <div
         className="relative flex items-center justify-center"
@@ -121,7 +132,7 @@ export function DexAvatar({
         {/* Outer glow ring */}
         <div
           className={cn(
-            'absolute inset-0 rounded-full',
+            'absolute inset-0 rounded-full transition-all duration-500',
             state === 'idle' && 'animate-pulse-slow',
             state === 'thinking' && 'animate-spin-slow',
             state === 'working' && 'animate-pulse',
@@ -146,12 +157,15 @@ export function DexAvatar({
 
         {/* Main avatar circle */}
         <div
-          className="relative rounded-full bg-bg-surface border-2 flex items-center justify-center"
+          className="relative rounded-full flex items-center justify-center transition-all duration-300"
           style={{
             width: sizes.avatar,
             height: sizes.avatar,
+            borderWidth: 2,
+            borderStyle: 'solid',
             borderColor: config.color,
-            boxShadow: `0 0 20px ${config.glowColor}`,
+            backgroundColor: 'var(--bg-surface)',
+            boxShadow: `0 0 30px ${config.glowColor}`,
           }}
         >
           {/* Face */}
@@ -190,7 +204,7 @@ export function DexAvatar({
             {config.label}
           </p>
           {currentTask && (
-            <p className="text-caption text-text-muted mt-1 max-w-[200px] truncate">
+            <p className="text-caption text-text-muted mt-1 max-w-[250px] truncate">
               {currentTask}
             </p>
           )}
@@ -204,7 +218,6 @@ export function DexAvatar({
 function Eyes({
   state,
   color,
-  expression,
 }: {
   state: 'open' | 'half' | 'closed';
   color: string;
@@ -367,7 +380,7 @@ function ParticleRing({
 function CheckmarkOverlay({ color }: { color: string }) {
   return (
     <g className="animate-scale-in">
-      <circle cx={75} cy={25} r={12} fill="#0a0a0f" stroke={color} strokeWidth="2" />
+      <circle cx={75} cy={25} r={12} fill="var(--bg-primary)" stroke={color} strokeWidth="2" />
       <path
         d="M 69 25 L 73 29 L 81 21"
         fill="none"
@@ -383,7 +396,7 @@ function CheckmarkOverlay({ color }: { color: string }) {
 function WarningOverlay({ color }: { color: string }) {
   return (
     <g className="animate-pulse">
-      <circle cx={75} cy={25} r={12} fill="#0a0a0f" stroke={color} strokeWidth="2" />
+      <circle cx={75} cy={25} r={12} fill="var(--bg-primary)" stroke={color} strokeWidth="2" />
       <text x={75} y={30} textAnchor="middle" fill={color} fontSize="14" fontWeight="bold">
         !
       </text>
