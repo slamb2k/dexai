@@ -90,6 +90,7 @@ class SDKSession:
 
     Maintains state across messages for conversation continuity.
     Supports session-type-based prompt filtering (main, subagent, heartbeat, cron).
+    Uses SDK session resumption for context persistence across client instances.
     """
 
     def __init__(
@@ -116,6 +117,8 @@ class SDKSession:
         self._last_activity: datetime = datetime.now()
         self._message_count: int = 0
         self._total_cost: float = 0.0
+        # SDK session ID for resumption (persisted across client instances)
+        self._sdk_session_id: str | None = None
 
     async def query(self, message: str, channel: str = "cli") -> dict[str, Any]:
         """
@@ -229,7 +232,10 @@ class SDKSession:
         return None
 
     async def _query_with_agent_sdk(self, message: str, channel: str) -> dict[str, Any]:
-        """Query using the full Agent SDK (tools, file access, etc.)."""
+        """Query using the full Agent SDK (tools, file access, etc.).
+
+        Uses SDK session resumption for context persistence across messages.
+        """
         try:
             from tools.agent.sdk_client import DexAIClient
         except ImportError:
@@ -249,8 +255,15 @@ class SDKSession:
                 explicit_complexity=explicit_complexity,
                 session_type=self.session_type,
                 channel=self.channel,
+                # Resume session if we have a previous session_id
+                resume_session_id=self._sdk_session_id,
             ) as client:
                 result = await client.query(message)
+
+                # Capture session_id for future resumption
+                if client.session_id and client.session_id != self._sdk_session_id:
+                    self._sdk_session_id = client.session_id
+                    logger.debug(f"Captured SDK session_id: {self._sdk_session_id}")
 
                 self._total_cost += result.cost_usd
 
@@ -273,6 +286,7 @@ class SDKSession:
                     "model": result.model,
                     "complexity": result.complexity,
                     "routing_reasoning": result.routing_reasoning,
+                    "sdk_session_id": self._sdk_session_id,
                 }
 
         except Exception as e:
