@@ -29,6 +29,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | `phase8_installation.md` | Phase 8 tactical implementation guide — guided setup wizard (web + TUI) |
 | `phase8_ui_refresh.md` | Phase 8b — Crystal theme UI refresh with ADHD-first components (dark/light mode, energy selector, flow indicator) |
 | `task_orchestration.md` | Task execution patterns — sequential, parallel, fan-out, fan-in, pipeline |
+| `sdk_alignment_review.md` | SDK integration analysis and implementation roadmap (Phase 2 complete) |
 | `prd_addulting_ai_v1.md` | **Archived** — Original PRD before ADHD pivot |
 
 ---
@@ -69,6 +70,21 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 12d | Office Integration: Autonomous (policy-based) | ✅ Complete |
 | Phase 13 | Collaborative Features (Accountability partners) | 📋 Planned |
 | Phase 14 | Analytics & Insights (Patterns, reports) | 📋 Planned |
+
+---
+
+## SDK Alignment Phases
+
+Cross-cutting improvements to better leverage Claude Agent SDK capabilities.
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| SDK Phase 1 | Quick Wins (AskUserQuestion, sandbox, session resume, Stop hook) | ✅ Complete |
+| SDK Phase 2 | Core Integration (subagents, security hooks, ClaudeSDKClient) | ✅ Complete |
+| SDK Phase 3 | Enhanced Features (skills, commands, streaming input) | 📋 Planned |
+| SDK Phase 4 | Optimization (model tuning, hook performance, skill refinement) | 📋 Planned |
+
+**Reference:** `sdk_alignment_review.md` — Full analysis of SDK integration opportunities
 
 ---
 
