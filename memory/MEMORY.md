@@ -5,8 +5,8 @@
 
 ## User Preferences
 
-- (Add your preferences here)
 - Always use uv (not pip/pip3) for virtual environment creation and dependency management
+- **Always save plans to goals/ directory** — When exiting plan mode, save the plan as a markdown file (e.g., `goals/phase{N}_{name}.md`) before implementation. Plans should be persisted for future reference.
 
 ## Key Facts
 
@@ -27,5 +27,5 @@
 
 ---
 
-*Last updated: 2026-02-02*
+*Last updated: 2026-02-07*
 *This file is the source of truth for persistent facts. Edit directly to update.*
