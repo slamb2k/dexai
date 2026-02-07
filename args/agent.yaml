@@ -146,6 +146,41 @@ adhd:
     max_stored: 50            # Maximum stored contexts
 
 # -----------------------------------------------------------------------------
+# Sandbox Configuration
+# -----------------------------------------------------------------------------
+# SDK sandbox settings for Bash command execution.
+# Provides defense-in-depth beyond RBAC permissions.
+
+sandbox:
+  # Enable sandboxing for Bash commands
+  enabled: true
+
+  # Auto-approve Bash commands when running in sandbox
+  # This reduces friction for ADHD users while maintaining safety
+  auto_allow_bash_if_sandboxed: true
+
+  # Commands that bypass sandbox (run unsandboxed)
+  # These are trusted operations that need full system access
+  excluded_commands:
+    - docker
+    - git
+    - uv
+    - npm
+    - bun
+
+  # Allow requests to run commands unsandboxed
+  # Set to false in production for maximum security
+  allow_unsandboxed_commands: true
+
+  # Network settings for sandboxed commands
+  network:
+    # Allow binding to local ports (for dev servers)
+    allow_local_binding: true
+
+    # Restrict Unix socket access (empty = all restricted)
+    allow_unix_sockets: []
+
+# -----------------------------------------------------------------------------
 # Security Integration
 # -----------------------------------------------------------------------------
 # How agent integrates with DexAI security layer.

@@ -71,6 +71,12 @@ uv pip install -e ".[dev,channels]"
 # Install specific extras
 uv pip install -e ".[telegram]"   # Just Telegram
 uv pip install -e ".[all]"        # Everything
+
+# Install memory providers
+uv pip install -e ".[memory-providers]"  # Mem0 + Zep
+
+# Install office integrations
+uv pip install -e ".[office]"  # Google + Microsoft OAuth
 ```
 
 **CLI Entry Point:**
@@ -80,6 +86,7 @@ dexai  # Runs tools.cli:main
 
 **Key Dependencies:**
 - `anthropic` - Claude API client
+- `claude-agent-sdk` - Claude Code agent SDK
 - `fastapi` + `uvicorn` - Dashboard backend
 - `textual` + `rich` - TUI setup wizard
 - `httpx` - HTTP client
@@ -120,7 +127,14 @@ SLACK_BOT_TOKEN=...
 DEXAI_DOMAIN=localhost                   # For Caddy
 TAILSCALE_AUTHKEY=tskey-auth-...         # For Tailscale
 OPENROUTER_API_KEY=...                   # For model routing
+
+# Optional - additional providers
+GOOGLE_API_KEY=...                       # Direct Gemini access
+HELICONE_API_KEY=...                     # LLM observability
 ```
+
+**Volume Mounts:**
+- `.claude/` is mounted into the container for agent-created skills persistence
 
 ---
 
@@ -597,6 +611,7 @@ Every failure strengthens the system:
 * `context/` — Context Layer (domain knowledge)
 * `hardprompts/` — Hard Prompts Layer (instruction templates)
 * `.tmp/` — Temporary work (scrapes, raw data, intermediate files). Disposable.
+* `.claude/` — Claude Code configuration and agent-created skills
 * `.env` — API keys + environment variables
 * `credentials.json`, `token.json` — OAuth credentials (ignored by Git)
 * `goals/manifest.md` — Index of available goal workflows
