@@ -127,12 +127,23 @@ const defaultChannelConfig: ChannelConfig = {
 };
 
 // API Keys config
+interface ApiKeyState {
+  key: string;
+  validated: boolean;
+}
+
 interface ApiKeysConfig {
-  anthropic: { key: string; validated: boolean };
+  anthropic: ApiKeyState;
+  openrouter: ApiKeyState;
+  openai: ApiKeyState;
+  google: ApiKeyState;
 }
 
 const defaultApiKeys: ApiKeysConfig = {
   anthropic: { key: '', validated: false },
+  openrouter: { key: '', validated: false },
+  openai: { key: '', validated: false },
+  google: { key: '', validated: false },
 };
 
 export default function SettingsPage() {
@@ -144,8 +155,18 @@ export default function SettingsPage() {
   const [tokensModified, setTokensModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [isValidatingApiKey, setIsValidatingApiKey] = useState(false);
+  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({
+    anthropic: false,
+    openrouter: false,
+    openai: false,
+    google: false,
+  });
+  const [isValidatingApiKey, setIsValidatingApiKey] = useState<Record<string, boolean>>({
+    anthropic: false,
+    openrouter: false,
+    openai: false,
+    google: false,
+  });
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['general', 'notifications', 'privacy', 'advanced', 'channels', 'apikeys'])
   );
@@ -235,12 +256,25 @@ export default function SettingsPage() {
         if (tokensRes.success && tokensRes.data) {
           setTokenStatus(tokensRes.data);
           // Update API key validated status based on token status
-          if (tokensRes.data.anthropic?.configured) {
-            setApiKeys((prev) => ({
-              ...prev,
-              anthropic: { ...prev.anthropic, validated: true },
-            }));
-          }
+          setApiKeys((prev) => ({
+            ...prev,
+            anthropic: {
+              ...prev.anthropic,
+              validated: tokensRes.data?.anthropic?.configured ?? false,
+            },
+            openrouter: {
+              ...prev.openrouter,
+              validated: tokensRes.data?.openrouter?.configured ?? false,
+            },
+            openai: {
+              ...prev.openai,
+              validated: tokensRes.data?.openai?.configured ?? false,
+            },
+            google: {
+              ...prev.google,
+              validated: tokensRes.data?.google?.configured ?? false,
+            },
+          }));
         }
       } catch {
         // Keep defaults
@@ -250,32 +284,32 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
-  // Validate API key
-  const handleValidateApiKey = async () => {
-    if (!apiKeys.anthropic.key) {
+  // Validate API key for a specific provider
+  const handleValidateApiKey = async (provider: keyof ApiKeysConfig) => {
+    if (!apiKeys[provider].key) {
       addToast({ type: 'error', message: 'Please enter an API key' });
       return;
     }
-    setIsValidatingApiKey(true);
+    setIsValidatingApiKey((prev) => ({ ...prev, [provider]: true }));
     try {
-      const res = await api.validateApiKey(apiKeys.anthropic.key);
+      const res = await api.validateApiKey(apiKeys[provider].key, provider);
       if (res.success && res.data?.success) {
         setApiKeys((prev) => ({
           ...prev,
-          anthropic: { ...prev.anthropic, validated: true },
+          [provider]: { ...prev[provider], validated: true },
         }));
-        addToast({ type: 'success', message: 'API key validated successfully' });
+        addToast({ type: 'success', message: `${provider.charAt(0).toUpperCase() + provider.slice(1)} API key validated` });
       } else {
         setApiKeys((prev) => ({
           ...prev,
-          anthropic: { ...prev.anthropic, validated: false },
+          [provider]: { ...prev[provider], validated: false },
         }));
         addToast({ type: 'error', message: res.data?.error || 'API key validation failed' });
       }
     } catch {
       addToast({ type: 'error', message: 'Failed to validate API key' });
     }
-    setIsValidatingApiKey(false);
+    setIsValidatingApiKey((prev) => ({ ...prev, [provider]: false }));
   };
 
   // Get service status for a channel
@@ -329,6 +363,9 @@ export default function SettingsPage() {
           slack_bot_token?: string;
           slack_app_token?: string;
           anthropic_key?: string;
+          openrouter_key?: string;
+          openai_key?: string;
+          google_key?: string;
         } = {};
 
         // Only include tokens that have values (not empty placeholders)
@@ -346,6 +383,15 @@ export default function SettingsPage() {
         }
         if (apiKeys.anthropic.key) {
           tokenPayload.anthropic_key = apiKeys.anthropic.key;
+        }
+        if (apiKeys.openrouter.key) {
+          tokenPayload.openrouter_key = apiKeys.openrouter.key;
+        }
+        if (apiKeys.openai.key) {
+          tokenPayload.openai_key = apiKeys.openai.key;
+        }
+        if (apiKeys.google.key) {
+          tokenPayload.google_key = apiKeys.google.key;
         }
 
         if (Object.keys(tokenPayload).length > 0) {
@@ -786,73 +832,118 @@ export default function SettingsPage() {
         onToggle={() => toggleSection('apikeys')}
         onReset={() => setApiKeys(defaultApiKeys)}
       >
-        <div className="space-y-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-body text-text-primary font-medium">Anthropic API Key</span>
-                {tokenStatus?.anthropic?.configured && !apiKeys.anthropic.key && (
-                  <span className="badge badge-success text-xs">Configured</span>
-                )}
-              </div>
-              {apiKeys.anthropic.validated ? (
-                <span className="badge badge-success flex items-center gap-1">
-                  <CheckCircle size={12} />
-                  Validated
-                </span>
-              ) : apiKeys.anthropic.key ? (
-                <span className="badge badge-warning flex items-center gap-1">
-                  <AlertCircle size={12} />
-                  Not Validated
-                </span>
-              ) : null}
+        <div className="space-y-6">
+          {/* Anthropic API Key (Required) */}
+          <ApiKeyInput
+            provider="anthropic"
+            label="Anthropic API Key"
+            placeholder="sk-ant-..."
+            helpText="Required for AI task processing."
+            helpLink="https://console.anthropic.com/"
+            helpLinkText="Get your key"
+            configured={tokenStatus?.anthropic?.configured ?? false}
+            maskedKey={tokenStatus?.anthropic?.masked_key}
+            value={apiKeys.anthropic.key}
+            validated={apiKeys.anthropic.validated}
+            showKey={showApiKey.anthropic}
+            isValidating={isValidatingApiKey.anthropic}
+            onValueChange={(value) => {
+              setApiKeys((prev) => ({
+                ...prev,
+                anthropic: { key: value, validated: false },
+              }));
+              setTokensModified(true);
+            }}
+            onToggleShow={() => setShowApiKey((prev) => ({ ...prev, anthropic: !prev.anthropic }))}
+            onValidate={() => handleValidateApiKey('anthropic')}
+          />
+
+          {/* Optional Multi-Model Access divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border-default" />
             </div>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  placeholder={tokenStatus?.anthropic?.configured
-                    ? tokenStatus.anthropic.masked_key || 'API key configured'
-                    : 'sk-ant-...'}
-                  value={apiKeys.anthropic.key}
-                  onChange={(e) => {
-                    setApiKeys((prev) => ({
-                      ...prev,
-                      anthropic: { key: e.target.value, validated: false },
-                    }));
-                    setTokensModified(true);
-                  }}
-                  className="input w-full pr-10 font-mono text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-bg-elevated rounded"
-                >
-                  {showApiKey ? (
-                    <EyeOff size={16} className="text-text-muted" />
-                  ) : (
-                    <Eye size={16} className="text-text-muted" />
-                  )}
-                </button>
-              </div>
-              <button
-                onClick={handleValidateApiKey}
-                disabled={isValidatingApiKey || !apiKeys.anthropic.key}
-                className="btn btn-secondary flex items-center gap-2"
-              >
-                {isValidatingApiKey ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Check size={16} />
-                )}
-                Validate
-              </button>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-bg-card px-3 text-text-muted uppercase tracking-wide">
+                Optional: Multi-Model Access
+              </span>
             </div>
-            <p className="text-caption text-text-muted">
-              Get your API key from console.anthropic.com
-            </p>
           </div>
+
+          {/* OpenRouter API Key */}
+          <ApiKeyInput
+            provider="openrouter"
+            label="OpenRouter API Key"
+            placeholder="sk-or-v1-..."
+            helpText="Enables access to 100+ models (GPT-4, Gemini, etc.)."
+            helpLink="https://openrouter.ai/keys"
+            helpLinkText="Get your key"
+            configured={tokenStatus?.openrouter?.configured ?? false}
+            maskedKey={tokenStatus?.openrouter?.masked_key}
+            value={apiKeys.openrouter.key}
+            validated={apiKeys.openrouter.validated}
+            showKey={showApiKey.openrouter}
+            isValidating={isValidatingApiKey.openrouter}
+            onValueChange={(value) => {
+              setApiKeys((prev) => ({
+                ...prev,
+                openrouter: { key: value, validated: false },
+              }));
+              setTokensModified(true);
+            }}
+            onToggleShow={() => setShowApiKey((prev) => ({ ...prev, openrouter: !prev.openrouter }))}
+            onValidate={() => handleValidateApiKey('openrouter')}
+          />
+
+          {/* OpenAI API Key */}
+          <ApiKeyInput
+            provider="openai"
+            label="OpenAI API Key"
+            placeholder="sk-..."
+            helpText="Used for memory embeddings and semantic search."
+            helpLink="https://platform.openai.com/api-keys"
+            helpLinkText="Get your key"
+            configured={tokenStatus?.openai?.configured ?? false}
+            maskedKey={tokenStatus?.openai?.masked_key}
+            value={apiKeys.openai.key}
+            validated={apiKeys.openai.validated}
+            showKey={showApiKey.openai}
+            isValidating={isValidatingApiKey.openai}
+            onValueChange={(value) => {
+              setApiKeys((prev) => ({
+                ...prev,
+                openai: { key: value, validated: false },
+              }));
+              setTokensModified(true);
+            }}
+            onToggleShow={() => setShowApiKey((prev) => ({ ...prev, openai: !prev.openai }))}
+            onValidate={() => handleValidateApiKey('openai')}
+          />
+
+          {/* Google API Key */}
+          <ApiKeyInput
+            provider="google"
+            label="Google API Key"
+            placeholder="AIza..."
+            helpText="For direct access to Gemini models."
+            helpLink="https://aistudio.google.com/app/apikey"
+            helpLinkText="Get your key"
+            configured={tokenStatus?.google?.configured ?? false}
+            maskedKey={tokenStatus?.google?.masked_key}
+            value={apiKeys.google.key}
+            validated={apiKeys.google.validated}
+            showKey={showApiKey.google}
+            isValidating={isValidatingApiKey.google}
+            onValueChange={(value) => {
+              setApiKeys((prev) => ({
+                ...prev,
+                google: { key: value, validated: false },
+              }));
+              setTokensModified(true);
+            }}
+            onToggleShow={() => setShowApiKey((prev) => ({ ...prev, google: !prev.google }))}
+            onValidate={() => handleValidateApiKey('google')}
+          />
 
           <div className="bg-bg-elevated/50 rounded-card p-3 text-caption text-text-muted">
             <Shield size={14} className="inline mr-2" />
@@ -1047,4 +1138,108 @@ function ServiceStatusBadge({ service }: { service?: ServiceStatus }) {
         </span>
       );
   }
+}
+
+// API Key input component
+function ApiKeyInput({
+  provider,
+  label,
+  placeholder,
+  helpText,
+  helpLink,
+  helpLinkText,
+  configured,
+  maskedKey,
+  value,
+  validated,
+  showKey,
+  isValidating,
+  onValueChange,
+  onToggleShow,
+  onValidate,
+}: {
+  provider: string;
+  label: string;
+  placeholder: string;
+  helpText: string;
+  helpLink: string;
+  helpLinkText: string;
+  configured: boolean;
+  maskedKey?: string;
+  value: string;
+  validated: boolean;
+  showKey: boolean;
+  isValidating: boolean;
+  onValueChange: (value: string) => void;
+  onToggleShow: () => void;
+  onValidate: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-body text-text-primary font-medium">{label}</span>
+          {configured && !value && (
+            <span className="badge badge-success text-xs">Configured</span>
+          )}
+        </div>
+        {validated ? (
+          <span className="badge badge-success flex items-center gap-1">
+            <CheckCircle size={12} />
+            Validated
+          </span>
+        ) : value ? (
+          <span className="badge badge-warning flex items-center gap-1">
+            <AlertCircle size={12} />
+            Not Validated
+          </span>
+        ) : null}
+      </div>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <input
+            type={showKey ? 'text' : 'password'}
+            placeholder={configured ? maskedKey || 'API key configured' : placeholder}
+            value={value}
+            onChange={(e) => onValueChange(e.target.value)}
+            className="input w-full pr-10 font-mono text-sm"
+          />
+          <button
+            type="button"
+            onClick={onToggleShow}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-bg-elevated rounded"
+          >
+            {showKey ? (
+              <EyeOff size={16} className="text-text-muted" />
+            ) : (
+              <Eye size={16} className="text-text-muted" />
+            )}
+          </button>
+        </div>
+        <button
+          onClick={onValidate}
+          disabled={isValidating || !value}
+          className="btn btn-secondary flex items-center gap-2"
+        >
+          {isValidating ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Check size={16} />
+          )}
+          Validate
+        </button>
+      </div>
+      <p className="text-caption text-text-muted">
+        {helpText}{' '}
+        <a
+          href={helpLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent-primary hover:underline"
+        >
+          {helpLinkText}
+        </a>
+      </p>
+    </div>
+  );
 }

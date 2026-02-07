@@ -19,56 +19,56 @@ import {
   Loader2,
 } from 'lucide-react';
 
-// Service icons mapping
-const serviceIcons: Record<string, typeof MessageSquare> = {
+// Channel icons mapping
+const channelIcons: Record<string, typeof MessageSquare> = {
   telegram: MessageSquare,
   discord: MessageSquare,
   slack: MessageSquare,
 };
 
-// Service colors
-const serviceColors: Record<string, string> = {
+// Channel colors
+const channelColors: Record<string, string> = {
   telegram: '#0088cc',
   discord: '#5865F2',
   slack: '#4A154B',
 };
 
-export default function ServicesPage() {
-  const [services, setServices] = useState<ServiceStatus[]>([]);
+export default function ChannelsPage() {
+  const [channels, setChannels] = useState<ServiceStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<ServiceAction | null>(null);
 
-  // Load services
-  const loadServices = useCallback(async () => {
+  // Load channels
+  const loadChannels = useCallback(async () => {
     try {
       const res = await api.getServices();
       if (res.success && res.data) {
-        setServices(res.data);
+        setChannels(res.data);
         setError(null);
       } else if (res.error) {
         setError(res.error);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load services');
+      setError(e instanceof Error ? e.message : 'Failed to load channels');
     }
   }, []);
 
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
-      await loadServices();
+      await loadChannels();
       setIsLoading(false);
     };
     load();
 
     // Auto-refresh every 30 seconds
-    const interval = setInterval(loadServices, 30000);
+    const interval = setInterval(loadChannels, 30000);
     return () => clearInterval(interval);
-  }, [loadServices]);
+  }, [loadChannels]);
 
-  // Service actions
+  // Channel actions
   const handleStart = async (name: string) => {
     setActionInProgress(name);
     setActionResult(null);
@@ -76,7 +76,7 @@ export default function ServicesPage() {
       const res = await api.startService(name);
       if (res.data) {
         setActionResult(res.data);
-        await loadServices();
+        await loadChannels();
       }
     } catch (e) {
       setActionResult({
@@ -84,7 +84,7 @@ export default function ServicesPage() {
         service: name,
         action: 'start',
         message: null,
-        error: e instanceof Error ? e.message : 'Failed to start service',
+        error: e instanceof Error ? e.message : 'Failed to start channel',
       });
     }
     setActionInProgress(null);
@@ -97,7 +97,7 @@ export default function ServicesPage() {
       const res = await api.stopService(name);
       if (res.data) {
         setActionResult(res.data);
-        await loadServices();
+        await loadChannels();
       }
     } catch (e) {
       setActionResult({
@@ -105,7 +105,7 @@ export default function ServicesPage() {
         service: name,
         action: 'stop',
         message: null,
-        error: e instanceof Error ? e.message : 'Failed to stop service',
+        error: e instanceof Error ? e.message : 'Failed to stop channel',
       });
     }
     setActionInProgress(null);
@@ -118,7 +118,7 @@ export default function ServicesPage() {
       const res = await api.restartService(name);
       if (res.data) {
         setActionResult(res.data);
-        await loadServices();
+        await loadChannels();
       }
     } catch (e) {
       setActionResult({
@@ -126,7 +126,7 @@ export default function ServicesPage() {
         service: name,
         action: 'restart',
         message: null,
-        error: e instanceof Error ? e.message : 'Failed to restart service',
+        error: e instanceof Error ? e.message : 'Failed to restart channel',
       });
     }
     setActionInProgress(null);
@@ -212,10 +212,10 @@ export default function ServicesPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Server className="text-accent-primary" size={24} />
-          <h1 className="text-page-title text-text-primary">Services</h1>
+          <h1 className="text-page-title text-text-primary">Channels</h1>
         </div>
         <button
-          onClick={loadServices}
+          onClick={loadChannels}
           disabled={isLoading}
           className="btn btn-secondary flex items-center gap-2"
         >
@@ -224,29 +224,29 @@ export default function ServicesPage() {
         </button>
       </div>
 
-      {/* Services grid */}
+      {/* Channels grid */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-text-muted" />
         </div>
-      ) : services.length === 0 ? (
+      ) : channels.length === 0 ? (
         <div className="card p-8 text-center">
           <Server size={48} className="mx-auto mb-4 text-text-muted opacity-50" />
-          <p className="text-body text-text-muted">No services available</p>
+          <p className="text-body text-text-muted">No channels available</p>
           <p className="text-caption text-text-muted mt-1">
             Configure channel adapters in your environment to see them here
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {services.map((service) => {
-            const Icon = serviceIcons[service.name] || Server;
-            const color = serviceColors[service.name] || '#6366f1';
-            const isActioning = actionInProgress === service.name;
+          {channels.map((channel) => {
+            const Icon = channelIcons[channel.name] || Server;
+            const color = channelColors[channel.name] || '#6366f1';
+            const isActioning = actionInProgress === channel.name;
 
             return (
               <div
-                key={service.name}
+                key={channel.name}
                 className="card p-6 flex flex-col"
               >
                 {/* Header */}
@@ -260,50 +260,50 @@ export default function ServicesPage() {
                     </div>
                     <div>
                       <h3 className="text-card-title text-text-primary">
-                        {service.display_name}
+                        {channel.display_name}
                       </h3>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        {getStatusIndicator(service.status)}
+                        {getStatusIndicator(channel.status)}
                         <span
                           className={cn(
                             'text-caption capitalize',
-                            service.status === 'running' && 'text-status-success',
-                            service.status === 'stopped' && 'text-text-muted',
-                            service.status === 'error' && 'text-status-error'
+                            channel.status === 'running' && 'text-status-success',
+                            channel.status === 'stopped' && 'text-text-muted',
+                            channel.status === 'error' && 'text-status-error'
                           )}
                         >
-                          {service.status}
+                          {channel.status}
                         </span>
                       </div>
                     </div>
                   </div>
-                  {getConfigBadge(service.config_status)}
+                  {getConfigBadge(channel.config_status)}
                 </div>
 
                 {/* Details */}
                 <div className="space-y-2 mb-4 flex-1">
-                  {service.uptime_seconds !== null && service.status === 'running' && (
+                  {channel.uptime_seconds !== null && channel.status === 'running' && (
                     <div className="flex items-center gap-2 text-caption text-text-muted">
                       <Clock size={14} />
-                      <span>Uptime: {formatDuration(service.uptime_seconds)}</span>
+                      <span>Uptime: {formatDuration(channel.uptime_seconds)}</span>
                     </div>
                   )}
-                  {service.last_activity && (
+                  {channel.last_activity && (
                     <div className="flex items-center gap-2 text-caption text-text-muted">
                       <MessageSquare size={14} />
                       <span>
                         Last activity:{' '}
-                        {new Date(service.last_activity).toLocaleString()}
+                        {new Date(channel.last_activity).toLocaleString()}
                       </span>
                     </div>
                   )}
-                  {service.error && (
+                  {channel.error && (
                     <div className="flex items-start gap-2 text-caption text-status-error">
                       <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                      <span>{service.error}</span>
+                      <span>{channel.error}</span>
                     </div>
                   )}
-                  {service.config_status === 'unconfigured' && (
+                  {channel.config_status === 'unconfigured' && (
                     <div className="flex items-center gap-2 text-caption text-text-muted">
                       <Settings size={14} />
                       <span>Configure in Settings to enable</span>
@@ -313,11 +313,11 @@ export default function ServicesPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 pt-4 border-t border-border-default">
-                  {service.status === 'running' ? (
+                  {channel.status === 'running' ? (
                     <>
                       <button
-                        onClick={() => handleStop(service.name)}
-                        disabled={isActioning || service.config_status === 'unconfigured'}
+                        onClick={() => handleStop(channel.name)}
+                        disabled={isActioning || channel.config_status === 'unconfigured'}
                         className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
                       >
                         {isActioning ? (
@@ -328,8 +328,8 @@ export default function ServicesPage() {
                         Stop
                       </button>
                       <button
-                        onClick={() => handleRestart(service.name)}
-                        disabled={isActioning || service.config_status === 'unconfigured'}
+                        onClick={() => handleRestart(channel.name)}
+                        disabled={isActioning || channel.config_status === 'unconfigured'}
                         className="btn btn-secondary flex-1 flex items-center justify-center gap-2"
                       >
                         {isActioning ? (
@@ -342,8 +342,8 @@ export default function ServicesPage() {
                     </>
                   ) : (
                     <button
-                      onClick={() => handleStart(service.name)}
-                      disabled={isActioning || service.config_status === 'unconfigured'}
+                      onClick={() => handleStart(channel.name)}
+                      disabled={isActioning || channel.config_status === 'unconfigured'}
                       className="btn btn-primary flex-1 flex items-center justify-center gap-2"
                     >
                       {isActioning ? (
@@ -364,12 +364,12 @@ export default function ServicesPage() {
       {/* Help text */}
       <div className="card p-4 bg-bg-elevated/50">
         <h3 className="text-caption text-text-muted uppercase tracking-wider mb-2">
-          About Services
+          About Channels
         </h3>
         <p className="text-body text-text-secondary">
-          Services are the channel adapters that connect DexAI to messaging platforms.
-          Each service needs to be configured with API tokens before it can be started.
-          Configure services in the <strong>Settings</strong> page.
+          Channels connect DexAI to messaging platforms like Telegram, Discord, and Slack.
+          Each channel needs to be configured with API tokens before it can be started.
+          Configure channels in the <strong>Settings</strong> page.
         </p>
       </div>
     </div>

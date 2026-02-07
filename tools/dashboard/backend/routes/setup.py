@@ -99,6 +99,7 @@ class ApiKeyValidateRequest(BaseModel):
     """API key validation request."""
 
     api_key: str
+    provider: str = "anthropic"  # anthropic, openrouter, openai, google
 
 
 class ApiKeyValidateResponse(BaseModel):
@@ -210,12 +211,102 @@ async def send_test_message(request: ChannelTestRequest):
 
 @router.post("/apikey/validate", response_model=ApiKeyValidateResponse)
 async def validate_api_key(request: ApiKeyValidateRequest):
-    """Validate Anthropic API key."""
-    result = await validate_anthropic_key(request.api_key)
+    """Validate API key for the specified provider."""
+    provider = request.provider.lower()
+
+    if provider == "anthropic":
+        result = await validate_anthropic_key(request.api_key)
+    elif provider == "openrouter":
+        result = await _validate_openrouter_key(request.api_key)
+    elif provider == "openai":
+        result = await _validate_openai_key(request.api_key)
+    elif provider == "google":
+        result = await _validate_google_key(request.api_key)
+    else:
+        return ApiKeyValidateResponse(
+            success=False,
+            error=f"Unknown provider: {provider}",
+        )
+
     return ApiKeyValidateResponse(
         success=result.get("success", False),
         error=result.get("error"),
     )
+
+
+async def _validate_openrouter_key(api_key: str) -> dict[str, Any]:
+    """Validate OpenRouter API key by checking models endpoint."""
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_key}"}
+            async with session.get(
+                "https://openrouter.ai/api/v1/models",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    return {"success": True}
+                elif resp.status == 401:
+                    return {"success": False, "error": "Invalid API key"}
+                else:
+                    error_text = await resp.text()
+                    return {"success": False, "error": f"API error: {error_text}"}
+    except ImportError:
+        return {"success": False, "error": "aiohttp not installed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def _validate_openai_key(api_key: str) -> dict[str, Any]:
+    """Validate OpenAI API key by checking models endpoint."""
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {api_key}"}
+            async with session.get(
+                "https://api.openai.com/v1/models",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    return {"success": True}
+                elif resp.status == 401:
+                    return {"success": False, "error": "Invalid API key"}
+                else:
+                    error_text = await resp.text()
+                    return {"success": False, "error": f"API error: {error_text}"}
+    except ImportError:
+        return {"success": False, "error": "aiohttp not installed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def _validate_google_key(api_key: str) -> dict[str, Any]:
+    """Validate Google API key by checking Gemini models endpoint."""
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            # Google uses query parameter for API key
+            url = f"https://generativelanguage.googleapis.com/v1/models?key={api_key}"
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    return {"success": True}
+                elif resp.status == 400 or resp.status == 403:
+                    return {"success": False, "error": "Invalid API key"}
+                else:
+                    error_text = await resp.text()
+                    return {"success": False, "error": f"API error: {error_text}"}
+    except ImportError:
+        return {"success": False, "error": "aiohttp not installed"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @router.post("/preferences")
