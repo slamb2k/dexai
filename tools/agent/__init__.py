@@ -51,12 +51,22 @@ __all__ = [
     "SESSION_FILE_ALLOWLISTS",
     "bootstrap_workspace",
     "is_workspace_bootstrapped",
+    # Schema exports (lazy loaded)
+    "TASK_DECOMPOSITION_SCHEMA",
+    "ENERGY_ASSESSMENT_SCHEMA",
+    "COMMITMENT_LIST_SCHEMA",
+    "FRICTION_CHECK_SCHEMA",
+    "CURRENT_STEP_SCHEMA",
+    "get_schema",
+    "list_schemas",
+    "create_custom_schema",
 ]
 
 
 def __getattr__(name):
-    """Lazy load system_prompt components to avoid circular imports."""
-    lazy_exports = (
+    """Lazy load components to avoid circular imports."""
+    # System prompt components
+    system_prompt_exports = (
         "SystemPromptBuilder",
         "PromptContext",
         "PromptMode",
@@ -65,7 +75,7 @@ def __getattr__(name):
         "bootstrap_workspace",
         "is_workspace_bootstrapped",
     )
-    if name in lazy_exports:
+    if name in system_prompt_exports:
         from tools.agent.system_prompt import (
             SystemPromptBuilder,
             PromptContext,
@@ -84,4 +94,38 @@ def __getattr__(name):
             "bootstrap_workspace": bootstrap_workspace,
             "is_workspace_bootstrapped": is_workspace_bootstrapped,
         }[name]
+
+    # Schema components
+    schema_exports = (
+        "TASK_DECOMPOSITION_SCHEMA",
+        "ENERGY_ASSESSMENT_SCHEMA",
+        "COMMITMENT_LIST_SCHEMA",
+        "FRICTION_CHECK_SCHEMA",
+        "CURRENT_STEP_SCHEMA",
+        "get_schema",
+        "list_schemas",
+        "create_custom_schema",
+    )
+    if name in schema_exports:
+        from tools.agent.schemas import (
+            TASK_DECOMPOSITION_SCHEMA,
+            ENERGY_ASSESSMENT_SCHEMA,
+            COMMITMENT_LIST_SCHEMA,
+            FRICTION_CHECK_SCHEMA,
+            CURRENT_STEP_SCHEMA,
+            get_schema,
+            list_schemas,
+            create_custom_schema,
+        )
+        return {
+            "TASK_DECOMPOSITION_SCHEMA": TASK_DECOMPOSITION_SCHEMA,
+            "ENERGY_ASSESSMENT_SCHEMA": ENERGY_ASSESSMENT_SCHEMA,
+            "COMMITMENT_LIST_SCHEMA": COMMITMENT_LIST_SCHEMA,
+            "FRICTION_CHECK_SCHEMA": FRICTION_CHECK_SCHEMA,
+            "CURRENT_STEP_SCHEMA": CURRENT_STEP_SCHEMA,
+            "get_schema": get_schema,
+            "list_schemas": list_schemas,
+            "create_custom_schema": create_custom_schema,
+        }[name]
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

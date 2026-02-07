@@ -692,14 +692,65 @@ TASK_DECOMPOSITION_SCHEMA = {
 - Updated `sdk_handler.py` to use `SessionManager` for continuous conversations
 - Updated `args/agent.yaml` with subagents configuration section
 
-### Phase 3: Enhanced Features (5-7 days)
+### Phase 3: Enhanced Features (5-7 days) ✅ COMPLETE
 
-| Task | Impact | Effort |
-|------|--------|--------|
-| Create `.claude/skills/` for ADHD capabilities | Medium | Medium |
-| Create `.claude/commands/` for user shortcuts | Medium | Low |
-| Implement streaming input for dynamic conversations | Medium | Medium |
-| Add structured output for task decomposition | Low | Low |
+| Task | Impact | Effort | Status |
+|------|--------|--------|--------|
+| Create `.claude/skills/` for ADHD capabilities | Medium | Medium | ✅ Skills-only architecture |
+| Create `.claude/commands/` for user shortcuts | Medium | Low | ⏭️ Skipped (see rationale below) |
+| Implement streaming input for dynamic conversations | Medium | Medium | ✅ `query_stream()` in sdk_client.py |
+| Add structured output for task decomposition | Low | Low | ✅ `schemas.py` + `query_structured()` |
+
+**Skills-Only Architecture (No Commands):**
+
+DexAI is a **bot-driven system** where users interact via natural language (Telegram, Discord, Slack), not CLI slash commands. Commands were deemed redundant because:
+
+1. Users don't type `/commands` - they chat naturally ("help me break this down")
+2. Skills auto-trigger based on context detection
+3. Natural language → skill activation → methodology from shared instructions
+
+If platform-native slash commands are needed later (Discord `/commands`, Slack shortcuts), those would be implemented in channel adapters, not `.claude/commands/`.
+
+```
+.claude/
+├── instructions/               # Shared methodology (single source of truth)
+│   ├── decomposition.md        # Task breakdown: 5-15 min chunks, one-thing mode
+│   ├── energy-levels.md        # LOW/MEDIUM/HIGH definitions, task routing
+│   ├── rsd-language.md         # Forbidden phrases, reframing patterns
+│   ├── one-thing-mode.md       # Single-action philosophy
+│   └── commitment-tracking.md  # Safe commitment surfacing
+│
+└── skills/                     # Auto-triggered behaviors (one SKILL.md per skill)
+    ├── adhd-decomposition/SKILL.md   # Triggers on overwhelm signals
+    ├── energy-matching/SKILL.md      # Triggers on energy indicators
+    └── rsd-safe-communication/SKILL.md # Always active as background filter
+```
+
+**Skill structure:** Each skill is a single `SKILL.md` file containing:
+- YAML frontmatter (name, description)
+- Trigger conditions (when to activate)
+- Skill-specific behavior notes
+- Link to shared instructions for full methodology
+
+**Streaming Input Implementation Details:**
+- Added `stream_input()` method to `Session` class in `session_manager.py`
+- Added `query_stream()` method to `DexAIClient` in `sdk_client.py`
+- Added `interrupt()` method to `DexAIClient` for cancelling in-progress queries
+- Updated `stream_message()` in `SessionManager` to accept AsyncGenerator input
+- Messages can be yielded as strings (auto-converted) or SDK format dicts
+- Supports user interruption (adding context while Claude is processing)
+
+**Structured Output Implementation Details:**
+- Created `tools/agent/schemas.py` with 5 ADHD-focused JSON schemas:
+  - `task_decomposition`: One step at a time with blockers
+  - `energy_assessment`: Energy detection and task matching
+  - `commitment_list`: RSD-safe commitment tracking
+  - `friction_check`: Blocker identification
+  - `current_step`: One-thing mode single action
+- Added `query_structured()` method to DexAIClient for validated JSON responses
+- Added `StructuredQueryResult` class with convenience accessors (current_step, blockers, remaining_steps)
+- Added convenience functions: `quick_decompose()`, `quick_energy_match()`, `quick_friction_check()`, `quick_current_step()`
+- Updated module exports in `__init__.py` for schema access
 
 ### Phase 4: Optimization (Ongoing)
 
@@ -707,7 +758,7 @@ TASK_DECOMPOSITION_SCHEMA = {
 |------|--------|--------|
 | Tune subagent model selection (haiku vs sonnet) | Medium | Low |
 | Monitor and optimize hook performance | Low | Low |
-| Refine skill/command definitions based on usage | Low | Ongoing |
+| Refine skill definitions based on usage | Low | Ongoing |
 
 ---
 
