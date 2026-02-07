@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DexAvatar, AvatarState } from '@/components/dex-avatar';
 import { CurrentStepCard, CurrentStep, EnergyLevel } from '@/components/current-step-card';
-import { EnergySelector, EnergyIndicator } from '@/components/energy-selector';
-import { FlowIndicator, FlowBadge } from '@/components/flow-indicator';
+import { EnergySelector } from '@/components/energy-selector';
+import { FlowIndicator } from '@/components/flow-indicator';
 import { CommitmentBadge, Commitment } from '@/components/commitment-badge';
 import { QuickChat } from '@/components/quick-chat';
 import { AlertCircle, History } from 'lucide-react';
@@ -15,7 +15,7 @@ import { socketClient } from '@/lib/socket';
 
 const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
-// Demo data for development
+// Demo data for development (fallback)
 const demoCurrentStep: CurrentStep = {
   id: '1',
   title: 'Reply to Sarah\'s email about the Q4 report',
@@ -52,7 +52,9 @@ export default function HomePage() {
   const [flowStartTime, setFlowStartTime] = useState<Date | undefined>();
   const [currentStep, setCurrentStep] = useState<CurrentStep | null>(null);
   const [commitments, setCommitments] = useState<Commitment[]>([]);
+  const [commitmentCount, setCommitmentCount] = useState(0);
   const [contextResume, setContextResume] = useState<{ task: string; time: string } | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   // Load initial data
   useEffect(() => {
@@ -66,15 +68,41 @@ export default function HomePage() {
         if (statusRes.success && statusRes.data) {
           setAvatarState(statusRes.data.state as AvatarState);
           setCurrentTask(statusRes.data.currentTask || null);
+        }
 
-          // Map to CurrentStep format
-          if (statusRes.data.currentTask) {
-            setCurrentStep({
-              id: '1',
-              title: statusRes.data.currentTask,
-              energyRequired: 'medium',
-            });
+        // Fetch current task
+        const currentTaskRes = await api.getCurrentTask();
+        if (currentTaskRes.success && currentTaskRes.data?.current_task) {
+          const task = currentTaskRes.data.current_task;
+          setCurrentStep({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            energyRequired: (task.energy_required as EnergyLevel) || 'medium',
+            estimatedTime: task.estimated_time,
+            category: task.category,
+          });
+        }
+
+        // Fetch energy level
+        const energyRes = await api.getEnergyLevel();
+        if (energyRes.success && energyRes.data) {
+          setEnergyLevel(energyRes.data.level as EnergyLevel);
+        }
+
+        // Fetch flow state
+        const flowRes = await api.getFlowState();
+        if (flowRes.success && flowRes.data) {
+          setIsInFlow(flowRes.data.is_in_flow);
+          if (flowRes.data.flow_start_time) {
+            setFlowStartTime(new Date(flowRes.data.flow_start_time));
           }
+        }
+
+        // Fetch commitment count
+        const commitmentRes = await api.getCommitmentsCount();
+        if (commitmentRes.success && commitmentRes.data) {
+          setCommitmentCount(commitmentRes.data.count);
         }
 
         // Fetch metrics
@@ -101,6 +129,7 @@ export default function HomePage() {
         if (isDemo && !currentStep) {
           setCurrentStep(demoCurrentStep);
           setCommitments(demoCommitments);
+          setCommitmentCount(demoCommitments.length);
         }
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : 'Failed to load data';
@@ -110,6 +139,7 @@ export default function HomePage() {
         if (isDemo) {
           setCurrentStep(demoCurrentStep);
           setCommitments(demoCommitments);
+          setCommitmentCount(demoCommitments.length);
         }
       }
 
@@ -153,28 +183,97 @@ export default function HomePage() {
   }, [setAvatarState, setCurrentTask, setConnected]);
 
   // Handle step completion
-  const handleStepComplete = () => {
-    setCurrentStep(null);
-    setAvatarState('success');
-    setTimeout(() => setAvatarState('idle'), 2000);
-  };
+  const handleStepComplete = useCallback(async () => {
+    if (currentStep?.id) {
+      try {
+        await api.completeTask(currentStep.id);
+        setCurrentStep(null);
+        setAvatarState('success');
+        setTimeout(() => setAvatarState('idle'), 2000);
 
-  const handleStepSkip = () => {
-    setCurrentStep(null);
-  };
+        // Refresh current task
+        const res = await api.getCurrentTask();
+        if (res.success && res.data?.current_task) {
+          const task = res.data.current_task;
+          setCurrentStep({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            energyRequired: (task.energy_required as EnergyLevel) || 'medium',
+            estimatedTime: task.estimated_time,
+            category: task.category,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to complete task:', e);
+      }
+    } else {
+      setCurrentStep(null);
+      setAvatarState('success');
+      setTimeout(() => setAvatarState('idle'), 2000);
+    }
+  }, [currentStep, setAvatarState]);
 
-  const handleStepStuck = () => {
-    setAvatarState('thinking');
-    // Trigger friction-solving in the future
-  };
+  const handleStepSkip = useCallback(async () => {
+    if (currentStep?.id) {
+      try {
+        await api.skipTask(currentStep.id);
 
-  const handleSendMessage = (message: string) => {
-    setAvatarState('thinking');
-    // Process message - for now just simulate
-    setTimeout(() => {
-      setAvatarState('idle');
-    }, 2000);
-  };
+        // Get next task
+        const res = await api.getCurrentTask();
+        if (res.success && res.data?.current_task) {
+          const task = res.data.current_task;
+          setCurrentStep({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            energyRequired: (task.energy_required as EnergyLevel) || 'medium',
+            estimatedTime: task.estimated_time,
+            category: task.category,
+          });
+        } else {
+          setCurrentStep(null);
+        }
+      } catch (e) {
+        console.error('Failed to skip task:', e);
+        setCurrentStep(null);
+      }
+    } else {
+      setCurrentStep(null);
+    }
+  }, [currentStep]);
+
+  const handleStepStuck = useCallback(async () => {
+    if (currentStep?.id) {
+      setAvatarState('thinking');
+      try {
+        const res = await api.markTaskStuck(currentStep.id);
+        if (res.success && res.data?.data) {
+          // Could display friction data here
+          console.log('Friction data:', res.data.data);
+        }
+      } catch (e) {
+        console.error('Failed to mark stuck:', e);
+      }
+      setTimeout(() => setAvatarState('idle'), 2000);
+    }
+  }, [currentStep, setAvatarState]);
+
+  const handleEnergyChange = useCallback(async (level: EnergyLevel) => {
+    setEnergyLevel(level);
+    try {
+      await api.setEnergyLevel(level);
+    } catch (e) {
+      console.error('Failed to save energy level:', e);
+    }
+  }, []);
+
+  const handleChatStateChange = useCallback(
+    (state: 'idle' | 'thinking' | 'working') => {
+      setAvatarState(state as AvatarState);
+    },
+    [setAvatarState]
+  );
 
   const handleResumeContext = () => {
     // Resume from saved context
@@ -235,7 +334,7 @@ export default function HomePage() {
         {/* Energy Selector */}
         <EnergySelector
           value={energyLevel}
-          onChange={setEnergyLevel}
+          onChange={handleEnergyChange}
           compact
         />
 
@@ -249,17 +348,21 @@ export default function HomePage() {
 
         {/* Commitments - RSD-safe language */}
         <CommitmentBadge
-          count={commitments.length}
+          count={commitmentCount}
           onClick={() => {
-            // Navigate to memory page or show modal
+            // Navigate to memory page
+            window.location.href = '/memory';
           }}
         />
       </section>
 
-      {/* Quick Chat */}
+      {/* Quick Chat with History */}
       <section>
         <QuickChat
-          onSendMessage={handleSendMessage}
+          showHistory={true}
+          conversationId={conversationId}
+          onConversationChange={setConversationId}
+          onStateChange={handleChatStateChange}
           isProcessing={avatarState === 'thinking' || avatarState === 'working'}
           placeholder="Ask Dex anything..."
         />

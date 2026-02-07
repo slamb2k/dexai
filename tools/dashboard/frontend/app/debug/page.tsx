@@ -52,15 +52,24 @@ const mockLogs = [
   '[2024-01-15 14:32:45] INFO  - Retry successful after 2 attempts',
 ];
 
-const mockTables = ['tasks', 'activity', 'memory_entries', 'audit_log', 'settings'];
+// Available tables for database explorer
+const availableTables = [
+  'dashboard_events',
+  'dashboard_metrics',
+  'dashboard_settings',
+  'chat_conversations',
+  'chat_messages',
+  'memory_entries',
+  'contexts',
+  'commitments',
+];
 
 const mockTableData = {
-  tasks: {
-    columns: ['id', 'status', 'request', 'created_at'],
+  dashboard_events: {
+    columns: ['id', 'event_type', 'summary', 'timestamp'],
     rows: [
-      { id: 'task_001', status: 'completed', request: 'Schedule meeting', created_at: '2024-01-15 14:00:00' },
-      { id: 'task_002', status: 'running', request: 'Research topic', created_at: '2024-01-15 14:30:00' },
-      { id: 'task_003', status: 'pending', request: 'Send reminder', created_at: '2024-01-15 14:45:00' },
+      { id: 1, event_type: 'task', summary: 'Task completed', timestamp: '2024-01-15 14:00:00' },
+      { id: 2, event_type: 'system', summary: 'System started', timestamp: '2024-01-15 14:30:00' },
     ],
   },
 };
@@ -70,10 +79,11 @@ export default function DebugPage() {
   const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedTable, setSelectedTable] = useState(mockTables[0]);
+  const [selectedTable, setSelectedTable] = useState(availableTables[0]);
   const [tableData, setTableData] = useState<{
     columns: string[];
     rows: Record<string, unknown>[];
+    error?: string;
   } | null>(null);
   const [logLevel, setLogLevel] = useState('all');
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -193,10 +203,19 @@ export default function DebugPage() {
     try {
       const res = await api.queryDatabase(selectedTable, 10);
       if (res.success && res.data) {
-        setTableData(res.data);
+        if (res.data.error) {
+          setTableData({ columns: [], rows: [], error: res.data.error });
+        } else {
+          setTableData({
+            columns: res.data.columns,
+            rows: res.data.rows,
+          });
+        }
+      } else {
+        setTableData(mockTableData.dashboard_events);
       }
     } catch {
-      setTableData(mockTableData.tasks);
+      setTableData(mockTableData.dashboard_events);
     }
     setIsLoading(false);
   }, [selectedTable]);
@@ -352,10 +371,10 @@ export default function DebugPage() {
 
       {activeTab === 'database' && (
         <DatabasePanel
-          tables={mockTables}
+          tables={availableTables}
           selectedTable={selectedTable}
           onTableChange={setSelectedTable}
-          data={tableData || mockTableData.tasks}
+          data={tableData || mockTableData.dashboard_events}
           isLoading={isLoading}
           onRefresh={loadTableData}
         />
@@ -568,7 +587,7 @@ function DatabasePanel({
   tables: string[];
   selectedTable: string;
   onTableChange: (table: string) => void;
-  data: { columns: string[]; rows: Record<string, unknown>[] };
+  data: { columns: string[]; rows: Record<string, unknown>[]; error?: string };
   isLoading: boolean;
   onRefresh: () => void;
 }) {
@@ -609,39 +628,57 @@ function DatabasePanel({
         Read-only view. Showing first 10 rows.
       </p>
 
-      <div className="card overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-bg-elevated border-b border-border-default">
-            <tr>
-              {data.columns.map((col) => (
-                <th
-                  key={col}
-                  className="px-4 py-3 text-left text-caption text-text-muted font-medium whitespace-nowrap"
-                >
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((row, rowIndex) => (
-              <tr
-                key={rowIndex}
-                className="border-b border-border-default hover:bg-bg-elevated"
-              >
+      {data.error ? (
+        <div className="card p-4 bg-status-error/10 border border-status-error/30">
+          <div className="flex items-center gap-2 text-status-error">
+            <XCircle size={18} />
+            <span className="text-body font-medium">Query Error</span>
+          </div>
+          <p className="text-caption text-text-secondary mt-2">{data.error}</p>
+        </div>
+      ) : data.rows.length === 0 ? (
+        <div className="card p-8 text-center">
+          <Database className="mx-auto text-text-muted mb-4" size={48} />
+          <p className="text-body text-text-secondary">
+            No rows found in {selectedTable}
+          </p>
+        </div>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-bg-elevated border-b border-border-default">
+              <tr>
                 {data.columns.map((col) => (
-                  <td
+                  <th
                     key={col}
-                    className="px-4 py-3 text-body text-text-secondary whitespace-nowrap"
+                    className="px-4 py-3 text-left text-caption text-text-muted font-medium whitespace-nowrap"
                   >
-                    {String(row[col] ?? '')}
-                  </td>
+                    {col}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {data.rows.map((row, rowIndex) => (
+                <tr
+                  key={rowIndex}
+                  className="border-b border-border-default hover:bg-bg-elevated"
+                >
+                  {data.columns.map((col) => (
+                    <td
+                      key={col}
+                      className="px-4 py-3 text-body text-text-secondary whitespace-nowrap max-w-xs truncate"
+                      title={String(row[col] ?? '')}
+                    >
+                      {String(row[col] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
