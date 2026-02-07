@@ -17,6 +17,9 @@ Deployment Modes:
 Documentation: https://docs.getzep.com
 """
 
+from __future__ import annotations
+
+import contextlib
 import logging
 import os
 import time
@@ -155,18 +158,17 @@ class ZepProvider(MemoryProvider):
         missing = []
 
         # Check for zep package
+        import importlib.util
         if self._deployment_mode == DeploymentMode.CLOUD:
-            try:
-                import zep_cloud
+            if importlib.util.find_spec("zep_cloud") is not None:
                 deps["zep_cloud"] = True
-            except ImportError:
+            else:
                 deps["zep_cloud"] = False
                 missing.append("zep-cloud")
         else:
-            try:
-                import zep_python
+            if importlib.util.find_spec("zep_python") is not None:
                 deps["zep_python"] = True
-            except ImportError:
+            else:
                 deps["zep_python"] = False
                 missing.append("zep-python")
 
@@ -397,9 +399,8 @@ class ZepProvider(MemoryProvider):
                     if memory_type.value not in filter_types:
                         continue
 
-                if filters and filters.min_importance:
-                    if metadata.get("importance", 5) < filters.min_importance:
-                        continue
+                if filters and filters.min_importance and metadata.get("importance", 5) < filters.min_importance:
+                    continue
 
                 content = getattr(message, 'content', str(message))
                 score = getattr(item, 'score', 0.0) or getattr(item, 'dist', 0.0)
@@ -495,9 +496,8 @@ class ZepProvider(MemoryProvider):
                     if memory_type.value not in filter_types:
                         continue
 
-                if filters and filters.min_importance:
-                    if metadata.get("importance", 5) < filters.min_importance:
-                        continue
+                if filters and filters.min_importance and metadata.get("importance", 5) < filters.min_importance:
+                    continue
 
                 entry = MemoryEntry(
                     id=getattr(message, 'uuid', str(uuid.uuid4())),
@@ -525,17 +525,13 @@ class ZepProvider(MemoryProvider):
 
             # Try a simple operation
             if self._deployment_mode == DeploymentMode.CLOUD:
-                # Cloud mode - check user
-                try:
+                # Cloud mode - check user (not found is OK)
+                with contextlib.suppress(Exception):
                     client.user.get("__health_check__")
-                except Exception:
-                    pass  # User not found is OK
             else:
-                # Self-hosted - check sessions
-                try:
+                # Self-hosted - check sessions (not found is OK)
+                with contextlib.suppress(Exception):
                     client.memory.get_session("__health_check__")
-                except Exception:
-                    pass  # Session not found is OK
 
             latency = (time.time() - start) * 1000
 
@@ -720,10 +716,8 @@ class ZepProvider(MemoryProvider):
             state = {}
             state_str = entry.metadata.get("state")
             if state_str:
-                try:
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
                     state = json.loads(state_str)
-                except (json.JSONDecodeError, TypeError):
-                    pass
 
             return {
                 "id": entry.metadata.get("context_id"),

@@ -45,23 +45,24 @@ from .base import (
 )
 from .native import NativeProvider
 
+
 __all__ = [
-    # Data structures
-    "MemoryEntry",
-    "MemoryType",
-    "MemorySource",
-    "DeploymentMode",
-    "SearchFilters",
-    "HealthStatus",
-    "DependencyStatus",
     "BootstrapResult",
-    "DeployResult",
     "Commitment",
     "ContextSnapshot",
+    "DependencyStatus",
+    "DeployResult",
+    "DeploymentMode",
+    "HealthStatus",
+    # Data structures
+    "MemoryEntry",
     # Base class
     "MemoryProvider",
+    "MemorySource",
+    "MemoryType",
     # Providers
     "NativeProvider",
+    "SearchFilters",
 ]
 
 
@@ -92,7 +93,7 @@ def get_provider(name: str, config: dict | None = None) -> MemoryProvider:
             return Mem0Provider(config)
         except ImportError as e:
             raise ImportError(
-                f"Mem0 provider requires mem0ai package. Install with: pip install dexai[mem0]"
+                "Mem0 provider requires mem0ai package. Install with: pip install dexai[mem0]"
             ) from e
 
     elif name == "zep":
@@ -102,7 +103,7 @@ def get_provider(name: str, config: dict | None = None) -> MemoryProvider:
             return ZepProvider(config)
         except ImportError as e:
             raise ImportError(
-                f"Zep provider requires zep-python package. Install with: pip install dexai[zep]"
+                "Zep provider requires zep-python package. Install with: pip install dexai[zep]"
             ) from e
 
     elif name == "simplemem":
@@ -112,7 +113,7 @@ def get_provider(name: str, config: dict | None = None) -> MemoryProvider:
             return SimpleMemProvider(config)
         except ImportError as e:
             raise ImportError(
-                f"SimpleMem provider requires httpx package (should be installed by default)"
+                "SimpleMem provider requires httpx package (should be installed by default)"
             ) from e
 
     elif name == "claudemem":
@@ -122,7 +123,7 @@ def get_provider(name: str, config: dict | None = None) -> MemoryProvider:
             return ClaudeMemProvider(config)
         except ImportError as e:
             raise ImportError(
-                f"ClaudeMem provider requires httpx package (should be installed by default)"
+                "ClaudeMem provider requires httpx package (should be installed by default)"
             ) from e
 
     else:

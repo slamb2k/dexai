@@ -15,6 +15,9 @@ Deployment Mode: CLOUD only
 API Documentation: https://docs.simplemem.io
 """
 
+from __future__ import annotations
+
+import contextlib
 import logging
 import os
 import time
@@ -335,10 +338,8 @@ class SimpleMemProvider(MemoryProvider):
         # Parse dates
         created_at = datetime.utcnow()
         if result.get("created_at"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 created_at = datetime.fromisoformat(result["created_at"].replace("Z", "+00:00"))
-            except (ValueError, TypeError):
-                pass
 
         return MemoryEntry(
             id=result.get("id", ""),
@@ -506,7 +507,7 @@ class SimpleMemProvider(MemoryProvider):
             "is_commitment": True,
         }
 
-        memory_id = await self.add(
+        await self.add(
             content=f"{self._commitment_prefix}{content}",
             type=MemoryType.TASK,
             importance=8,  # Commitments are high importance

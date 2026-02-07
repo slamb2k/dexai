@@ -16,6 +16,9 @@ Deployment Mode: LOCAL only
 Based on: https://github.com/thedotmack/claude-mem
 """
 
+from __future__ import annotations
+
+import contextlib
 import json
 import logging
 import os
@@ -241,7 +244,7 @@ class ClaudeMemProvider(MemoryProvider):
 
         import math
 
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=False))
         norm1 = math.sqrt(sum(a * a for a in vec1))
         norm2 = math.sqrt(sum(b * b for b in vec2))
 
@@ -270,10 +273,10 @@ class ClaudeMemProvider(MemoryProvider):
                 logger.info("OPENAI_API_KEY not set - using keyword search only")
         else:
             # Check for sentence-transformers (optional)
-            try:
-                import sentence_transformers
+            import importlib.util
+            if importlib.util.find_spec("sentence_transformers") is not None:
                 deps["sentence_transformers"] = True
-            except ImportError:
+            else:
                 deps["sentence_transformers"] = False
                 logger.info("sentence-transformers not installed - using keyword search only")
 
@@ -436,23 +439,17 @@ class ClaudeMemProvider(MemoryProvider):
 
             # Parse stored data
             tags = []
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 tags = json.loads(row["tags"]) if row["tags"] else []
-            except (json.JSONDecodeError, TypeError):
-                pass
 
             metadata = {}
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-            except (json.JSONDecodeError, TypeError):
-                pass
 
             created_at = datetime.utcnow()
             if row["created_at"]:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     created_at = datetime.fromisoformat(row["created_at"])
-                except (ValueError, TypeError):
-                    pass
 
             entry = MemoryEntry(
                 id=row["id"],
@@ -492,10 +489,10 @@ class ClaudeMemProvider(MemoryProvider):
         return entries
 
     async def get(self, id: str) -> MemoryEntry | None:
-        """Get a specific memory by ID."""
+        """Get a specific memory by ID (only returns active entries)."""
         conn = self._get_connection()
         row = conn.execute(
-            "SELECT * FROM memories WHERE id = ?",
+            "SELECT * FROM memories WHERE id = ? AND is_active = 1",
             (id,),
         ).fetchone()
 
@@ -503,23 +500,17 @@ class ClaudeMemProvider(MemoryProvider):
             return None
 
         tags = []
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
             tags = json.loads(row["tags"]) if row["tags"] else []
-        except (json.JSONDecodeError, TypeError):
-            pass
 
         metadata = {}
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
             metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-        except (json.JSONDecodeError, TypeError):
-            pass
 
         created_at = datetime.utcnow()
         if row["created_at"]:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 created_at = datetime.fromisoformat(row["created_at"])
-            except (ValueError, TypeError):
-                pass
 
         return MemoryEntry(
             id=row["id"],
@@ -644,23 +635,17 @@ class ClaudeMemProvider(MemoryProvider):
         entries = []
         for row in rows:
             tags = []
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 tags = json.loads(row["tags"]) if row["tags"] else []
-            except (json.JSONDecodeError, TypeError):
-                pass
 
             metadata = {}
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-            except (json.JSONDecodeError, TypeError):
-                pass
 
             created_at = datetime.utcnow()
             if row["created_at"]:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     created_at = datetime.fromisoformat(row["created_at"])
-                except (ValueError, TypeError):
-                    pass
 
             entry = MemoryEntry(
                 id=row["id"],
@@ -871,10 +856,8 @@ class ClaudeMemProvider(MemoryProvider):
             return None
 
         state = {}
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
             state = json.loads(row["state"]) if row["state"] else {}
-        except (json.JSONDecodeError, TypeError):
-            pass
 
         return {
             "id": row["id"],

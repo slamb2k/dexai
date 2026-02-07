@@ -15,10 +15,12 @@ Features:
 Deployment Mode: LOCAL only
 """
 
+from __future__ import annotations
+
+import contextlib
 import logging
-import sqlite3
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -552,33 +554,25 @@ class NativeProvider(MemoryProvider):
         # Parse tags
         tags = []
         if data.get("tags"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 tags = json.loads(data["tags"])
-            except (json.JSONDecodeError, TypeError):
-                pass
 
         # Parse metadata from context
         metadata = {}
         if data.get("context"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 metadata = json.loads(data["context"])
-            except (json.JSONDecodeError, TypeError):
-                pass
 
         # Parse dates
         created_at = datetime.now()
         if data.get("created_at"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 created_at = datetime.fromisoformat(data["created_at"])
-            except (ValueError, TypeError):
-                pass
 
         updated_at = None
         if data.get("updated_at"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 updated_at = datetime.fromisoformat(data["updated_at"])
-            except (ValueError, TypeError):
-                pass
 
         return MemoryEntry(
             id=str(data.get("id", "")),

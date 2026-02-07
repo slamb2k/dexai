@@ -31,7 +31,8 @@ Usage:
     await service.shutdown()
 """
 
-import asyncio
+from __future__ import annotations
+
 import logging
 import os
 from datetime import datetime
@@ -41,9 +42,7 @@ from typing import Any
 import yaml
 
 from .providers.base import (
-    BootstrapResult,
     DependencyStatus,
-    DeploymentMode,
     HealthStatus,
     MemoryEntry,
     MemoryProvider,

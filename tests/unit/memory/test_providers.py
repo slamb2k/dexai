@@ -434,22 +434,27 @@ class TestMemoryService:
     @pytest.mark.asyncio
     async def test_service_add_and_search(self):
         """Test adding and searching through service."""
+        import uuid
         from tools.memory.service import MemoryService
         from tools.memory.providers.base import MemoryType
 
         service = MemoryService()
         await service.initialize()
 
+        # Use unique content to avoid duplicate errors
+        unique_id = str(uuid.uuid4())[:8]
+        content = f"Test service memory {unique_id}"
+
         # Add memory
         entry_id = await service.add(
-            content="Test service memory",
+            content=content,
             type=MemoryType.FACT,
         )
 
         assert entry_id is not None
 
         # Search
-        results = await service.search("test service")
+        results = await service.search(unique_id)
 
         assert len(results) > 0
 
@@ -486,7 +491,7 @@ class TestMemoryService:
         snapshot_id = await service.capture_context(
             user_id="test-user",
             state={"next_step": "Test context"},
-            trigger="test",
+            trigger="manual",
         )
 
         assert snapshot_id is not None

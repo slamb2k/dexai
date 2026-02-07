@@ -11,14 +11,16 @@ Design Principles:
 - Provider-agnostic data structures for easy migration
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class MemoryType(str, Enum):
+class MemoryType(StrEnum):
     """Universal memory types mapped to provider-specific types."""
 
     FACT = "fact"
@@ -29,7 +31,7 @@ class MemoryType(str, Enum):
     RELATIONSHIP = "relationship"
 
 
-class MemorySource(str, Enum):
+class MemorySource(StrEnum):
     """Origin of memory entry."""
 
     USER = "user"
@@ -40,7 +42,7 @@ class MemorySource(str, Enum):
     AGENT = "agent"
 
 
-class DeploymentMode(str, Enum):
+class DeploymentMode(StrEnum):
     """
     Provider deployment mode.
 
@@ -95,7 +97,7 @@ class MemoryEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryEntry":
+    def from_dict(cls, data: dict[str, Any]) -> MemoryEntry:
         """Create from dictionary."""
         # Handle type conversion
         memory_type = data.get("type", "fact")

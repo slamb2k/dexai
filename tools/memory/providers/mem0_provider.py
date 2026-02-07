@@ -17,6 +17,9 @@ Deployment Modes:
 Documentation: https://docs.mem0.ai
 """
 
+from __future__ import annotations
+
+import contextlib
 import logging
 import os
 import time
@@ -169,10 +172,10 @@ class Mem0Provider(MemoryProvider):
         missing = []
 
         # Check for mem0 package
-        try:
-            import mem0
+        import importlib.util
+        if importlib.util.find_spec("mem0") is not None:
             deps["mem0"] = True
-        except ImportError:
+        else:
             deps["mem0"] = False
             missing.append("mem0ai")
 
@@ -189,19 +192,14 @@ class Mem0Provider(MemoryProvider):
 
             if vs_provider == "qdrant":
                 # Check Qdrant connectivity
-                try:
-                    import httpx
-                    qdrant_url = self._vector_store_config.get("config", {}).get("url", "http://localhost:6333")
+                qdrant_url = self._vector_store_config.get("config", {}).get("url", "http://localhost:6333")
 
-                    # Sync check (can't use async in property)
-                    import urllib.request
-                    try:
-                        with urllib.request.urlopen(f"{qdrant_url}/health", timeout=5) as resp:
-                            deps["qdrant"] = resp.status == 200
-                    except Exception:
-                        deps["qdrant"] = False
-                        missing.append("qdrant")
-                except ImportError:
+                # Sync check (can't use async in property)
+                import urllib.request
+                try:
+                    with urllib.request.urlopen(f"{qdrant_url}/health", timeout=5) as resp:
+                        deps["qdrant"] = resp.status == 200
+                except Exception:
                     deps["qdrant"] = False
                     missing.append("qdrant")
 
@@ -412,9 +410,8 @@ class Mem0Provider(MemoryProvider):
                 if memory_type.value not in filter_types:
                     continue
 
-            if filters and filters.min_importance:
-                if metadata.get("importance", 5) < filters.min_importance:
-                    continue
+            if filters and filters.min_importance and metadata.get("importance", 5) < filters.min_importance:
+                continue
 
             entry = MemoryEntry(
                 id=item.get("id", ""),
@@ -457,10 +454,8 @@ class Mem0Provider(MemoryProvider):
 
             created_at = datetime.utcnow()
             if result.get("created_at"):
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     created_at = datetime.fromisoformat(result["created_at"].replace("Z", "+00:00"))
-                except (ValueError, TypeError):
-                    pass
 
             return MemoryEntry(
                 id=result.get("id", id),
@@ -566,9 +561,8 @@ class Mem0Provider(MemoryProvider):
                     if memory_type.value not in filter_types:
                         continue
 
-                if filters and filters.min_importance:
-                    if metadata.get("importance", 5) < filters.min_importance:
-                        continue
+                if filters and filters.min_importance and metadata.get("importance", 5) < filters.min_importance:
+                    continue
 
                 entry = MemoryEntry(
                     id=item.get("id", ""),
@@ -804,10 +798,8 @@ class Mem0Provider(MemoryProvider):
             state = {}
             state_str = entry.metadata.get("state")
             if state_str:
-                try:
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
                     state = json.loads(state_str)
-                except (json.JSONDecodeError, TypeError):
-                    pass
 
             return {
                 "id": entry.metadata.get("context_id"),
