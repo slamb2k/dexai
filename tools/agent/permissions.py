@@ -9,6 +9,7 @@ The callback:
 2. Checks user permissions via the existing RBAC system
 3. Logs tool usage to audit trail
 4. Handles elevated actions requiring confirmation
+5. Handles AskUserQuestion for ADHD-friendly clarification
 
 Usage:
     from tools.agent.permissions import create_permission_callback
@@ -17,14 +18,51 @@ Usage:
     options = ClaudeAgentOptions(can_use_tool=callback, ...)
 """
 
+import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+logger = logging.getLogger(__name__)
+
+# Permission result types for SDK integration
+# These match the claude-agent-sdk types for proper integration
+
+
+class PermissionResultAllow:
+    """Allow tool execution, optionally with modified input."""
+
+    def __init__(self, updated_input: dict | None = None):
+        self.type = "allow"
+        self.updated_input = updated_input
+
+
+class PermissionResultDeny:
+    """Deny tool execution with optional message."""
+
+    def __init__(self, message: str = "", interrupt: bool = False):
+        self.type = "deny"
+        self.message = message
+        self.interrupt = interrupt
+
+
+PermissionResult = Union[PermissionResultAllow, PermissionResultDeny, bool]
+
+
+# Read-only tools that can be auto-approved for lower friction
+READ_ONLY_TOOLS = {
+    "Read", "Glob", "Grep", "LS", "WebSearch", "WebFetch",
+    "TaskGet", "TaskList", "NotebookRead",
+    "dexai_memory_search", "dexai_commitments_list",
+    "dexai_context_resume", "dexai_friction_check",
+    "dexai_current_step", "dexai_energy_match",
+}
 
 
 # Default permission mapping (SDK tool -> DexAI permission)
@@ -53,6 +91,9 @@ DEFAULT_PERMISSION_MAPPING = {
     # Notebook operations
     "NotebookEdit": "files:write",
     "NotebookRead": "files:read",
+
+    # User interaction (handled specially in callback)
+    "AskUserQuestion": "chat:send",
 }
 
 # DexAI custom tool permission mapping
@@ -80,17 +121,24 @@ DEXAI_PERMISSION_MAPPING = {
 
 def create_permission_callback(
     user_id: str,
-    config: dict | None = None
-) -> Callable[[str, dict], bool]:
+    config: dict | None = None,
+    channel: str = "direct",
+    ask_user_handler: Callable | None = None,
+) -> Callable[[str, dict], PermissionResult]:
     """
     Create a permission callback for the SDK.
+
+    Returns proper PermissionResult types (Allow/Deny) for richer SDK integration.
+    Handles AskUserQuestion specially for ADHD-friendly clarification.
 
     Args:
         user_id: User identifier for permission checks
         config: Agent configuration (optional, loads from args/agent.yaml)
+        channel: Communication channel (for formatting questions)
+        ask_user_handler: Optional async callable to handle AskUserQuestion
 
     Returns:
-        Callback function: (tool_name: str, tool_input: dict) -> bool
+        Callback function: (tool_name: str, tool_input: dict) -> PermissionResult
     """
     # Load permission mappings from config if provided
     if config:
@@ -106,17 +154,30 @@ def create_permission_callback(
     # Combine mappings
     all_mappings = {**sdk_mapping, **dexai_mapping}
 
-    def can_use_tool(tool_name: str, tool_input: dict) -> bool:
+    def can_use_tool(tool_name: str, tool_input: dict) -> PermissionResult:
         """
         Check if the user can use a specific tool.
+
+        Returns PermissionResultAllow or PermissionResultDeny for SDK integration.
+        Handles AskUserQuestion specially for ADHD-friendly clarification.
 
         Args:
             tool_name: Name of the tool being invoked
             tool_input: Input parameters for the tool
 
         Returns:
-            True if allowed, False otherwise
+            PermissionResultAllow or PermissionResultDeny
         """
+        # Handle AskUserQuestion specially - this is the SDK's clarification tool
+        if tool_name == "AskUserQuestion":
+            return _handle_ask_user_question(
+                tool_input=tool_input,
+                user_id=user_id,
+                channel=channel,
+                handler=ask_user_handler,
+                audit_enabled=audit_enabled,
+            )
+
         # Get required permission for this tool
         required_permission = all_mappings.get(tool_name)
 
@@ -130,7 +191,10 @@ def create_permission_callback(
                 reason="unknown_tool",
                 audit_enabled=audit_enabled,
             )
-            return False
+            return PermissionResultDeny(
+                message=f"Unknown tool: {tool_name}",
+                interrupt=False,  # Let Claude try alternatives
+            )
 
         # Check permission using DexAI's RBAC system
         try:
@@ -156,9 +220,18 @@ def create_permission_callback(
                 audit_enabled=audit_enabled,
             )
 
-            # If requires elevation, we still allow but log it specially
-            # The SDK will handle the confirmation flow
-            return allowed
+            if not allowed:
+                return PermissionResultDeny(
+                    message=f"Permission denied: {tool_name} requires {required_permission}",
+                    interrupt=False,  # Let Claude try alternatives
+                )
+
+            # Auto-approve read-only tools for lower friction (ADHD-friendly)
+            if tool_name in READ_ONLY_TOOLS:
+                return PermissionResultAllow(updated_input=tool_input)
+
+            # For write operations, allow with original input
+            return PermissionResultAllow(updated_input=tool_input)
 
         except ImportError:
             # Permission system not available - allow with warning
@@ -170,7 +243,7 @@ def create_permission_callback(
                 reason="permission_system_unavailable",
                 audit_enabled=audit_enabled,
             )
-            return True
+            return PermissionResultAllow(updated_input=tool_input)
 
         except Exception as e:
             # Error checking permissions - deny for safety
@@ -182,9 +255,136 @@ def create_permission_callback(
                 reason=f"permission_check_error: {str(e)}",
                 audit_enabled=audit_enabled,
             )
-            return False
+            return PermissionResultDeny(
+                message=f"Permission check error: {str(e)}",
+                interrupt=False,
+            )
 
     return can_use_tool
+
+
+def _handle_ask_user_question(
+    tool_input: dict,
+    user_id: str,
+    channel: str,
+    handler: Callable | None,
+    audit_enabled: bool,
+) -> PermissionResult:
+    """
+    Handle AskUserQuestion tool for ADHD-friendly clarification.
+
+    Formats questions for ADHD users (numbered, clear, brief) and
+    collects answers through the channel adapter.
+
+    Args:
+        tool_input: Tool input containing questions
+        user_id: User ID
+        channel: Communication channel
+        handler: Optional async callable to handle question display
+        audit_enabled: Whether to log
+
+    Returns:
+        PermissionResultAllow with answers or PermissionResultDeny
+    """
+    questions = tool_input.get("questions", [])
+
+    # Format questions for ADHD users (RSD-safe, clear, numbered)
+    formatted_questions = _format_questions_for_adhd(questions)
+
+    # Log the question attempt
+    _log_tool_use(
+        user_id=user_id,
+        tool_name="AskUserQuestion",
+        tool_input={"question_count": len(questions)},
+        allowed=True,
+        reason="ask_user_question",
+        audit_enabled=audit_enabled,
+    )
+
+    # If we have a handler, use it to get answers
+    if handler:
+        try:
+            # Run async handler
+            if asyncio.iscoroutinefunction(handler):
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're in async context - create task
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(
+                            asyncio.run,
+                            handler(formatted_questions, user_id, channel)
+                        )
+                        answers = future.result(timeout=300)  # 5 min timeout
+                else:
+                    answers = loop.run_until_complete(
+                        handler(formatted_questions, user_id, channel)
+                    )
+            else:
+                answers = handler(formatted_questions, user_id, channel)
+
+            # Return with collected answers
+            return PermissionResultAllow(
+                updated_input={
+                    "questions": questions,
+                    "answers": answers,
+                }
+            )
+        except Exception as e:
+            logger.warning(f"AskUserQuestion handler error: {e}")
+            # Fall through to default behavior
+
+    # Default: Allow with empty answers (SDK will handle display)
+    return PermissionResultAllow(
+        updated_input={
+            "questions": questions,
+            "answers": {},  # SDK will collect answers
+        }
+    )
+
+
+def _format_questions_for_adhd(questions: list[dict]) -> list[dict]:
+    """
+    Format questions for ADHD users.
+
+    ADHD-friendly formatting:
+    - Numbered for clear tracking
+    - Brief and direct
+    - RSD-safe language (no judgment)
+    - Clear options
+
+    Args:
+        questions: List of question dicts from SDK
+
+    Returns:
+        Formatted question list
+    """
+    formatted = []
+    for i, q in enumerate(questions, 1):
+        question_text = q.get("question", "")
+        options = q.get("options", [])
+        header = q.get("header", "")
+
+        # Format options with numbers
+        formatted_options = []
+        for j, opt in enumerate(options, 1):
+            label = opt.get("label", f"Option {j}")
+            desc = opt.get("description", "")
+            formatted_options.append({
+                "number": j,
+                "label": label,
+                "description": desc,
+            })
+
+        formatted.append({
+            "number": i,
+            "header": header,
+            "question": question_text,
+            "options": formatted_options,
+            "multi_select": q.get("multiSelect", False),
+        })
+
+    return formatted
 
 
 def _log_tool_use(
