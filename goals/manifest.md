@@ -27,6 +27,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | `phase6_learning.md` | Phase 6 tactical implementation guide — energy patterns, behavior learning, task matching |
 | `phase7_dashboard.md` | Phase 7 tactical implementation guide — web dashboard with Dex avatar and monitoring |
 | `phase8_installation.md` | Phase 8 tactical implementation guide — guided setup wizard (web + TUI) |
+| `phase8_ui_refresh.md` | Phase 8b — Crystal theme UI refresh with ADHD-first components (dark/light mode, energy selector, flow indicator) |
 | `task_orchestration.md` | Task execution patterns — sequential, parallel, fan-out, fan-in, pipeline |
 | `prd_addulting_ai_v1.md` | **Archived** — Original PRD before ADHD pivot |
 
