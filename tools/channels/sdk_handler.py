@@ -437,13 +437,9 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
         )
 
         # Send error response
-        error_content = result.get(
-            "content",
-            "Sorry, I'm having trouble responding right now. Please try again."
-        )
-        response_content = error_content
+        response_content = result.get("content") or "Sorry, I'm having trouble responding right now. Please try again."
     else:
-        response_content = result.get("content", "I completed the task but have no text response.")
+        response_content = result.get("content") or "I completed the task but have no text response."
 
         # Log successful LLM response to dashboard
         _log_to_dashboard(
