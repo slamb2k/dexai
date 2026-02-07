@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Target,
   Check,
@@ -9,18 +9,18 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
-  Inbox,
   RefreshCw,
   Plus,
-  Zap,
   Clock,
   Tag,
-  Filter,
   AlertCircle,
+  X,
+  Loader2,
+  ListTree,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EnergyIndicator, EnergyLevel } from '@/components/energy-selector';
-import { api } from '@/lib/api';
+import { api, FrictionItem } from '@/lib/api';
 
 interface Task {
   id: string;
@@ -35,16 +35,15 @@ interface Task {
   completedAt?: Date;
 }
 
-interface FrictionItem {
-  taskId: string;
-  taskTitle: string;
-  blocker: string;
-  suggestedAction?: string;
+interface Subtask {
+  title: string;
+  energy?: string;
+  description?: string;
 }
 
 const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
-// Demo data
+// Demo data (fallback)
 const demoTasks: Task[] = [
   {
     id: '1',
@@ -87,10 +86,11 @@ const demoTasks: Task[] = [
 
 const demoFriction: FrictionItem[] = [
   {
-    taskId: '3',
-    taskTitle: 'Call Mike',
+    task_id: '3',
+    task_title: 'Call Mike',
     blocker: 'Mike\'s phone number needed',
-    suggestedAction: 'Search in contacts',
+    suggested_action: 'Search in contacts',
+    confidence: 0.85,
   },
 ];
 
@@ -101,46 +101,57 @@ export default function TasksPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [filterEnergy, setFilterEnergy] = useState<EnergyLevel | 'all'>('all');
+  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
+  const [decomposing, setDecomposing] = useState<string | null>(null);
+  const [subtasks, setSubtasks] = useState<{ [key: string]: Subtask[] }>({});
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Load tasks
-  useEffect(() => {
-    const loadTasks = async () => {
-      setIsLoading(true);
-      setError(null);
+  const loadTasks = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-      try {
-        const res = await api.getTasks({});
-        if (res.success && res.data) {
-          // Map API response to Task interface
-          const taskList = res.data.tasks.map((t: any) => ({
-            id: t.id,
-            title: t.request || t.title,
-            description: t.description,
-            status: t.status === 'running' ? 'in_progress' : t.status,
-            energyRequired: 'medium' as EnergyLevel, // Default, would come from API
-            estimatedTime: t.estimated_time,
-            category: t.channel,
-            createdAt: new Date(t.created_at || Date.now()),
-            completedAt: t.completed_at ? new Date(t.completed_at) : undefined,
-          }));
-          setTasks(taskList);
-        } else if (isDemo) {
-          setTasks(demoTasks);
-          setFriction(demoFriction);
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load tasks');
-        if (isDemo) {
-          setTasks(demoTasks);
-          setFriction(demoFriction);
-        }
+    try {
+      const res = await api.getTasks({});
+      if (res.success && res.data) {
+        // Map API response to Task interface
+        const taskList = res.data.tasks.map((t: any) => ({
+          id: t.id,
+          title: t.request || t.title,
+          description: t.description,
+          status: t.status === 'running' ? 'in_progress' : t.status,
+          energyRequired: ('medium' as EnergyLevel), // Would come from API
+          estimatedTime: t.estimated_time,
+          category: t.channel,
+          createdAt: new Date(t.created_at || Date.now()),
+          completedAt: t.completed_at ? new Date(t.completed_at) : undefined,
+        }));
+        setTasks(taskList);
+      } else if (isDemo) {
+        setTasks(demoTasks);
       }
 
-      setIsLoading(false);
-    };
+      // Load friction items
+      const frictionRes = await api.getTaskFriction();
+      if (frictionRes.success && frictionRes.data) {
+        setFriction(frictionRes.data.friction_items);
+      } else if (isDemo) {
+        setFriction(demoFriction);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load tasks');
+      if (isDemo) {
+        setTasks(demoTasks);
+        setFriction(demoFriction);
+      }
+    }
 
-    loadTasks();
+    setIsLoading(false);
   }, []);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
 
   // Filter tasks
   const pendingTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'in_progress');
@@ -155,31 +166,105 @@ export default function TasksPage() {
     return taskList.filter((t) => t.energyRequired === filterEnergy);
   };
 
-  const handleComplete = (taskId: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? { ...t, status: 'completed' as const, completedAt: new Date() }
-          : t
-      )
-    );
+  const handleComplete = async (taskId: string) => {
+    setActionLoading(taskId);
+    try {
+      const res = await api.completeTask(taskId);
+      if (res.success) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId
+              ? { ...t, status: 'completed' as const, completedAt: new Date() }
+              : t
+          )
+        );
+      }
+    } catch (e) {
+      console.error('Failed to complete task:', e);
+    }
+    setActionLoading(null);
   };
 
-  const handleSkip = (taskId: string) => {
-    setTasks((prev) => {
-      const task = prev.find((t) => t.id === taskId);
-      if (!task) return prev;
-      // Move to end of list
-      return [...prev.filter((t) => t.id !== taskId), task];
-    });
+  const handleSkip = async (taskId: string) => {
+    setActionLoading(taskId);
+    try {
+      const res = await api.skipTask(taskId);
+      if (res.success) {
+        // Move to end of list
+        setTasks((prev) => {
+          const task = prev.find((t) => t.id === taskId);
+          if (!task) return prev;
+          return [...prev.filter((t) => t.id !== taskId), task];
+        });
+      }
+    } catch (e) {
+      console.error('Failed to skip task:', e);
+    }
+    setActionLoading(null);
   };
 
-  const handleStuck = (taskId: string) => {
-    // Trigger friction detection
+  const handleStuck = async (taskId: string) => {
+    setActionLoading(taskId);
+    try {
+      const res = await api.markTaskStuck(taskId);
+      if (res.success && res.data?.data) {
+        // Add to friction list if not already there
+        const frictionData = res.data.data as { blocker?: string; suggestions?: string[] };
+        const task = tasks.find((t) => t.id === taskId);
+        if (task && frictionData.blocker) {
+          setFriction((prev) => {
+            if (prev.some((f) => f.task_id === taskId)) return prev;
+            return [
+              ...prev,
+              {
+                task_id: taskId,
+                task_title: task.title,
+                blocker: frictionData.blocker || 'Unknown blocker',
+                suggested_action: frictionData.suggestions?.[0],
+                confidence: 0.8,
+              },
+            ];
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to analyze friction:', e);
+    }
+    setActionLoading(null);
+  };
+
+  const handleDecompose = async (taskId: string) => {
+    setDecomposing(taskId);
+    try {
+      const res = await api.decomposeTask(taskId);
+      if (res.success && res.data?.data?.subtasks) {
+        setSubtasks((prev) => ({
+          ...prev,
+          [taskId]: res.data?.data?.subtasks as Subtask[],
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to decompose task:', e);
+    }
+    setDecomposing(null);
   };
 
   const handleResolveFriction = (item: FrictionItem) => {
-    // Handle friction resolution
+    // Remove from friction list
+    setFriction((prev) => prev.filter((f) => f.task_id !== item.task_id));
+  };
+
+  const handleCreateTask = async (title: string, description?: string, category?: string) => {
+    try {
+      const res = await api.createTask({ title, description, category });
+      if (res.success && res.data) {
+        // Reload tasks
+        loadTasks();
+        setShowNewTaskModal(false);
+      }
+    } catch (e) {
+      console.error('Failed to create task:', e);
+    }
   };
 
   return (
@@ -200,7 +285,10 @@ export default function TasksPage() {
             {pendingTasks.length} pending, {completedTasks.length} completed today
           </p>
         </div>
-        <button className="btn btn-primary flex items-center gap-2">
+        <button
+          onClick={() => setShowNewTaskModal(true)}
+          className="btn btn-primary flex items-center gap-2"
+        >
           <Plus className="w-4 h-4" />
           New Task
         </button>
@@ -222,9 +310,13 @@ export default function TasksPage() {
         ) : currentTask ? (
           <CurrentTaskCard
             task={currentTask}
+            subtasks={subtasks[currentTask.id]}
+            isDecomposing={decomposing === currentTask.id}
+            isLoading={actionLoading === currentTask.id}
             onComplete={() => handleComplete(currentTask.id)}
             onSkip={() => handleSkip(currentTask.id)}
             onStuck={() => handleStuck(currentTask.id)}
+            onDecompose={() => handleDecompose(currentTask.id)}
           />
         ) : (
           <div className="crystal-card p-8 text-center">
@@ -253,21 +345,31 @@ export default function TasksPage() {
           <div className="space-y-2">
             {friction.map((item) => (
               <div
-                key={item.taskId}
+                key={item.task_id}
                 className="crystal-card p-4 border-status-warning/30"
               >
-                <p className="text-body text-text-primary mb-2">
-                  <span className="font-medium">{item.taskTitle}</span> needs:{' '}
-                  {item.blocker}
-                </p>
-                {item.suggestedAction && (
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-body text-text-primary mb-2">
+                      <span className="font-medium">{item.task_title}</span> needs:{' '}
+                      {item.blocker}
+                    </p>
+                    {item.suggested_action && (
+                      <button
+                        onClick={() => handleResolveFriction(item)}
+                        className="btn btn-secondary text-caption"
+                      >
+                        {item.suggested_action}
+                      </button>
+                    )}
+                  </div>
                   <button
                     onClick={() => handleResolveFriction(item)}
-                    className="btn btn-secondary text-caption"
+                    className="p-1 text-text-muted hover:text-text-primary"
                   >
-                    {item.suggestedAction}
+                    <X className="w-4 h-4" />
                   </button>
-                )}
+                </div>
               </div>
             ))}
           </div>
@@ -295,6 +397,7 @@ export default function TasksPage() {
               <TaskRow
                 key={task.id}
                 task={task}
+                isLoading={actionLoading === task.id}
                 onComplete={() => handleComplete(task.id)}
               />
             ))}
@@ -328,6 +431,14 @@ export default function TasksPage() {
           )}
         </section>
       )}
+
+      {/* New Task Modal */}
+      {showNewTaskModal && (
+        <NewTaskModal
+          onClose={() => setShowNewTaskModal(false)}
+          onCreate={handleCreateTask}
+        />
+      )}
     </div>
   );
 }
@@ -335,14 +446,22 @@ export default function TasksPage() {
 // Current task card - prominent display
 function CurrentTaskCard({
   task,
+  subtasks,
+  isDecomposing,
+  isLoading,
   onComplete,
   onSkip,
   onStuck,
+  onDecompose,
 }: {
   task: Task;
+  subtasks?: Subtask[];
+  isDecomposing: boolean;
+  isLoading: boolean;
   onComplete: () => void;
   onSkip: () => void;
   onStuck: () => void;
+  onDecompose: () => void;
 }) {
   return (
     <div className="crystal-card p-6 md:p-8">
@@ -374,19 +493,66 @@ function CurrentTaskCard({
         )}
       </div>
 
+      {/* Subtasks (if decomposed) */}
+      {subtasks && subtasks.length > 0 && (
+        <div className="mb-6 p-4 bg-bg-surface rounded-xl">
+          <p className="text-caption text-text-muted mb-3">Broken down into:</p>
+          <ol className="space-y-2 list-decimal list-inside">
+            {subtasks.map((st, idx) => (
+              <li key={idx} className="text-body text-text-primary">
+                {st.title}
+                {st.energy && (
+                  <span className="ml-2 text-caption text-text-muted">
+                    ({st.energy} energy)
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
-        <button onClick={onComplete} className="btn-action flex items-center gap-2">
-          <Check className="w-5 h-5" />
+        <button
+          onClick={onComplete}
+          disabled={isLoading}
+          className="btn-action flex items-center gap-2"
+        >
+          {isLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Check className="w-5 h-5" />
+          )}
           Done
         </button>
-        <button onClick={onSkip} className="btn btn-ghost flex items-center gap-2">
+        <button
+          onClick={onSkip}
+          disabled={isLoading}
+          className="btn btn-ghost flex items-center gap-2"
+        >
           <SkipForward className="w-4 h-4" />
           Skip for now
         </button>
-        <button onClick={onStuck} className="btn btn-ghost flex items-center gap-2">
+        <button
+          onClick={onStuck}
+          disabled={isLoading}
+          className="btn btn-ghost flex items-center gap-2"
+        >
           <HelpCircle className="w-4 h-4" />
           I&apos;m stuck
+        </button>
+        <button
+          onClick={onDecompose}
+          disabled={isDecomposing || isLoading}
+          className="btn btn-ghost flex items-center gap-2"
+        >
+          {isDecomposing ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <ListTree className="w-4 h-4" />
+          )}
+          Break down
         </button>
       </div>
     </div>
@@ -397,10 +563,12 @@ function CurrentTaskCard({
 function TaskRow({
   task,
   completed = false,
+  isLoading = false,
   onComplete,
 }: {
   task: Task;
   completed?: boolean;
+  isLoading?: boolean;
   onComplete?: () => void;
 }) {
   return (
@@ -413,7 +581,7 @@ function TaskRow({
       {/* Checkbox */}
       <button
         onClick={onComplete}
-        disabled={completed}
+        disabled={completed || isLoading}
         className={cn(
           'w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors flex-shrink-0',
           completed
@@ -421,7 +589,11 @@ function TaskRow({
             : 'border-border-default hover:border-accent-primary'
         )}
       >
-        {completed && <Check className="w-4 h-4 text-white" />}
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 text-text-muted animate-spin" />
+        ) : completed ? (
+          <Check className="w-4 h-4 text-white" />
+        ) : null}
       </button>
 
       {/* Content */}
@@ -443,6 +615,113 @@ function TaskRow({
             <span className="text-caption text-text-muted">{task.category}</span>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// New Task Modal
+function NewTaskModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (title: string, description?: string, category?: string) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    setIsCreating(true);
+    await onCreate(title, description || undefined, category || undefined);
+    setIsCreating(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative crystal-card p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-section-header text-text-primary">New Task</h2>
+          <button onClick={onClose} className="p-1 text-text-muted hover:text-text-primary">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-caption text-text-muted mb-1">
+              What needs to be done?
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter task..."
+              className="w-full px-4 py-2 bg-bg-surface rounded-lg text-body text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/30"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-caption text-text-muted mb-1">
+              Details (optional)
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add more context..."
+              rows={3}
+              className="w-full px-4 py-2 bg-bg-surface rounded-lg text-body text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/30 resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-caption text-text-muted mb-1">
+              Category (optional)
+            </label>
+            <input
+              type="text"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g., Work, Personal, Admin"
+              className="w-full px-4 py-2 bg-bg-surface rounded-lg text-body text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/30"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 btn btn-ghost"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!title.trim() || isCreating}
+              className="flex-1 btn btn-primary flex items-center justify-center gap-2"
+            >
+              {isCreating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              Add Task
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

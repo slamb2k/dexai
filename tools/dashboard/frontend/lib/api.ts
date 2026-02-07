@@ -284,6 +284,118 @@ export interface MeetingProposalRequest {
   check_availability?: boolean;
 }
 
+// Chat types
+export interface ChatMessageResponse {
+  conversation_id: string;
+  message_id: string;
+  content: string;
+  role: 'assistant';
+  model?: string;
+  complexity?: string;
+  cost_usd?: number;
+  tool_uses?: { tool: string; input: unknown }[];
+  error?: string;
+  created_at?: string;
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  model?: string;
+  complexity?: string;
+  cost_usd?: number;
+  tool_uses?: { tool: string; input: unknown }[];
+  created_at: string;
+}
+
+export interface ChatHistoryResponse {
+  conversation_id: string;
+  messages: ChatHistoryMessage[];
+  total: number;
+}
+
+export interface ChatConversation {
+  id: string;
+  title?: string;
+  last_message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Memory types
+export interface MemorySearchResult {
+  id: string;
+  content: string;
+  score: number;
+  entry_type?: string;
+  source?: string;
+  created_at?: string;
+}
+
+export interface MemorySearchResponse {
+  query: string;
+  results: MemorySearchResult[];
+  total: number;
+  method: string;
+}
+
+export interface MemoryCommitment {
+  id: string;
+  content: string;
+  target_person?: string;
+  due_date?: string;
+  status: string;
+  created_at: string;
+  source?: string;
+}
+
+export interface MemoryContext {
+  id: string;
+  title: string;
+  summary?: string;
+  task_description?: string;
+  created_at: string;
+  restored_at?: string;
+}
+
+export interface MemoryProvider {
+  name: string;
+  status: 'active' | 'inactive' | 'error';
+  is_primary: boolean;
+  storage_used?: string;
+  health_score?: number;
+  last_sync?: string;
+  error?: string;
+}
+
+// Task action types
+export interface CurrentTask {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  energy_required: string;
+  estimated_time?: string;
+  category?: string;
+  created_at: string;
+}
+
+export interface FrictionItem {
+  task_id: string;
+  task_title: string;
+  blocker: string;
+  suggested_action?: string;
+  confidence: number;
+}
+
+export interface FlowState {
+  is_in_flow: boolean;
+  flow_start_time?: string;
+  duration_minutes: number;
+  intensity: 'none' | 'building' | 'deep' | 'fading';
+}
+
 // Pagination params
 export interface PaginationParams {
   page?: number;
@@ -362,6 +474,204 @@ class ApiClient {
   // Status endpoints
   async getStatus(): Promise<ApiResponse<DexStatus>> {
     return this.request<DexStatus>('/api/status');
+  }
+
+  // ==========================================================================
+  // Chat endpoints
+  // ==========================================================================
+
+  async sendChatMessage(
+    message: string,
+    conversationId?: string
+  ): Promise<ApiResponse<ChatMessageResponse>> {
+    return this.request<ChatMessageResponse>('/api/chat/message', {
+      method: 'POST',
+      body: JSON.stringify({ message, conversation_id: conversationId }),
+    });
+  }
+
+  async getChatHistory(
+    conversationId: string,
+    limit?: number
+  ): Promise<ApiResponse<ChatHistoryResponse>> {
+    const query = this.buildQuery({ conversation_id: conversationId, limit });
+    return this.request<ChatHistoryResponse>(`/api/chat/history${query}`);
+  }
+
+  async getChatConversations(
+    limit?: number
+  ): Promise<ApiResponse<{ conversations: ChatConversation[]; total: number }>> {
+    const query = this.buildQuery({ limit });
+    return this.request<{ conversations: ChatConversation[]; total: number }>(
+      `/api/chat/conversations${query}`
+    );
+  }
+
+  async createChatConversation(): Promise<ApiResponse<{ success: boolean; conversation_id: string }>> {
+    return this.request<{ success: boolean; conversation_id: string }>(
+      '/api/chat/conversations',
+      { method: 'POST' }
+    );
+  }
+
+  async deleteChatConversation(
+    conversationId: string
+  ): Promise<ApiResponse<{ success: boolean }>> {
+    return this.request<{ success: boolean }>(
+      `/api/chat/conversations/${conversationId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  // ==========================================================================
+  // Memory endpoints
+  // ==========================================================================
+
+  async searchMemory(
+    query: string,
+    limit?: number,
+    method?: string
+  ): Promise<ApiResponse<MemorySearchResponse>> {
+    const params = this.buildQuery({ q: query, limit, method });
+    return this.request<MemorySearchResponse>(`/api/memory/search${params}`);
+  }
+
+  async getCommitments(
+    status?: string,
+    limit?: number
+  ): Promise<ApiResponse<{ commitments: MemoryCommitment[]; total: number }>> {
+    const params = this.buildQuery({ status, limit });
+    return this.request<{ commitments: MemoryCommitment[]; total: number }>(
+      `/api/memory/commitments${params}`
+    );
+  }
+
+  async getCommitmentsCount(): Promise<ApiResponse<{ count: number }>> {
+    return this.request<{ count: number }>('/api/memory/commitments/count');
+  }
+
+  async getContextSnapshots(
+    limit?: number
+  ): Promise<ApiResponse<{ contexts: MemoryContext[]; total: number }>> {
+    const params = this.buildQuery({ limit });
+    return this.request<{ contexts: MemoryContext[]; total: number }>(
+      `/api/memory/contexts${params}`
+    );
+  }
+
+  async restoreContext(
+    contextId: string
+  ): Promise<ApiResponse<{ success: boolean; context: MemoryContext }>> {
+    return this.request<{ success: boolean; context: MemoryContext }>(
+      `/api/memory/contexts/${contextId}/restore`,
+      { method: 'POST' }
+    );
+  }
+
+  async getMemoryProviders(): Promise<
+    ApiResponse<{ providers: MemoryProvider[]; active_count: number; primary_provider?: string }>
+  > {
+    return this.request<{
+      providers: MemoryProvider[];
+      active_count: number;
+      primary_provider?: string;
+    }>('/api/memory/providers');
+  }
+
+  // ==========================================================================
+  // Extended Task endpoints
+  // ==========================================================================
+
+  async getCurrentTask(): Promise<ApiResponse<{ current_task: CurrentTask | null; message?: string }>> {
+    return this.request<{ current_task: CurrentTask | null; message?: string }>('/api/tasks/current');
+  }
+
+  async createTask(data: {
+    title: string;
+    description?: string;
+    energy_required?: string;
+    estimated_time?: string;
+    category?: string;
+  }): Promise<ApiResponse<{ success: boolean; task_id: string; action: string; message?: string }>> {
+    return this.request<{ success: boolean; task_id: string; action: string; message?: string }>(
+      '/api/tasks',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async markTaskStuck(
+    taskId: string
+  ): Promise<ApiResponse<{ success: boolean; task_id: string; action: string; data?: unknown }>> {
+    return this.request<{ success: boolean; task_id: string; action: string; data?: unknown }>(
+      `/api/tasks/${taskId}/stuck`,
+      { method: 'POST' }
+    );
+  }
+
+  async decomposeTask(
+    taskId: string
+  ): Promise<
+    ApiResponse<{ success: boolean; task_id: string; action: string; data?: { subtasks: unknown[] } }>
+  > {
+    return this.request<{
+      success: boolean;
+      task_id: string;
+      action: string;
+      data?: { subtasks: unknown[] };
+    }>(`/api/tasks/${taskId}/decompose`, { method: 'POST' });
+  }
+
+  async skipTask(
+    taskId: string
+  ): Promise<ApiResponse<{ success: boolean; task_id: string; action: string; message?: string }>> {
+    return this.request<{ success: boolean; task_id: string; action: string; message?: string }>(
+      `/api/tasks/${taskId}/skip`,
+      { method: 'PATCH' }
+    );
+  }
+
+  async completeTask(
+    taskId: string
+  ): Promise<ApiResponse<{ success: boolean; task_id: string; action: string; message?: string }>> {
+    return this.request<{ success: boolean; task_id: string; action: string; message?: string }>(
+      `/api/tasks/${taskId}/complete`,
+      { method: 'PATCH' }
+    );
+  }
+
+  async getTaskFriction(): Promise<ApiResponse<{ friction_items: FrictionItem[]; total: number }>> {
+    return this.request<{ friction_items: FrictionItem[]; total: number }>('/api/tasks/friction');
+  }
+
+  // ==========================================================================
+  // Settings extensions
+  // ==========================================================================
+
+  async getEnergyLevel(): Promise<ApiResponse<{ level: string; options: string[] }>> {
+    return this.request<{ level: string; options: string[] }>('/api/settings/energy');
+  }
+
+  async setEnergyLevel(
+    level: string
+  ): Promise<ApiResponse<{ success: boolean; level: string; message?: string }>> {
+    return this.request<{ success: boolean; level: string; message?: string }>(
+      '/api/settings/energy',
+      {
+        method: 'POST',
+        body: JSON.stringify({ level }),
+      }
+    );
+  }
+
+  // ==========================================================================
+  // Metrics extensions
+  // ==========================================================================
+
+  async getFlowState(): Promise<ApiResponse<FlowState>> {
+    return this.request<FlowState>('/api/metrics/flow');
   }
 
   // Task endpoints
@@ -484,11 +794,25 @@ class ApiClient {
   async queryDatabase(
     table: string,
     limit?: number
-  ): Promise<ApiResponse<{ rows: Record<string, unknown>[]; columns: string[] }>> {
+  ): Promise<ApiResponse<{ rows: Record<string, unknown>[]; columns: string[]; table: string; total: number; error?: string }>> {
     const query = this.buildQuery({ table, limit });
-    return this.request<{ rows: Record<string, unknown>[]; columns: string[] }>(
+    return this.request<{ rows: Record<string, unknown>[]; columns: string[]; table: string; total: number; error?: string }>(
       `/api/debug/db${query}`
     );
+  }
+
+  async getDebugMetrics(): Promise<ApiResponse<{
+    timestamp: string;
+    memory: Record<string, number | string>;
+    requests: Record<string, number | string>;
+    performance: Record<string, number | string>;
+  }>> {
+    return this.request<{
+      timestamp: string;
+      memory: Record<string, number | string>;
+      requests: Record<string, number | string>;
+      performance: Record<string, number | string>;
+    }>('/api/debug/metrics');
   }
 
   // Setup wizard endpoints

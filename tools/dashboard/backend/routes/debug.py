@@ -186,6 +186,140 @@ async def get_logs(
         return {"logs": [f"[ERROR] Failed to fetch logs: {str(e)}"], "total": 1, "error": str(e)}
 
 
+@router.get("/db")
+async def query_database(
+    table: str = Query(..., description="Table name to query"),
+    limit: int = Query(10, ge=1, le=100, description="Number of rows to return"),
+):
+    """
+    Query a database table (read-only).
+
+    Returns columns and rows from the specified table.
+    Limited to dashboard database tables for security.
+    """
+    # Whitelist of allowed tables
+    allowed_tables = [
+        "dashboard_events",
+        "dashboard_metrics",
+        "dashboard_settings",
+        "chat_conversations",
+        "chat_messages",
+    ]
+
+    if table not in allowed_tables:
+        # Check memory database tables
+        memory_tables = ["memory_entries", "contexts", "commitments"]
+        if table in memory_tables:
+            try:
+                from tools.memory.memory_db import get_connection
+
+                conn = get_connection()
+                cursor = conn.cursor()
+                cursor.execute(f"SELECT * FROM {table} LIMIT ?", (limit,))  # noqa: S608
+                rows = cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                conn.close()
+                return {
+                    "columns": columns,
+                    "rows": [dict(row) for row in rows],
+                    "table": table,
+                    "total": len(rows),
+                }
+            except Exception as e:
+                return {"columns": [], "rows": [], "error": str(e)}
+
+        return {
+            "columns": [],
+            "rows": [],
+            "error": f"Table '{table}' not in allowed list: {allowed_tables + memory_tables}",
+        }
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT * FROM {table} LIMIT ?", (limit,))  # noqa: S608
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        conn.close()
+
+        return {
+            "columns": columns,
+            "rows": [dict(row) for row in rows],
+            "table": table,
+            "total": len(rows),
+        }
+    except Exception as e:
+        return {"columns": [], "rows": [], "error": str(e)}
+
+
+@router.get("/metrics")
+async def get_debug_metrics():
+    """
+    Get detailed debug metrics.
+
+    Returns runtime metrics including memory usage, request counts,
+    and performance statistics.
+    """
+    import resource
+
+    metrics = {
+        "timestamp": datetime.now().isoformat(),
+        "memory": {},
+        "requests": {},
+        "performance": {},
+    }
+
+    # Memory usage
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        metrics["memory"] = {
+            "max_rss_kb": usage.ru_maxrss,
+            "shared_mem_kb": usage.ru_ixrss,
+            "unshared_mem_kb": usage.ru_idrss,
+        }
+    except Exception:
+        metrics["memory"] = {"error": "Unable to get memory stats"}
+
+    # Request counts from dashboard events
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Requests in last hour
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM dashboard_events
+            WHERE timestamp >= datetime('now', '-1 hour')
+        """)
+        metrics["requests"]["last_hour"] = cursor.fetchone()["count"]
+
+        # Requests today
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM dashboard_events
+            WHERE date(timestamp) = date('now')
+        """)
+        metrics["requests"]["today"] = cursor.fetchone()["count"]
+
+        # Errors in last hour
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM dashboard_events
+            WHERE timestamp >= datetime('now', '-1 hour')
+            AND severity = 'error'
+        """)
+        metrics["requests"]["errors_last_hour"] = cursor.fetchone()["count"]
+
+        conn.close()
+    except Exception as e:
+        metrics["requests"] = {"error": str(e)}
+
+    # Performance stats
+    metrics["performance"] = {
+        "uptime_seconds": _get_uptime_seconds(),
+        "active_tasks": _get_active_tasks_count(),
+    }
+
+    return metrics
+
+
 @router.post("/tools/{tool_name}")
 async def run_debug_tool(tool_name: str):
     """

@@ -327,3 +327,77 @@ async def get_routing_decision_history(
         "limit": limit,
         "offset": offset,
     }
+
+
+# =============================================================================
+# Flow State
+# =============================================================================
+
+
+class FlowStateResponse(BaseModel):
+    """Response model for flow state."""
+
+    is_in_flow: bool
+    flow_start_time: datetime | None = None
+    duration_minutes: int = 0
+    intensity: str = "none"  # none, building, deep, fading
+
+
+@router.get("/flow", response_model=FlowStateResponse)
+async def get_flow_state(user_id: str = "default"):
+    """
+    Get the current flow state.
+
+    Flow state is determined by:
+    - Continuous activity without interruptions
+    - Focus on a single task
+    - Low error rate
+
+    Returns whether user is in flow and for how long.
+    """
+    flow_start_time = None
+    duration_minutes = 0
+    intensity = "none"
+    is_in_flow = False
+
+    try:
+        # Check Dex state for hyperfocus
+        from tools.dashboard.backend.database import get_dex_state
+
+        dex_state = get_dex_state()
+        if dex_state.get("state") == "hyperfocus":
+            is_in_flow = True
+            intensity = "deep"
+
+            # Try to get start time from updated_at
+            if dex_state.get("updated_at"):
+                try:
+                    flow_start_time = datetime.fromisoformat(dex_state["updated_at"])
+                    duration_minutes = int((datetime.now() - flow_start_time).total_seconds() / 60)
+                except Exception:
+                    pass
+
+    except Exception:
+        pass
+
+    # Also check flow detection settings/data
+    try:
+        from tools.dashboard.backend.routes.settings import load_yaml_config
+
+        notif_config = load_yaml_config("smart_notifications.yaml")
+        flow_config = notif_config.get("smart_notifications", {}).get("flow_detection", {})
+
+        if flow_config.get("currently_in_flow"):
+            is_in_flow = True
+            if not intensity or intensity == "none":
+                intensity = "building"
+
+    except Exception:
+        pass
+
+    return FlowStateResponse(
+        is_in_flow=is_in_flow,
+        flow_start_time=flow_start_time,
+        duration_minutes=duration_minutes,
+        intensity=intensity,
+    )

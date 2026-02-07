@@ -9,7 +9,9 @@ from fastapi import APIRouter
 from .actions import router as actions_router
 from .activity import router as activity_router
 from .audit import router as audit_router
+from .chat import router as chat_router
 from .debug import router as debug_router
+from .memory import router as memory_router
 from .metrics import router as metrics_router
 from .oauth import router as oauth_router
 from .office import router as office_router
@@ -27,9 +29,11 @@ api_router = APIRouter(prefix="/api")
 
 # Include all sub-routers
 api_router.include_router(status_router, tags=["status"])
+api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
 api_router.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(activity_router, prefix="/activity", tags=["activity"])
 api_router.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
+api_router.include_router(memory_router, prefix="/memory", tags=["memory"])
 api_router.include_router(settings_router, prefix="/settings", tags=["settings"])
 api_router.include_router(setup_router, prefix="/setup", tags=["setup"])
 api_router.include_router(office_router, prefix="/office", tags=["office"])
