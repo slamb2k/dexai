@@ -666,14 +666,29 @@ TASK_DECOMPOSITION_SCHEMA = {
 
 ## Implementation Roadmap
 
-### Phase 1: Quick Wins (1-2 days)
+### Phase 1: Quick Wins ✅ COMPLETE
 
-| Task | Impact | Effort |
-|------|--------|--------|
-| Add `AskUserQuestion` handling to `canUseTool` | High | Low |
-| Enable sandbox configuration in `args/agent.yaml` | High | Low |
-| Use SDK session resumption instead of custom tracking | Medium | Low |
-| Add `Stop` hook for context saving | Medium | Low |
+| Task | Impact | Effort | Status |
+|------|--------|--------|--------|
+| Add `AskUserQuestion` handling to `canUseTool` | High | Low | ✅ `permissions.py` + `sdk_handler.py` |
+| Enable sandbox configuration in `args/agent.yaml` | High | Low | ✅ Already in `args/agent.yaml` |
+| Use SDK session resumption instead of custom tracking | Medium | Low | ✅ Done in Phase 2 |
+| Add `Stop` hook for context saving | Medium | Low | ✅ Done in Phase 2 |
+
+**Implementation Details:**
+
+**AskUserQuestion Handler (`tools/channels/sdk_handler.py`):**
+- `create_ask_user_handler()` - Creates channel-specific handler for a message context
+- `submit_question_response()` - Called by channel adapters when user responds
+- `has_pending_question()` - Check if user has pending clarification
+- `_format_questions_for_display()` - ADHD-friendly question formatting
+- `_parse_user_response()` - Parse numeric selections or free-text
+- Handler passed through SessionManager → DexAIClient → permissions callback
+
+**Permission Integration (`tools/agent/permissions.py`):**
+- `_handle_ask_user_question()` - Routes to channel handler or SDK default
+- `_format_questions_for_adhd()` - RSD-safe formatting (numbered, brief, no judgment)
+- Timeout handling (default 5 min) with graceful fallback
 
 ### Phase 2: Core Integration (3-5 days) ✅ COMPLETE
 
