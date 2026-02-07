@@ -44,10 +44,10 @@
   --border-subtle: rgba(255, 255, 255, 0.04);
   --border-focus: rgba(16, 185, 129, 0.5);
 
-  /* Energy Indicator Colors */
-  --energy-low: #f59e0b;
-  --energy-medium: #3b82f6;
-  --energy-high: #10b981;
+  /* Energy Indicator Colors - Emerald palette */
+  --energy-low: #5eead4;      /* Teal/mint - calm, low intensity */
+  --energy-medium: #10b981;   /* Emerald - balanced */
+  --energy-high: #22c55e;     /* Bright green - high intensity */
 
   /* Shadow Colors */
   --shadow-color: rgba(0, 0, 0, 0.5);
@@ -94,10 +94,10 @@
   --border-subtle: rgba(0, 0, 0, 0.04);
   --border-focus: rgba(16, 185, 129, 0.5);
 
-  /* Energy Indicator Colors */
-  --energy-low: #d97706;
-  --energy-medium: #2563eb;
-  --energy-high: #059669;
+  /* Energy Indicator Colors - Emerald palette */
+  --energy-low: #14b8a6;      /* Teal - calm, low intensity */
+  --energy-medium: #059669;   /* Emerald - balanced */
+  --energy-high: #16a34a;     /* Green - high intensity */
 
   /* Shadow Colors */
   --shadow-color: rgba(0, 0, 0, 0.1);
