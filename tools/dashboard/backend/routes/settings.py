@@ -485,6 +485,96 @@ class TokenUpdateRequest(BaseModel):
     anthropic_key: str | None = None
 
 
+# =============================================================================
+# Energy Level Management
+# =============================================================================
+
+
+class EnergyUpdateRequest(BaseModel):
+    """Request to update energy level."""
+
+    level: str  # low, medium, high
+
+
+@router.get("/energy")
+async def get_energy_level(user_id: str = "default"):
+    """
+    Get the current energy level setting.
+
+    Energy level affects task matching and recommendations.
+    """
+    prefs = get_preferences(user_id) or {}
+    activity_filters = prefs.get("activity_filters") or {}
+
+    if isinstance(activity_filters, str):
+        import json
+        try:
+            activity_filters = json.loads(activity_filters)
+        except Exception:
+            activity_filters = {}
+
+    if not isinstance(activity_filters, dict):
+        activity_filters = {}
+
+    energy_level = activity_filters.get("energy_level", "medium")
+
+    return {
+        "level": energy_level,
+        "options": ["low", "medium", "high"],
+    }
+
+
+@router.post("/energy")
+async def set_energy_level(request: EnergyUpdateRequest, user_id: str = "default"):
+    """
+    Set the current energy level.
+
+    This affects which tasks are recommended and how responses are formatted.
+    """
+    valid_levels = ["low", "medium", "high"]
+    if request.level not in valid_levels:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid energy level. Must be one of: {valid_levels}"
+        )
+
+    # Get current preferences
+    prefs = get_preferences(user_id) or {}
+    activity_filters = prefs.get("activity_filters") or {}
+
+    if isinstance(activity_filters, str):
+        import json
+        try:
+            activity_filters = json.loads(activity_filters)
+        except Exception:
+            activity_filters = {}
+
+    if not isinstance(activity_filters, dict):
+        activity_filters = {}
+
+    # Update energy level
+    activity_filters["energy_level"] = request.level
+
+    # Save back
+    set_preferences(user_id, {"activity_filters": activity_filters})
+
+    # Also try to update the energy tracker if available
+    try:
+        from tools.learning.energy_tracker import set_current_energy
+        set_current_energy(user_id=user_id, level=request.level, source="dashboard")
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "level": request.level,
+        "message": f"Energy level set to {request.level}",
+    }
+
+
 @router.put("/tokens")
 async def update_channel_tokens(request: TokenUpdateRequest):
     """
