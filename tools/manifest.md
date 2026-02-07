@@ -519,6 +519,43 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | `__init__.py` | Module exports, path constants (PROJECT_ROOT, DATA_DIR, CONFIG_PATH) |
 | `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, intelligent routing, context loading, cost tracking |
 | `permissions.py` | SDK `can_use_tool` callback mapping DexAI RBAC to tool permissions |
+| `system_prompt.py` | SystemPromptBuilder for dynamic system prompt generation from workspace files + runtime context |
+
+### System Prompt Architecture
+
+Dynamic prompt generation inspired by OpenClaw. Templates in `docs/templates/` bootstrap workspace files; at runtime, only workspace files are read.
+
+| Component | Description |
+|-----------|-------------|
+| `SystemPromptBuilder` | Composes prompts from workspace files + runtime context with session-based filtering |
+| `PromptContext` | Runtime context dataclass (user_id, timezone, channel, session_type, prompt_mode) |
+| `PromptMode` | Enum for prompt modes: FULL (all sections), MINIMAL (core + safety), NONE (identity line only) |
+| `SessionType` | Enum for session types: MAIN (full access), SUBAGENT (task-focused), HEARTBEAT, CRON |
+| `SESSION_FILE_ALLOWLISTS` | Per-session-type file access control (security + token efficiency) |
+| `bootstrap_workspace()` | Copy templates to workspace root during first-run initialization |
+| `is_workspace_bootstrapped()` | Check if PERSONA.md exists at workspace root |
+
+**Session-Based File Filtering (inspired by OpenClaw):**
+
+| Session Type | Files Loaded | Use Case | Token Savings |
+|--------------|--------------|----------|---------------|
+| `main` | All files | Interactive user sessions | — |
+| `subagent` | PERSONA + AGENTS only | Task tool spawns | ~32% |
+| `heartbeat` | PERSONA + AGENTS + HEARTBEAT | Proactive check-ins | ~20% |
+| `cron` | PERSONA + AGENTS | Scheduled jobs | ~32% |
+
+Subagents don't get USER.md, IDENTITY.md, or ENV.md — they're task-focused and shouldn't have access to personal context.
+
+**Workspace Files (copied from templates):**
+- `PERSONA.md` — Core Dex identity and ADHD principles
+- `IDENTITY.md` — Name, vibe, personality customizations
+- `USER.md` — User profile with ADHD context fields
+- `AGENTS.md` — Operational guidelines for sessions
+- `ENV.md` — Environment-specific notes (tools, platform, etc.)
+- `HEARTBEAT.md` — Proactive check-in configuration
+- `BOOTSTRAP.md` — First-run onboarding (deleted after setup)
+
+**Configuration:** `args/system_prompt.yaml`
 
 ### Model Router (`tools/agent/model_router/`)
 

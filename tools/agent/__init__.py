@@ -43,4 +43,45 @@ __all__ = [
     "ARGS_DIR",
     "CONFIG_PATH",
     "DB_PATH",
+    # System prompt exports (lazy loaded)
+    "SystemPromptBuilder",
+    "PromptContext",
+    "PromptMode",
+    "SessionType",
+    "SESSION_FILE_ALLOWLISTS",
+    "bootstrap_workspace",
+    "is_workspace_bootstrapped",
 ]
+
+
+def __getattr__(name):
+    """Lazy load system_prompt components to avoid circular imports."""
+    lazy_exports = (
+        "SystemPromptBuilder",
+        "PromptContext",
+        "PromptMode",
+        "SessionType",
+        "SESSION_FILE_ALLOWLISTS",
+        "bootstrap_workspace",
+        "is_workspace_bootstrapped",
+    )
+    if name in lazy_exports:
+        from tools.agent.system_prompt import (
+            SystemPromptBuilder,
+            PromptContext,
+            PromptMode,
+            SessionType,
+            SESSION_FILE_ALLOWLISTS,
+            bootstrap_workspace,
+            is_workspace_bootstrapped,
+        )
+        return {
+            "SystemPromptBuilder": SystemPromptBuilder,
+            "PromptContext": PromptContext,
+            "PromptMode": PromptMode,
+            "SessionType": SessionType,
+            "SESSION_FILE_ALLOWLISTS": SESSION_FILE_ALLOWLISTS,
+            "bootstrap_workspace": bootstrap_workspace,
+            "is_workspace_bootstrapped": is_workspace_bootstrapped,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

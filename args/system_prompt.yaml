@@ -1,0 +1,113 @@
+# System Prompt Configuration for DexAI
+#
+# Controls how SystemPromptBuilder generates system prompts from
+# workspace files and runtime context.
+#
+# Session-Based File Filtering (inspired by OpenClaw):
+# Different session types get different workspace files for security and efficiency.
+# This prevents subagents from accessing sensitive user data.
+
+# =============================================================================
+# SESSION TYPES AND FILE ALLOWLISTS
+# =============================================================================
+#
+# Session types control which files are loaded:
+#
+# main:      Interactive user session - full access to all files
+#            Files: PERSONA, IDENTITY, USER, AGENTS, ENV, HEARTBEAT
+#            Mode: full (with runtime context: memory, commitments, energy)
+#
+# subagent:  Task-focused agent spawned by Task tool
+#            Files: PERSONA, AGENTS only
+#            Mode: minimal (no personal context, no runtime context)
+#            Rationale: Subagents don't need user info - they're task-focused
+#
+# heartbeat: Proactive background check-in
+#            Files: PERSONA, AGENTS, HEARTBEAT
+#            Mode: minimal (just enough to check tasks)
+#
+# cron:      Scheduled background job
+#            Files: PERSONA, AGENTS
+#            Mode: minimal (minimal context for isolated jobs)
+
+# Sections to include in the prompt (set to false to disable globally)
+sections:
+  soul: true        # PERSONA.md - Core identity and ADHD principles
+  identity: true    # IDENTITY.md - Name, vibe, personality customizations
+  user: true        # USER.md - User profile and ADHD context
+  agents: true      # AGENTS.md - Operational guidelines
+  tools: true       # ENV.md - Environment-specific notes
+  safety: true      # Safety guardrails (always recommended)
+  temporal: true    # Current time and timezone
+  channel_rules: true  # Platform-specific formatting rules
+
+# Session type configurations
+# These define the default behavior per session type
+sessions:
+  main:
+    prompt_mode: full
+    include_runtime_context: true  # memory, commitments, energy
+    files:
+      - PERSONA.md
+      - IDENTITY.md
+      - USER.md
+      - AGENTS.md
+      - ENV.md
+      - HEARTBEAT.md
+
+  subagent:
+    prompt_mode: minimal
+    include_runtime_context: false  # No personal context for subagents
+    files:
+      - PERSONA.md  # Core identity/values
+      - AGENTS.md   # Operational guidelines
+
+  heartbeat:
+    prompt_mode: minimal
+    include_runtime_context: false
+    files:
+      - PERSONA.md
+      - AGENTS.md
+      - HEARTBEAT.md  # Check-in tasks
+
+  cron:
+    prompt_mode: minimal
+    include_runtime_context: false
+    files:
+      - PERSONA.md
+      - AGENTS.md
+
+# Runtime context options (only applied for sessions with include_runtime_context: true)
+runtime:
+  include_memory: true      # Include relevant memories in prompt
+  include_commitments: true # Include active commitments (RSD-safe)
+  include_energy: true      # Include current energy level
+  memory_limit: 3           # Max memory entries to include
+  commitment_limit: 3       # Max commitments to include
+
+# File size limits (prevent prompt explosion)
+limits:
+  max_file_chars: 20000     # Max chars per workspace file
+  max_total_chars: 100000   # Max total prompt length
+
+# Skills configuration (self-modification capabilities)
+skills:
+  allow_self_modification: true
+  writable_directory: ".claude/skills"
+  protected_skills:
+    - prime
+    - ship
+    - sync
+
+# Channel-specific formatting rules
+# Applied only for main sessions on messaging channels
+channels:
+  telegram:
+    formatting: simple_markdown
+    rules: "Keep responses concise. Markdown works but keep it simple. No tables."
+  discord:
+    formatting: discord_markdown
+    rules: "Use Discord formatting. Wrap links in <> to suppress embeds. No markdown tables."
+  slack:
+    formatting: slack_markdown
+    rules: "Use Slack-compatible formatting. Prefer bullet lists over tables."
