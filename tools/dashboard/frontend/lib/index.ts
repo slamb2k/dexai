@@ -22,3 +22,6 @@ export {
   useToastStore,
   type Toast,
 } from './store';
+
+// Theme
+export { ThemeProvider, useTheme } from './theme-provider';
