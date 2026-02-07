@@ -80,6 +80,29 @@ all = [
     "google-auth-oauthlib>=1.2.0",
 ]
 
+# Memory provider packages
+mem0 = ["mem0ai>=0.1.0"]
+zep = ["zep-python>=2.0.0"]
+simplemem = ["httpx>=0.27.0"]  # Uses HTTP API
+claudemem = ["httpx>=0.27.0"]  # Uses local HTTP API
+
+# All memory providers
+memory-providers = [
+    "mem0ai>=0.1.0",
+    "zep-python>=2.0.0",
+]
+
+# Cloud-only memory providers (no infrastructure required)
+memory-cloud = [
+    "mem0ai>=0.1.0",
+    "zep-python>=2.0.0",
+]
+
+# Memory provider development/testing
+memory-dev = [
+    "pytest-docker>=3.0.0",
+]
+
 [project.scripts]
 dexai = "tools.cli:main"
 
@@ -189,6 +212,11 @@ module = [
     "anthropic.*",
     "croniter.*",
     "watchdog.*",
+    "mem0.*",
+    "mem0ai.*",
+    "zep_python.*",
+    "zep_cloud.*",
+    "rank_bm25.*",
 ]
 ignore_missing_imports = true
 

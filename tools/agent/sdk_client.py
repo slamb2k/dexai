@@ -82,8 +82,35 @@ COMMUNICATION STYLE:
             "strip_preamble": True,
             "one_thing_mode": True,
         }
-    }
+    },
+    "skills": {
+        "allow_self_modification": True,
+        "writable_directory": ".claude/skills",
+        "protected_skills": ["prime", "ship", "sync"],
+    },
 }
+
+# Self-improvement authorization for skill creation
+SKILLS_AUTHORIZATION = """
+## Self-Improvement Capabilities
+
+You can extend your own capabilities by creating new skills.
+
+SKILL CREATION RULES:
+1. Create skills in `.claude/skills/<skill-name>/`
+2. Each skill needs:
+   - `SKILL.md` - YAML frontmatter (name, description) + brief overview
+   - `instructions.md` - Step-by-step implementation instructions
+3. Skills are automatically loaded on next interaction
+4. Never modify skills in `.claude/prime/`, `.claude/ship/`, `.claude/sync/` - those are system skills
+
+WHEN TO CREATE A SKILL:
+- Repetitive multi-step workflows the user performs often
+- Domain-specific knowledge worth preserving
+- Automations that combine multiple tools
+
+This is NOT modifying your core code - it's extending capabilities through the skills system.
+"""
 
 
 def load_config() -> dict:
@@ -97,9 +124,42 @@ def load_config() -> dict:
     return DEFAULT_CONFIG
 
 
+def _get_memory_service():
+    """Get or initialize the memory service for system prompt building."""
+    try:
+        import asyncio
+
+        async def _init_service():
+            from tools.memory.service import MemoryService
+            service = MemoryService()
+            await service.initialize()
+            return service
+
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context - can't use run_until_complete
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, _init_service())
+                return future.result(timeout=5.0)
+        except RuntimeError:
+            # No running loop - we can create one
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(_init_service())
+            finally:
+                loop.close()
+    except Exception as e:
+        logger.debug(f"Failed to initialize MemoryService: {e}")
+        return None
+
+
 def build_system_prompt(user_id: str, config: dict) -> str:
     """
     Build the system prompt with user-specific context.
+
+    Uses MemoryService for provider-agnostic memory access with fallback
+    to legacy direct imports if MemoryService is unavailable.
 
     Args:
         user_id: User identifier for context loading
@@ -111,39 +171,113 @@ def build_system_prompt(user_id: str, config: dict) -> str:
     prompt_config = config.get("system_prompt", {})
     parts = [prompt_config.get("base", DEFAULT_CONFIG["system_prompt"]["base"])]
 
+    # Try to get memory service (with fallback to legacy)
+    memory_service = _get_memory_service()
+
     # Include memory context
     if prompt_config.get("include_memory", True):
         try:
-            from tools.memory import hybrid_search
+            if memory_service:
+                # Use MemoryService (provider-agnostic)
+                import asyncio
+                from tools.memory.providers.base import SearchFilters, MemoryType
 
-            result = hybrid_search.search(
-                query="user preferences and context",
-                user_id=user_id,
-                limit=5
-            )
-            if result.get("success") and result.get("results"):
-                memory_context = "\n".join(
-                    f"- {r.get('content', '')[:200]}"
-                    for r in result.get("results", [])[:3]
+                async def _search():
+                    filters = SearchFilters(
+                        types=[MemoryType.PREFERENCE, MemoryType.FACT],
+                        user_id=user_id,
+                    )
+                    return await memory_service.search(
+                        query="user preferences and context",
+                        limit=5,
+                        filters=filters,
+                    )
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, _search())
+                        results = future.result(timeout=5.0)
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    try:
+                        results = loop.run_until_complete(_search())
+                    finally:
+                        loop.close()
+
+                if results:
+                    memory_context = "\n".join(
+                        f"- {r.content[:200]}"
+                        for r in results[:3]
+                    )
+                    parts.append(f"\nRELEVANT MEMORY:\n{memory_context}")
+            else:
+                # Fallback to legacy direct import
+                from tools.memory import hybrid_search
+
+                result = hybrid_search.hybrid_search(
+                    query="user preferences and context",
+                    limit=5
                 )
-                parts.append(f"\nRELEVANT MEMORY:\n{memory_context}")
-        except Exception:
-            pass
+                if result.get("success") and result.get("results"):
+                    memory_context = "\n".join(
+                        f"- {r.get('content', '')[:200]}"
+                        for r in result.get("results", [])[:3]
+                    )
+                    parts.append(f"\nRELEVANT MEMORY:\n{memory_context}")
+        except Exception as e:
+            logger.debug(f"Failed to load memory context: {e}")
 
     # Include active commitments
     if prompt_config.get("include_commitments", True):
         try:
-            from tools.memory import commitments
+            if memory_service:
+                # Use MemoryService (provider-agnostic)
+                import asyncio
 
-            result = commitments.get_active_commitments(user_id=user_id)
-            if result.get("success") and result.get("commitments"):
-                commitment_list = "\n".join(
-                    f"- {c.get('description', '')} (to {c.get('target_person', 'someone')})"
-                    for c in result.get("commitments", [])[:3]
-                )
-                parts.append(f"\nACTIVE COMMITMENTS:\n{commitment_list}")
-        except Exception:
-            pass
+                async def _list_commitments():
+                    return await memory_service.list_commitments(
+                        user_id=user_id,
+                        status="active",
+                        limit=5,
+                    )
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, _list_commitments())
+                        commitment_list = future.result(timeout=5.0)
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    try:
+                        commitment_list = loop.run_until_complete(_list_commitments())
+                    finally:
+                        loop.close()
+
+                if commitment_list:
+                    formatted = "\n".join(
+                        f"- {c.get('content', '')} (to {c.get('target_person', 'someone')})"
+                        for c in commitment_list[:3]
+                    )
+                    parts.append(f"\nACTIVE COMMITMENTS:\n{formatted}")
+            else:
+                # Fallback to legacy direct import
+                from tools.memory import commitments
+
+                result = commitments.list_commitments(user_id=user_id, status="active")
+                if result.get("success"):
+                    data = result.get("data", {})
+                    commitment_items = data.get("commitments", [])
+                    if commitment_items:
+                        formatted = "\n".join(
+                            f"- {c.get('content', '')} (to {c.get('target_person', 'someone')})"
+                            for c in commitment_items[:3]
+                        )
+                        parts.append(f"\nACTIVE COMMITMENTS:\n{formatted}")
+        except Exception as e:
+            logger.debug(f"Failed to load commitments: {e}")
 
     # Include energy level
     if prompt_config.get("include_energy", True):
@@ -156,6 +290,26 @@ def build_system_prompt(user_id: str, config: dict) -> str:
                 confidence = result.get("confidence", 0)
                 if confidence > 0.5:
                     parts.append(f"\nCURRENT ENERGY LEVEL: {energy}")
+        except Exception:
+            pass
+
+    # Include skills self-modification authorization
+    skills_config = config.get("skills", DEFAULT_CONFIG.get("skills", {}))
+    if skills_config.get("allow_self_modification", False):
+        parts.append(SKILLS_AUTHORIZATION)
+
+        # List agent-created skills if any exist
+        try:
+            writable_dir = skills_config.get("writable_directory", ".claude/skills")
+            skills_path = PROJECT_ROOT / writable_dir
+            if skills_path.exists():
+                agent_skills = [
+                    d.name for d in skills_path.iterdir()
+                    if d.is_dir() and (d / "SKILL.md").exists()
+                ]
+                if agent_skills:
+                    skill_list = ", ".join(f"`{s}`" for s in sorted(agent_skills))
+                    parts.append(f"\nAGENT-CREATED SKILLS: {skill_list}")
         except Exception:
             pass
 
@@ -308,7 +462,7 @@ class DexAIClient:
             permission_mode=agent_config.get("permission_mode", "default"),
             system_prompt=build_system_prompt(self.user_id, self.config),
             can_use_tool=create_permission_callback(self.user_id, self.config),
-            env=env if env else None,
+            env=env or {},
         )
 
         self._client = ClaudeSDKClient(options=options)
