@@ -29,7 +29,7 @@ import logging
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional, Callable
+from typing import Any, AsyncIterator, Optional, Callable, AsyncGenerator, Union
 
 # Project root for paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -174,6 +174,62 @@ class Session:
 
         except Exception as e:
             logger.error(f"Session stream error for {self.user_id}: {e}")
+            raise
+
+    async def stream_input(
+        self,
+        message_generator: AsyncGenerator[Union[str, dict], None],
+    ) -> AsyncIterator[Any]:
+        """
+        Send messages dynamically using streaming input mode.
+
+        The SDK supports streaming input where an AsyncGenerator can yield messages
+        dynamically. This allows users to add context mid-conversation (interruption).
+
+        The generator should yield messages in one of these formats:
+        - String: Converted to {"type": "user", "message": {"role": "user", "content": str}}
+        - Dict: Used directly, should follow SDK format:
+            {"type": "user", "message": {"role": "user", "content": "..."}}
+
+        Args:
+            message_generator: AsyncGenerator yielding messages
+
+        Yields:
+            SDK message objects (responses from Claude)
+
+        Example:
+            async def my_messages():
+                yield "Initial question"
+                await asyncio.sleep(2)  # User thinking...
+                yield "Actually, also consider this context"
+
+            async for response in session.stream_input(my_messages()):
+                print(response)
+        """
+        from tools.agent.sdk_client import DexAIClient
+
+        self._last_activity = datetime.now()
+        self._message_count += 1
+
+        try:
+            async with DexAIClient(
+                user_id=self.user_id,
+                session_type=self.session_type,
+                channel=self.channel,
+                resume_session_id=self.sdk_session_id,
+                ask_user_handler=self.ask_user_handler,
+            ) as client:
+                async for msg in client.query_stream(message_generator):
+                    # Capture session ID from init message
+                    if hasattr(msg, "type") and msg.type == "system":
+                        if hasattr(msg, "subtype") and msg.subtype == "init":
+                            if hasattr(msg, "session_id"):
+                                self.sdk_session_id = msg.session_id
+
+                    yield msg
+
+        except Exception as e:
+            logger.error(f"Session stream input error for {self.user_id}: {e}")
             raise
 
     @property
@@ -343,22 +399,38 @@ class SessionManager:
         self,
         user_id: str,
         channel: str,
-        content: str,
+        content: Union[str, AsyncGenerator[Union[str, dict], None]],
         session_type: str = "main",
         ask_user_handler: Optional[Callable] = None,
     ) -> AsyncIterator[Any]:
         """
         Handle a message with streaming response.
 
+        Supports both static messages (str) and dynamic message streams
+        (AsyncGenerator) for streaming input mode.
+
         Args:
             user_id: User identifier
             channel: Communication channel
-            content: Message content
+            content: Message content (str) or message generator (AsyncGenerator)
             session_type: Session type
             ask_user_handler: Optional handler for AskUserQuestion
 
         Yields:
             SDK message objects
+
+        Example with static message:
+            async for msg in manager.stream_message(user_id, channel, "Hello"):
+                print(msg)
+
+        Example with streaming input:
+            async def messages():
+                yield "Initial question"
+                await asyncio.sleep(2)
+                yield "More context"
+
+            async for msg in manager.stream_message(user_id, channel, messages()):
+                print(msg)
         """
         session = self.get_session(
             user_id=user_id,
@@ -367,8 +439,15 @@ class SessionManager:
             ask_user_handler=ask_user_handler,
         )
 
-        async for msg in session.stream_response(content):
-            yield msg
+        # Check if content is a generator (streaming input mode)
+        if hasattr(content, "__anext__"):
+            # AsyncGenerator - use streaming input
+            async for msg in session.stream_input(content):
+                yield msg
+        else:
+            # Static string - use regular streaming
+            async for msg in session.stream_response(content):
+                yield msg
 
         # Persist after streaming complete
         if self._persist:

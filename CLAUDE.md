@@ -799,3 +799,7 @@ Read instructions, apply args, use context, delegate well, handle failures, and 
 Be direct.
 Be reliable.
 Get shit done.
+
+# IMPORTANT!
+
+Do not include co-author credits or "Generated with Claude Code" attribution in commit messages.

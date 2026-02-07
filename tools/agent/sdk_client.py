@@ -29,7 +29,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional, TYPE_CHECKING
+from typing import Any, AsyncIterator, AsyncGenerator, Optional, Union, TYPE_CHECKING
 
 import yaml
 
@@ -41,6 +41,14 @@ from tools.agent.system_prompt import (
     SessionType,
 )
 from tools.agent.subagents import get_agents_for_sdk
+from tools.agent.schemas import (
+    TASK_DECOMPOSITION_SCHEMA,
+    ENERGY_ASSESSMENT_SCHEMA,
+    COMMITMENT_LIST_SCHEMA,
+    FRICTION_CHECK_SCHEMA,
+    CURRENT_STEP_SCHEMA,
+    get_schema,
+)
 
 if TYPE_CHECKING:
     from tools.agent.model_router import TaskComplexity
@@ -726,6 +734,371 @@ class DexAIClient:
         async for msg in self._client.receive_response():
             yield msg
 
+    async def query_stream(
+        self,
+        message_generator: AsyncGenerator[Union[str, dict], None],
+    ) -> AsyncIterator[Any]:
+        """
+        Send messages dynamically using streaming input mode.
+
+        The SDK supports streaming input where an AsyncGenerator can yield messages
+        dynamically. This allows users to add context mid-conversation while
+        Claude is processing (interruption support).
+
+        The generator should yield messages in one of these formats:
+        - String: Automatically converted to SDK format:
+            {"type": "user", "message": {"role": "user", "content": str}}
+        - Dict: Used directly, should follow SDK format:
+            {"type": "user", "message": {"role": "user", "content": "..."}}
+
+        Args:
+            message_generator: AsyncGenerator yielding messages (str or dict)
+
+        Yields:
+            SDK message objects (AssistantMessage, ResultMessage, etc.)
+
+        Example:
+            async def dynamic_messages():
+                yield "What's the weather like?"
+                await asyncio.sleep(3)  # User adds more context
+                yield "Actually, I'm in Seattle"
+
+            async with DexAIClient(user_id="alice") as client:
+                async for msg in client.query_stream(dynamic_messages()):
+                    if isinstance(msg, AssistantMessage):
+                        print(msg.content)
+        """
+        if not self._client:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        # Create a wrapper generator that normalizes message format
+        async def normalized_generator():
+            async for msg in message_generator:
+                if isinstance(msg, str):
+                    # Convert string to SDK format
+                    yield {
+                        "type": "user",
+                        "message": {"role": "user", "content": msg}
+                    }
+                elif isinstance(msg, dict):
+                    # Ensure dict has the right structure
+                    if "type" not in msg:
+                        # Wrap raw content dict
+                        yield {
+                            "type": "user",
+                            "message": {"role": "user", "content": msg.get("content", str(msg))}
+                        }
+                    else:
+                        yield msg
+                else:
+                    # Fallback: convert to string
+                    yield {
+                        "type": "user",
+                        "message": {"role": "user", "content": str(msg)}
+                    }
+
+        # Use the SDK's streaming input mode
+        # The SDK accepts an AsyncGenerator as the prompt parameter
+        try:
+            from claude_agent_sdk import query
+        except ImportError:
+            raise ImportError(
+                "claude-agent-sdk required. Install with: uv pip install claude-agent-sdk"
+            )
+
+        # We need to use the SDK's query function directly with the generator
+        # The SDK handles queued messages with interruption support
+        async for msg in query(
+            prompt=normalized_generator(),
+            options=self._client._options if hasattr(self._client, "_options") else None,
+        ):
+            # Capture session_id from init message
+            if hasattr(msg, "type") and msg.type == "system":
+                if hasattr(msg, "subtype") and msg.subtype == "init":
+                    if hasattr(msg, "session_id"):
+                        self._session_id = msg.session_id
+                        logger.debug(f"Captured session_id from stream: {self._session_id}")
+
+            yield msg
+
+    async def interrupt(self) -> None:
+        """
+        Interrupt an ongoing query.
+
+        Can be used to stop Claude's processing, for example when the user
+        wants to cancel or provide new instructions.
+        """
+        if not self._client:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        if hasattr(self._client, "interrupt"):
+            await self._client.interrupt()
+        else:
+            logger.warning("Interrupt not supported by current SDK client")
+
+    async def query_structured(
+        self,
+        message: str,
+        schema_name: str | None = None,
+        output_format: dict[str, Any] | None = None,
+    ) -> "StructuredQueryResult":
+        """
+        Query the agent with structured JSON output.
+
+        Uses the SDK's output_format parameter to request validated JSON responses.
+        The response is guaranteed to match the provided schema.
+
+        Args:
+            message: User message to send
+            schema_name: Name of a predefined schema (e.g., "task_decomposition")
+            output_format: Custom output format dict (overrides schema_name)
+
+        Returns:
+            StructuredQueryResult with structured_output dict and metadata
+
+        Raises:
+            ValueError: If neither schema_name nor output_format is provided
+            ValueError: If schema_name is unknown
+
+        Example:
+            result = await client.query_structured(
+                "Break down 'do taxes' into steps",
+                schema_name="task_decomposition"
+            )
+            step = result.structured_output["current_step"]
+            print(f"Do: {step['action']} ({step['duration_minutes']} min)")
+
+        Available schemas:
+            - task_decomposition: ADHD task breakdown with one step at a time
+            - energy_assessment: Energy level detection and task matching
+            - commitment_list: RSD-safe commitment tracking
+            - friction_check: Blocker identification and solutions
+            - current_step: One-thing mode single action
+        """
+        if not self._client:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        # Determine output format
+        if output_format:
+            selected_format = output_format
+        elif schema_name:
+            selected_format = get_schema(schema_name)
+            if not selected_format:
+                raise ValueError(
+                    f"Unknown schema: {schema_name}. "
+                    f"Available: task_decomposition, energy_assessment, "
+                    f"commitment_list, friction_check, current_step"
+                )
+        else:
+            raise ValueError(
+                "Either schema_name or output_format must be provided"
+            )
+
+        try:
+            from claude_agent_sdk import (
+                ClaudeSDKClient,
+                ClaudeAgentOptions,
+                AssistantMessage,
+                ResultMessage,
+                TextBlock,
+                ToolUseBlock,
+            )
+        except ImportError:
+            raise ImportError("claude-agent-sdk required")
+
+        # Store prompt for potential re-routing
+        self._pending_prompt = message
+
+        # Create a new client with output_format
+        # We need to build new options with the output_format parameter
+        from tools.agent.permissions import create_permission_callback
+        from tools.agent.hooks import create_hooks
+        from tools.agent.sdk_tools import dexai_server
+
+        agent_config = self.config.get("agent", {})
+        tools_config = self.config.get("tools", {})
+        sandbox_config = self.config.get("sandbox", {})
+
+        allowed_tools = tools_config.get("allowed_builtin", []).copy()
+        allowed_tools.append("mcp__dexai__*")
+
+        # Use existing routing decision or route new
+        model = agent_config.get("model", "claude-sonnet-4-20250514")
+        env = {}
+
+        if self._router:
+            from tools.agent.model_router import TaskComplexity
+
+            decision = self._router.route(
+                message,
+                explicit_complexity=self.explicit_complexity,
+                tool_count=len(allowed_tools),
+            )
+            routing_options = self._router.build_options_dict(decision)
+            model = routing_options["model"]
+            env = routing_options["env"]
+            self._last_routing_decision = decision
+
+        # Build sandbox settings if enabled
+        sandbox_settings = None
+        if sandbox_config.get("enabled", False):
+            sandbox_settings = {
+                "enabled": True,
+                "autoAllowBashIfSandboxed": sandbox_config.get(
+                    "auto_allow_bash_if_sandboxed", True
+                ),
+                "excludedCommands": sandbox_config.get("excluded_commands", []),
+                "allowUnsandboxedCommands": sandbox_config.get(
+                    "allow_unsandboxed_commands", True
+                ),
+            }
+            network_config = sandbox_config.get("network", {})
+            if network_config:
+                sandbox_settings["network"] = {
+                    "allowLocalBinding": network_config.get("allow_local_binding", True),
+                    "allowUnixSockets": network_config.get("allow_unix_sockets", []),
+                }
+
+        hooks = create_hooks(
+            user_id=self.user_id,
+            channel=self.channel,
+            enable_security=True,
+            enable_audit=True,
+            enable_dashboard=True,
+            enable_context_save=True,
+        )
+
+        subagents_config = self.config.get("subagents", {})
+        agents = None
+        if subagents_config.get("enabled", True):
+            try:
+                agents = get_agents_for_sdk()
+            except Exception:
+                pass
+
+        # Build options with output_format
+        options_kwargs = {
+            "model": model,
+            "allowed_tools": allowed_tools,
+            "mcp_servers": {"dexai": dexai_server},
+            "cwd": self.working_dir,
+            "permission_mode": agent_config.get("permission_mode", "default"),
+            "system_prompt": build_system_prompt(
+                user_id=self.user_id,
+                config=self.config,
+                channel=self.channel,
+                session_type=self.session_type,
+            ),
+            "can_use_tool": create_permission_callback(
+                user_id=self.user_id,
+                config=self.config,
+                channel=self.channel,
+                ask_user_handler=self.ask_user_handler,
+            ),
+            "env": env or {},
+            "output_format": selected_format,  # Key addition for structured output
+        }
+
+        if agents:
+            options_kwargs["agents"] = agents
+        if sandbox_settings:
+            options_kwargs["sandbox"] = sandbox_settings
+        if hooks:
+            options_kwargs["hooks"] = hooks
+        if self.resume_session_id:
+            options_kwargs["resume"] = self.resume_session_id
+
+        options = ClaudeAgentOptions(**options_kwargs)
+
+        # Create temporary client for structured query
+        structured_client = ClaudeSDKClient(options=options)
+        await structured_client.__aenter__()
+
+        try:
+            await structured_client.query(message)
+
+            response_parts = []
+            tool_uses = []
+            total_cost = 0.0
+            structured_output = None
+
+            async for msg in structured_client.receive_response():
+                # Capture session_id
+                if hasattr(msg, "type") and msg.type == "system":
+                    if hasattr(msg, "subtype") and msg.subtype == "init":
+                        if hasattr(msg, "session_id"):
+                            self._session_id = msg.session_id
+
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            response_parts.append(block.text)
+                        elif isinstance(block, ToolUseBlock):
+                            tool_uses.append({
+                                "tool": block.name,
+                                "input": block.input,
+                            })
+                elif isinstance(msg, ResultMessage):
+                    if hasattr(msg, "total_cost_usd"):
+                        total_cost = msg.total_cost_usd or 0.0
+                    # Extract structured output from result
+                    if hasattr(msg, "structured_output"):
+                        structured_output = msg.structured_output
+                    break
+
+            self._total_cost += total_cost
+
+            # If no structured_output from SDK, try to parse from text
+            if structured_output is None and response_parts:
+                import json
+                text = "\n".join(response_parts).strip()
+                # Try to extract JSON from response
+                try:
+                    # Check if response is pure JSON
+                    if text.startswith("{"):
+                        structured_output = json.loads(text)
+                    # Check for JSON in markdown code block
+                    elif "```json" in text:
+                        json_start = text.find("```json") + 7
+                        json_end = text.find("```", json_start)
+                        if json_end > json_start:
+                            json_str = text[json_start:json_end].strip()
+                            structured_output = json.loads(json_str)
+                    elif "```" in text:
+                        # Generic code block
+                        json_start = text.find("```") + 3
+                        json_end = text.find("```", json_start)
+                        if json_end > json_start:
+                            json_str = text[json_start:json_end].strip()
+                            if json_str.startswith("{"):
+                                structured_output = json.loads(json_str)
+                except json.JSONDecodeError:
+                    logger.debug("Failed to parse JSON from response text")
+
+            # Extract routing metadata
+            model_used = None
+            complexity = None
+            routing_reasoning = None
+            if self._last_routing_decision:
+                model_used = self._last_routing_decision.primary_model.routed_id
+                complexity = self._last_routing_decision.complexity.value
+                routing_reasoning = self._last_routing_decision.reasoning
+
+            return StructuredQueryResult(
+                structured_output=structured_output or {},
+                raw_text="\n".join(response_parts),
+                tool_uses=tool_uses,
+                cost_usd=total_cost,
+                session_total_cost_usd=self._total_cost,
+                schema_name=schema_name,
+                model=model_used,
+                complexity=complexity,
+                routing_reasoning=routing_reasoning,
+            )
+
+        finally:
+            await structured_client.__aexit__(None, None, None)
+
     def _strip_preamble(self, text: str) -> str:
         """Remove common AI preambles from response."""
         preambles = [
@@ -779,6 +1152,84 @@ class QueryResult:
         return self.text
 
 
+class StructuredQueryResult:
+    """
+    Result from a structured query to the agent.
+
+    Contains validated JSON output that matches the requested schema,
+    plus metadata about the query.
+    """
+
+    def __init__(
+        self,
+        structured_output: dict[str, Any],
+        raw_text: str,
+        tool_uses: list[dict],
+        cost_usd: float,
+        session_total_cost_usd: float,
+        schema_name: str | None = None,
+        model: str | None = None,
+        complexity: str | None = None,
+        routing_reasoning: str | None = None,
+    ):
+        self.structured_output = structured_output
+        self.raw_text = raw_text
+        self.tool_uses = tool_uses
+        self.cost_usd = cost_usd
+        self.session_total_cost_usd = session_total_cost_usd
+        self.schema_name = schema_name
+        self.model = model
+        self.complexity = complexity
+        self.routing_reasoning = routing_reasoning
+
+    def __str__(self) -> str:
+        """String representation shows formatted JSON."""
+        import json
+        return json.dumps(self.structured_output, indent=2)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value from the structured output."""
+        return self.structured_output.get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        """Allow dict-like access to structured output."""
+        return self.structured_output[key]
+
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists in structured output."""
+        return key in self.structured_output
+
+    @property
+    def current_step(self) -> dict[str, Any] | None:
+        """
+        Convenience accessor for task decomposition current_step.
+
+        Returns:
+            Current step dict or None if not present
+        """
+        return self.structured_output.get("current_step")
+
+    @property
+    def blockers(self) -> list[dict[str, Any]]:
+        """
+        Convenience accessor for blockers list.
+
+        Returns:
+            List of blocker dicts (empty if none)
+        """
+        return self.structured_output.get("blockers", [])
+
+    @property
+    def remaining_steps(self) -> int:
+        """
+        Convenience accessor for remaining step count.
+
+        Returns:
+            Number of remaining steps or 0 if not present
+        """
+        return self.structured_output.get("remaining_steps", 0)
+
+
 # =============================================================================
 # Convenience Functions
 # =============================================================================
@@ -809,6 +1260,121 @@ async def quick_query(
     ) as client:
         result = await client.query(message)
         return result.text
+
+
+async def quick_decompose(
+    user_id: str,
+    task: str,
+    channel: str = "direct",
+) -> StructuredQueryResult:
+    """
+    Quick task decomposition with structured output.
+
+    Uses the task_decomposition schema for ADHD-friendly task breakdown.
+
+    Args:
+        user_id: User identifier
+        task: Task to decompose
+        channel: Communication channel
+
+    Returns:
+        StructuredQueryResult with current_step, remaining_steps, and blockers
+    """
+    async with DexAIClient(
+        user_id=user_id,
+        session_type="main",
+        channel=channel,
+    ) as client:
+        return await client.query_structured(
+            f"Break down this task into small steps: {task}",
+            schema_name="task_decomposition",
+        )
+
+
+async def quick_energy_match(
+    user_id: str,
+    context: str,
+    channel: str = "direct",
+) -> StructuredQueryResult:
+    """
+    Quick energy assessment with structured output.
+
+    Detects energy level and suggests matched tasks.
+
+    Args:
+        user_id: User identifier
+        context: Context for energy detection
+        channel: Communication channel
+
+    Returns:
+        StructuredQueryResult with detected_energy and suggested_task
+    """
+    async with DexAIClient(
+        user_id=user_id,
+        session_type="main",
+        channel=channel,
+    ) as client:
+        return await client.query_structured(
+            f"Assess energy and match tasks: {context}",
+            schema_name="energy_assessment",
+        )
+
+
+async def quick_friction_check(
+    user_id: str,
+    task: str,
+    channel: str = "direct",
+) -> StructuredQueryResult:
+    """
+    Quick friction check with structured output.
+
+    Identifies blockers that might stall progress.
+
+    Args:
+        user_id: User identifier
+        task: Task to check for friction
+        channel: Communication channel
+
+    Returns:
+        StructuredQueryResult with friction_found, blockers, and ready_to_proceed
+    """
+    async with DexAIClient(
+        user_id=user_id,
+        session_type="main",
+        channel=channel,
+    ) as client:
+        return await client.query_structured(
+            f"Check for friction/blockers: {task}",
+            schema_name="friction_check",
+        )
+
+
+async def quick_current_step(
+    user_id: str,
+    context: str = "",
+    channel: str = "direct",
+) -> StructuredQueryResult:
+    """
+    Get the ONE thing to do right now (one-thing mode).
+
+    Args:
+        user_id: User identifier
+        context: Optional context about current work
+        channel: Communication channel
+
+    Returns:
+        StructuredQueryResult with step (action, context, duration)
+    """
+    prompt = "What's the ONE thing I should do right now?"
+    if context:
+        prompt = f"{prompt} Context: {context}"
+
+    async with DexAIClient(
+        user_id=user_id,
+        session_type="main",
+        channel=channel,
+    ) as client:
+        return await client.query_structured(prompt, schema_name="current_step")
 
 
 # =============================================================================

@@ -519,11 +519,12 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | Tool | Description |
 |------|-------------|
 | `__init__.py` | Module exports, path constants (PROJECT_ROOT, DATA_DIR, CONFIG_PATH) |
-| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, intelligent routing, subagent registration, cost tracking, session resumption |
+| `sdk_client.py` | DexAIClient wrapper with ADHD-aware system prompts, intelligent routing, subagent registration, cost tracking, session resumption, structured output |
 | `permissions.py` | SDK `can_use_tool` callback with PermissionResult types, AskUserQuestion handling, RBAC integration |
 | `system_prompt.py` | SystemPromptBuilder for dynamic system prompt generation from workspace files + runtime context |
 | `hooks.py` | SDK lifecycle hooks: security (PreToolUse blocking), audit logging, dashboard recording (PostToolUse), context saving (Stop) |
 | `subagents.py` | ADHD-specific subagent definitions (task-decomposer, energy-matcher, commitment-tracker, friction-solver) for SDK agents parameter |
+| `schemas.py` | JSON schemas for structured SDK output (task_decomposition, energy_assessment, commitment_list, friction_check, current_step) |
 
 ### System Prompt Architecture
 
