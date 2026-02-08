@@ -243,7 +243,7 @@ export default function SkillsPage() {
       {/* No Results */}
       {!isLoading && !error && skills.length > 0 && filteredSkills.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-white/40">No skills match "{searchQuery}"</p>
+          <p className="text-white/40">No skills match &quot;{searchQuery}&quot;</p>
         </div>
       )}
     </div>
