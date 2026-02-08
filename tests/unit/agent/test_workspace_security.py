@@ -8,9 +8,7 @@ These tests verify the security hooks block workspace escape attempts:
 Defense-in-depth: Multiple layers prevent unauthorized access.
 """
 
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -32,10 +30,10 @@ def temp_workspace(tmp_path: Path) -> Path:
 def security_hooks(temp_workspace: Path):
     """Import security hook functions."""
     from tools.agent.hooks import (
-        create_bash_security_hook,
-        create_file_path_security_hook,
         DANGEROUS_BASH_PATTERNS,
         PROTECTED_PATHS,
+        create_bash_security_hook,
+        create_file_path_security_hook,
     )
 
     return {
