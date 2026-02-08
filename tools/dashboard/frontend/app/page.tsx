@@ -40,7 +40,7 @@ const demoCurrentStep: CurrentStep = {
 export default function HomePage() {
   const { avatarState, setAvatarState, setCurrentTask } = useDexStore();
   const { isConnected, setConnected } = useActivityStore();
-  const { metrics, updateMetrics } = useMetricsStore();
+  const { updateMetrics } = useMetricsStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
