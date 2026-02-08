@@ -15,11 +15,14 @@ Database: data/inbox.db
 
 import argparse
 import json
+import logging
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # Ensure project root is in path
@@ -686,7 +689,9 @@ def validate_pairing_code(code: str) -> dict[str, Any]:
         return {"success": False, "error": "code_already_used"}
 
     expires_at = datetime.fromisoformat(row["expires_at"])
-    if datetime.now() > expires_at:
+    now = datetime.now()
+    if now > expires_at:
+        logger.warning(f"[PAIRING] Code '{code}' expired. Now: {now.isoformat()}, Expires: {expires_at.isoformat()}, Diff: {(now - expires_at).total_seconds()}s")
         return {"success": False, "error": "code_expired"}
 
     return {
