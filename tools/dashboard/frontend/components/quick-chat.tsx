@@ -15,17 +15,19 @@ interface QuickChatProps {
   showHistory?: boolean;
   conversationId?: string | null;
   onConversationChange?: (id: string) => void;
+  userInitials?: string;
 }
 
 export function QuickChat({
   onSendMessage,
   onStateChange,
   isProcessing: externalIsProcessing = false,
-  placeholder = 'Ask Dex anything...',
+  placeholder = 'Type a message...',
   className,
   showHistory = false,
   conversationId: externalConversationId = null,
   onConversationChange,
+  userInitials = 'U',
 }: QuickChatProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -174,8 +176,8 @@ export function QuickChat({
   return (
     <div
       className={cn(
-        'crystal-card overflow-hidden transition-all duration-300',
-        isExpanded && 'fixed inset-4 z-50 flex flex-col',
+        'flex flex-col h-full transition-all duration-300',
+        isExpanded && 'fixed inset-4 z-50 bg-black rounded-2xl border border-white/[0.06]',
         className
       )}
     >
@@ -183,9 +185,8 @@ export function QuickChat({
       {showHistory && (
         <div
           className={cn(
-            'transition-all duration-300 overflow-hidden',
-            isExpanded ? 'flex-1' : 'max-h-96',
-            messages.length > 0 || isTyping ? 'p-4 border-b border-border-default' : ''
+            'flex-1 transition-all duration-300 overflow-hidden',
+            messages.length > 0 || isTyping ? '' : ''
           )}
         >
           <ChatHistory
@@ -193,126 +194,127 @@ export function QuickChat({
             isLoading={isLoadingHistory}
             isTyping={isTyping}
             typingContent={typingContent}
-            className={cn(isExpanded ? 'h-full' : 'max-h-80')}
+            userInitials={userInitials}
+            className="h-full p-2"
           />
         </div>
       )}
 
       {/* Error Banner */}
       {error && (
-        <div className="px-4 py-2 bg-status-error/10 border-b border-status-error/30 flex items-center justify-between">
-          <span className="text-caption text-status-error">{error}</span>
+        <div className="px-6 py-2 bg-red-500/10 border-t border-red-500/20 flex items-center justify-between">
+          <span className="text-xs text-red-400">{error}</span>
           <button
             onClick={() => setError(null)}
-            className="p-1 hover:bg-status-error/20 rounded"
+            className="p-1 hover:bg-red-500/20 rounded"
           >
-            <X className="w-3 h-3 text-status-error" />
+            <X className="w-3 h-3 text-red-400" />
           </button>
         </div>
       )}
 
-      {/* Input Form */}
-      <form onSubmit={handleSubmit}>
-        <div
-          className={cn(
-            'flex items-center gap-3 p-4 transition-all duration-200',
-            isFocused && 'ring-2 ring-accent-primary/30 rounded-2xl'
-          )}
-        >
-          {/* Input */}
-          <input
-            ref={inputRef}
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            placeholder={placeholder}
-            disabled={processing}
-            className={cn(
-              'flex-1 bg-transparent text-body-lg text-text-primary',
-              'placeholder:text-text-muted focus:outline-none',
-              'disabled:opacity-50'
-            )}
-          />
-
-          {/* Keyboard shortcut hint */}
-          {!isFocused && !message && (
-            <kbd className="hidden md:flex items-center gap-1 px-2 py-1 text-caption text-text-disabled bg-bg-surface rounded border border-border-default">
-              <span className="text-xs">⌘</span>K
-            </kbd>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            {/* Clear button (when there are messages) */}
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={clearConversation}
-                className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-surface transition-colors"
-                title="Clear conversation"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-
-            {/* Expand/collapse (when showing history) */}
-            {showHistory && (
-              <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-surface transition-colors"
-                title={isExpanded ? 'Collapse' : 'Expand'}
-              >
-                {isExpanded ? (
-                  <Minimize2 className="w-5 h-5" />
-                ) : (
-                  <Maximize2 className="w-5 h-5" />
+      {/* Input Form - Design7 styling */}
+      <div className="-mx-6 px-6 border-t border-white/[0.04] pt-6">
+        <form onSubmit={handleSubmit}>
+          <div className="flex gap-4">
+            {/* Input container - Design7 style */}
+            <div
+              className={cn(
+                'flex-1 flex items-center gap-3',
+                'bg-white/[0.02] border rounded-xl px-5 py-4',
+                'transition-all duration-200',
+                isFocused ? 'border-white/20' : 'border-white/[0.06]'
+              )}
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                placeholder={placeholder}
+                disabled={processing}
+                className={cn(
+                  'flex-1 bg-transparent outline-none',
+                  'text-white placeholder-white/20',
+                  'disabled:opacity-50'
                 )}
+              />
+
+              {/* Clear button (when there are messages) */}
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearConversation}
+                  className="text-white/20 hover:text-white/40 transition-colors"
+                  title="Clear conversation"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+
+              {/* Expand/collapse (when showing history) */}
+              {showHistory && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="text-white/20 hover:text-white/40 transition-colors"
+                  title={isExpanded ? 'Collapse' : 'Expand'}
+                >
+                  {isExpanded ? (
+                    <Minimize2 className="w-5 h-5" />
+                  ) : (
+                    <Maximize2 className="w-5 h-5" />
+                  )}
+                </button>
+              )}
+
+              {/* Attachment button */}
+              <button
+                type="button"
+                disabled
+                className="text-white/20 hover:text-white/40 cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                title="Attachments coming soon"
+              >
+                <Paperclip className="w-5 h-5" />
               </button>
-            )}
 
-            {/* Attachment button (disabled for v1) */}
-            <button
-              type="button"
-              disabled
-              className="p-2 rounded-lg text-text-disabled cursor-not-allowed"
-              title="Attachments coming soon"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
+              {/* Voice button */}
+              <button
+                type="button"
+                disabled
+                className="text-white/20 hover:text-white/40 cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                title="Voice input coming soon"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+            </div>
 
-            {/* Voice button (disabled for v1) */}
-            <button
-              type="button"
-              disabled
-              className="p-2 rounded-lg text-text-disabled cursor-not-allowed"
-              title="Voice input coming soon"
-            >
-              <Mic className="w-5 h-5" />
-            </button>
-
-            {/* Send button */}
+            {/* Send button - Design7 style */}
             <button
               type="submit"
               disabled={!message.trim() || processing}
               className={cn(
-                'p-2 rounded-lg transition-all duration-200',
+                'px-6 rounded-xl transition-all duration-200',
+                'border flex items-center justify-center',
                 message.trim() && !processing
-                  ? 'bg-accent-primary text-white hover:bg-accent-glow hover:shadow-glow-emerald'
-                  : 'text-text-disabled cursor-not-allowed'
+                  ? 'bg-white/10 hover:bg-white/15 border-white/10'
+                  : 'bg-white/[0.02] border-white/[0.04] cursor-not-allowed'
               )}
             >
               {processing ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-5 h-5 text-white/40 animate-spin" />
               ) : (
-                <Send className="w-5 h-5" />
+                <Send className={cn(
+                  'w-5 h-5 transition-colors',
+                  message.trim() ? 'text-white/70' : 'text-white/20'
+                )} />
               )}
             </button>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
