@@ -112,8 +112,43 @@ def get_connection():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_entries(importance)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(date)")
 
+    # --- Supersession support (added for compaction memory processing) ---
+    # These columns enable tracking when a newer memory entry replaces an
+    # older one. The background compact processor uses this to maintain a
+    # clean, non-contradictory memory store.
+    #
+    # lineage_id: groups related entries across versions (e.g. "user_timezone")
+    # superseded_by: ID of the entry that replaced this one (NULL = current)
+    # supersedes: ID of the entry this one replaced (NULL = original)
+    # extracted_from: source session/compact that produced this entry
+    _migrate_supersession_columns(cursor)
+
     conn.commit()
     return conn
+
+
+def _migrate_supersession_columns(cursor: sqlite3.Cursor) -> None:
+    """Add supersession columns if they don't exist yet."""
+    existing = {
+        row[1] for row in cursor.execute("PRAGMA table_info(memory_entries)").fetchall()
+    }
+    migrations = {
+        "lineage_id": "ALTER TABLE memory_entries ADD COLUMN lineage_id TEXT",
+        "superseded_by": "ALTER TABLE memory_entries ADD COLUMN superseded_by INTEGER",
+        "supersedes": "ALTER TABLE memory_entries ADD COLUMN supersedes INTEGER",
+        "extracted_from": "ALTER TABLE memory_entries ADD COLUMN extracted_from TEXT",
+    }
+    for col, sql in migrations.items():
+        if col not in existing:
+            cursor.execute(sql)
+
+    # Index for efficient lineage lookups
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_lineage ON memory_entries(lineage_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_superseded ON memory_entries(superseded_by)"
+    )
 
 
 def row_to_dict(row) -> dict | None:
@@ -399,6 +434,10 @@ def update_entry(entry_id: int, **kwargs) -> dict[str, Any]:
         "context",
         "expires_at",
         "is_active",
+        "lineage_id",
+        "superseded_by",
+        "supersedes",
+        "extracted_from",
     ]
 
     conn = get_connection()

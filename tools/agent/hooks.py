@@ -507,158 +507,25 @@ def _log_security_event(
 
 
 # =============================================================================
-# PreCompact Hook - Archive Conversation Before Compaction
+# PreCompact Hook - Fast Transcript Queue for Background Processing
 # =============================================================================
 #
 # After compaction the SDK injects its own summary of earlier messages
 # into the continued session, so the agent still has context. We do NOT
 # re-inject history from the inbox — the SDK's summary is sufficient.
 #
-# The PreCompact hook archives the full transcript to disk for audit and
-# debugging purposes, and saves a memory snapshot for long-term recall.
+# The PreCompact hook's ONLY job is to write the transcript + metadata
+# to a queue directory as fast as possible (< 10ms target). A separate
+# background service (tools/memory/compact_processor.py) picks up these
+# files, extracts important data using heuristics + lightweight model,
+# reconciles against existing memory records, and handles supersession.
+#
+# Queue directory: data/compaction_queue/
+# File format: pending_{session_id}_{timestamp}.json
+# After processing: moved to data/compaction_queue/processed/
 
-
-@async_timed_hook("archive_before_compaction")
-async def archive_before_compaction(
-    user_id: str,
-    channel: str,
-    input_data: dict,
-) -> dict[str, Any]:
-    """
-    Archive conversation data before the SDK compacts the context window.
-
-    The PreCompact hook fires before compaction. This is the last chance
-    to extract detailed conversation data that will be summarized away.
-
-    We archive:
-    - Full transcript (if transcript_path is available)
-    - Conversation summary for the session manager to re-inject
-    - Compaction metadata for debugging
-
-    Args:
-        user_id: User identifier
-        channel: Communication channel
-        input_data: Hook input from SDK (includes session_id, transcript_path)
-
-    Returns:
-        Dict with success status
-    """
-    session_id = input_data.get("session_id", "unknown")
-    transcript_path = input_data.get("transcript_path")
-    trigger = input_data.get("trigger", "auto")
-
-    logger.info(
-        f"PreCompact hook fired for {user_id} (session={session_id}, "
-        f"trigger={trigger})"
-    )
-
-    archived_data = {
-        "user_id": user_id,
-        "channel": channel,
-        "session_id": session_id,
-        "trigger": trigger,
-        "compacted_at": datetime.now().isoformat(),
-    }
-
-    # Read the full transcript if path is available
-    transcript_content = None
-    if transcript_path:
-        try:
-            transcript_file = Path(transcript_path)
-            if transcript_file.exists():
-                transcript_content = transcript_file.read_text()
-                archived_data["transcript_length"] = len(transcript_content)
-                logger.info(
-                    f"Read transcript ({len(transcript_content)} chars) "
-                    f"before compaction for {user_id}"
-                )
-        except Exception as e:
-            logger.warning(f"Failed to read transcript: {e}")
-
-    # Save transcript to archive file
-    if transcript_content:
-        try:
-            archive_dir = PROJECT_ROOT / "data" / "compaction_archives"
-            archive_dir.mkdir(parents=True, exist_ok=True)
-
-            archive_file = archive_dir / f"{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            archive_file.write_text(transcript_content)
-            archived_data["archive_path"] = str(archive_file)
-
-            logger.info(f"Archived transcript to {archive_file}")
-        except Exception as e:
-            logger.warning(f"Failed to archive transcript: {e}")
-
-    # Extract recent message history from inbox for re-injection
-    try:
-        from tools.channels import inbox
-
-        history = inbox.get_conversation_history(
-            user_id=user_id,
-            limit=20,
-            channel=channel,
-        )
-
-        if history:
-            history.reverse()  # Chronological order
-            history_lines = []
-            for msg in history:
-                role = "User" if msg.direction == "inbound" else "Assistant"
-                msg_content = msg.content[:500] if msg.content else ""
-                if len(msg.content or "") > 500:
-                    msg_content += "..."
-                history_lines.append(f"[{role}]: {msg_content}")
-
-            archived_data["conversation_summary"] = "\n".join(history_lines)
-            archived_data["message_count"] = len(history)
-    except Exception as e:
-        logger.warning(f"Failed to extract message history: {e}")
-
-    # Save context snapshot to memory system
-    try:
-        try:
-            from tools.memory.service import MemoryService
-
-            service = MemoryService()
-            await service.initialize()
-
-            snapshot_id = await service.capture_context(
-                user_id=user_id,
-                state={
-                    "channel": channel,
-                    "session_id": session_id,
-                    "trigger": f"pre_compact_{trigger}",
-                },
-                trigger="compact",
-                summary=f"Pre-compaction context snapshot ({trigger})",
-            )
-            archived_data["memory_snapshot_id"] = snapshot_id
-        except ImportError:
-            pass  # Memory service not available
-    except Exception as e:
-        logger.warning(f"Failed to save memory snapshot: {e}")
-
-    # Log to audit trail
-    try:
-        from tools.security import audit
-
-        audit.log_event(
-            event_type="session",
-            action="pre_compact",
-            user_id=user_id,
-            channel=channel,
-            status="archived",
-            details={
-                "session_id": session_id,
-                "trigger": trigger,
-                "transcript_length": archived_data.get("transcript_length", 0),
-                "message_count": archived_data.get("message_count", 0),
-            },
-        )
-    except Exception:
-        pass
-
-    return {"success": True, "session_id": session_id}
+# Queue path constant
+COMPACTION_QUEUE_DIR = PROJECT_ROOT / "data" / "compaction_queue"
 
 
 def create_pre_compact_hook(
@@ -666,7 +533,11 @@ def create_pre_compact_hook(
     channel: str,
 ) -> Callable[[dict, str, Any], dict]:
     """
-    Create a PreCompact hook that archives conversation before compaction.
+    Create a PreCompact hook that queues transcript for background processing.
+
+    This hook is designed to be as fast as possible — it does a single
+    synchronous file write and returns immediately. All heavy processing
+    (extraction, memory reconciliation) happens in a background service.
 
     Args:
         user_id: User identifier
@@ -679,23 +550,53 @@ def create_pre_compact_hook(
     @timed_hook("pre_compact_hook")
     def pre_compact_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
         """
-        PreCompact hook callback.
+        PreCompact hook — fast path only.
 
-        Archives the conversation before the SDK compresses the context.
+        Reads transcript (if available) and writes a single JSON file
+        to the compaction queue. Target: < 10ms.
         """
-        # Run async archival in sync context
+        session_id = input_data.get("session_id", "unknown")
+        transcript_path = input_data.get("transcript_path")
+        trigger = input_data.get("trigger", "auto")
+        ts = datetime.now()
+
+        # Read transcript content if path provided
+        transcript_content = None
+        if transcript_path:
+            try:
+                tf = Path(transcript_path)
+                if tf.exists():
+                    transcript_content = tf.read_text()
+            except Exception:
+                pass  # Don't block compact for read failures
+
+        # Build queue entry
+        import json as _json
+
+        queue_entry = {
+            "user_id": user_id,
+            "channel": channel,
+            "session_id": session_id,
+            "trigger": trigger,
+            "compacted_at": ts.isoformat(),
+            "transcript": transcript_content,
+            "transcript_length": len(transcript_content) if transcript_content else 0,
+            "status": "pending",
+        }
+
+        # Write to queue directory — synchronous, single file op
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(
-                    archive_before_compaction(user_id, channel, input_data)
-                )
-            else:
-                loop.run_until_complete(
-                    archive_before_compaction(user_id, channel, input_data)
-                )
-        except RuntimeError:
-            asyncio.run(archive_before_compaction(user_id, channel, input_data))
+            COMPACTION_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+            filename = f"pending_{session_id}_{ts.strftime('%Y%m%d_%H%M%S')}.json"
+            queue_file = COMPACTION_QUEUE_DIR / filename
+            queue_file.write_text(_json.dumps(queue_entry))
+
+            logger.info(
+                f"PreCompact: queued {filename} "
+                f"({queue_entry['transcript_length']} chars)"
+            )
+        except Exception as e:
+            logger.warning(f"PreCompact: failed to write queue file: {e}")
 
         return {}
 
