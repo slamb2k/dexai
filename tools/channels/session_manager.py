@@ -82,11 +82,76 @@ class Session:
         self._total_cost = 0.0
         self._created_at = datetime.now()
 
+    def _build_message_with_history(self, content: str) -> str:
+        """
+        Build message content with recent conversation history prepended.
+
+        When SDK session resumption is not available (no sdk_session_id),
+        fetches recent messages from the inbox to provide conversation context.
+        This ensures the agent always knows about prior messages.
+
+        Args:
+            content: Current message content
+
+        Returns:
+            Message with history context prepended, or original content if
+            session resumption is available or no history exists
+        """
+        # If we have a session ID, the SDK handles history via resumption
+        if self.sdk_session_id:
+            return content
+
+        # Only inject history after the first message
+        if self._message_count <= 1:
+            return content
+
+        try:
+            from tools.channels import inbox
+
+            history = inbox.get_conversation_history(
+                user_id=self.user_id,
+                limit=10,
+                channel=self.channel,
+            )
+
+            if not history:
+                return content
+
+            # History comes in descending order, reverse to chronological
+            history.reverse()
+
+            # Build conversation context
+            history_lines = []
+            for msg in history:
+                role = "User" if msg.direction == "inbound" else "Assistant"
+                # Truncate long messages in history
+                msg_content = msg.content[:500] if msg.content else ""
+                if len(msg.content or "") > 500:
+                    msg_content += "..."
+                history_lines.append(f"[{role}]: {msg_content}")
+
+            if not history_lines:
+                return content
+
+            history_context = "\n".join(history_lines)
+            return (
+                f"[CONVERSATION HISTORY - for context, these are our recent messages]\n"
+                f"{history_context}\n"
+                f"[END HISTORY]\n\n"
+                f"{content}"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to load message history: {e}")
+            return content
+
     async def send_message(self, content: str) -> dict[str, Any]:
         """
         Send a message and get a response.
 
         Uses DexAIClient with session resumption for context continuity.
+        Falls back to injecting conversation history from inbox when
+        session resumption is not available.
 
         Args:
             content: Message content
@@ -99,6 +164,14 @@ class Session:
         self._last_activity = datetime.now()
         self._message_count += 1
 
+        # Prepend conversation history if no SDK session to resume
+        enriched_content = self._build_message_with_history(content)
+
+        if self.sdk_session_id:
+            logger.info(f"Resuming SDK session {self.sdk_session_id} for {self.user_id}")
+        elif self._message_count > 1:
+            logger.info(f"No SDK session for {self.user_id}, injecting message history")
+
         try:
             async with DexAIClient(
                 user_id=self.user_id,
@@ -107,11 +180,12 @@ class Session:
                 resume_session_id=self.sdk_session_id,
                 ask_user_handler=self.ask_user_handler,
             ) as client:
-                result = await client.query(content)
+                result = await client.query(enriched_content)
 
                 # Capture session ID for future resumption
                 if client.session_id:
                     self.sdk_session_id = client.session_id
+                    logger.info(f"Captured SDK session_id for {self.user_id}: {self.sdk_session_id}")
 
                 self._total_cost += result.cost_usd
 
@@ -153,6 +227,9 @@ class Session:
         self._last_activity = datetime.now()
         self._message_count += 1
 
+        # Prepend conversation history if no SDK session to resume
+        enriched_content = self._build_message_with_history(content)
+
         try:
             async with DexAIClient(
                 user_id=self.user_id,
@@ -161,16 +238,21 @@ class Session:
                 resume_session_id=self.sdk_session_id,
                 ask_user_handler=self.ask_user_handler,
             ) as client:
-                await client._client.query(content)
+                await client._client.query(enriched_content)
 
                 async for msg in client.receive_response():
-                    # Capture session ID from init message
-                    if hasattr(msg, "type") and msg.type == "system":
-                        if hasattr(msg, "subtype") and msg.subtype == "init":
-                            if hasattr(msg, "session_id"):
-                                self.sdk_session_id = msg.session_id
+                    # Capture session ID using robust extraction
+                    if not self.sdk_session_id:
+                        from tools.agent.sdk_client import DexAIClient as _Client
+                        sid = _Client._extract_session_id(msg)
+                        if sid:
+                            self.sdk_session_id = sid
 
                     yield msg
+
+                # Fallback: capture from client after stream completes
+                if not self.sdk_session_id and client.session_id:
+                    self.sdk_session_id = client.session_id
 
         except Exception as e:
             logger.error(f"Session stream error for {self.user_id}: {e}")
@@ -220,13 +302,18 @@ class Session:
                 ask_user_handler=self.ask_user_handler,
             ) as client:
                 async for msg in client.query_stream(message_generator):
-                    # Capture session ID from init message
-                    if hasattr(msg, "type") and msg.type == "system":
-                        if hasattr(msg, "subtype") and msg.subtype == "init":
-                            if hasattr(msg, "session_id"):
-                                self.sdk_session_id = msg.session_id
+                    # Capture session ID using robust extraction
+                    if not self.sdk_session_id:
+                        from tools.agent.sdk_client import DexAIClient as _Client
+                        sid = _Client._extract_session_id(msg)
+                        if sid:
+                            self.sdk_session_id = sid
 
                     yield msg
+
+                # Fallback: capture from client after stream completes
+                if not self.sdk_session_id and client.session_id:
+                    self.sdk_session_id = client.session_id
 
         except Exception as e:
             logger.error(f"Session stream input error for {self.user_id}: {e}")

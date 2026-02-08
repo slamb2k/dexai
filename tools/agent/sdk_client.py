@@ -671,9 +671,10 @@ class DexAIClient:
             # Capture session_id from init message for future resumption
             if hasattr(msg, "type") and msg.type == "system":
                 if hasattr(msg, "subtype") and msg.subtype == "init":
-                    if hasattr(msg, "session_id"):
-                        self._session_id = msg.session_id
-                        logger.debug(f"Captured session_id: {self._session_id}")
+                    sid = self._extract_session_id(msg)
+                    if sid:
+                        self._session_id = sid
+                        logger.debug(f"Captured session_id from init: {self._session_id}")
 
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
@@ -687,7 +688,22 @@ class DexAIClient:
             elif isinstance(msg, ResultMessage):
                 if hasattr(msg, "total_cost_usd"):
                     total_cost = msg.total_cost_usd or 0.0
+                # Also capture session_id from ResultMessage as fallback
+                if not self._session_id:
+                    sid = self._extract_session_id(msg)
+                    if sid:
+                        self._session_id = sid
+                        logger.debug(f"Captured session_id from result: {self._session_id}")
                 break
+
+        # Final fallback: check if the SDK client itself exposes session_id
+        if not self._session_id and self._client:
+            for attr in ("session_id", "_session_id", "id"):
+                sid = getattr(self._client, attr, None)
+                if sid and isinstance(sid, str):
+                    self._session_id = sid
+                    logger.debug(f"Captured session_id from client.{attr}: {self._session_id}")
+                    break
 
         self._total_cost += total_cost
 
@@ -812,12 +828,12 @@ class DexAIClient:
             prompt=normalized_generator(),
             options=self._client._options if hasattr(self._client, "_options") else None,
         ):
-            # Capture session_id from init message
-            if hasattr(msg, "type") and msg.type == "system":
-                if hasattr(msg, "subtype") and msg.subtype == "init":
-                    if hasattr(msg, "session_id"):
-                        self._session_id = msg.session_id
-                        logger.debug(f"Captured session_id from stream: {self._session_id}")
+            # Capture session_id from any message type
+            if not self._session_id:
+                sid = self._extract_session_id(msg)
+                if sid:
+                    self._session_id = sid
+                    logger.debug(f"Captured session_id from stream: {self._session_id}")
 
             yield msg
 
@@ -1023,11 +1039,12 @@ class DexAIClient:
             structured_output = None
 
             async for msg in structured_client.receive_response():
-                # Capture session_id
-                if hasattr(msg, "type") and msg.type == "system":
-                    if hasattr(msg, "subtype") and msg.subtype == "init":
-                        if hasattr(msg, "session_id"):
-                            self._session_id = msg.session_id
+                # Capture session_id from any message
+                if not self._session_id:
+                    sid = self._extract_session_id(msg)
+                    if sid:
+                        self._session_id = sid
+                        logger.debug(f"Captured session_id from structured query: {sid}")
 
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
@@ -1044,6 +1061,11 @@ class DexAIClient:
                     # Extract structured output from result
                     if hasattr(msg, "structured_output"):
                         structured_output = msg.structured_output
+                    # Fallback session_id capture from result
+                    if not self._session_id:
+                        sid = self._extract_session_id(msg)
+                        if sid:
+                            self._session_id = sid
                     break
 
             self._total_cost += total_cost
@@ -1111,6 +1133,35 @@ class DexAIClient:
             if stripped.startswith(preamble):
                 stripped = stripped[len(preamble):].lstrip()
         return stripped
+
+    @staticmethod
+    def _extract_session_id(msg) -> str | None:
+        """
+        Extract session_id from an SDK message using multiple strategies.
+
+        The SDK may provide session_id as:
+        - msg.session_id (direct attribute)
+        - msg.data['session_id'] (nested in data dict)
+        - msg.data.session_id (nested data object)
+        """
+        # Strategy 1: Direct attribute
+        sid = getattr(msg, "session_id", None)
+        if sid and isinstance(sid, str):
+            return sid
+
+        # Strategy 2: Nested in data dict/object
+        data = getattr(msg, "data", None)
+        if data:
+            if isinstance(data, dict):
+                sid = data.get("session_id")
+                if sid and isinstance(sid, str):
+                    return sid
+            else:
+                sid = getattr(data, "session_id", None)
+                if sid and isinstance(sid, str):
+                    return sid
+
+        return None
 
     @property
     def total_cost(self) -> float:
