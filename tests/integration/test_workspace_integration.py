@@ -69,7 +69,9 @@ def workspace_config(temp_workspace_base: Path, temp_templates_dir: Path) -> dic
 
 
 @pytest.fixture
-def mock_workspace_manager(workspace_config: dict, temp_workspace_base: Path, temp_templates_dir: Path):
+def mock_workspace_manager(
+    workspace_config: dict, temp_workspace_base: Path, temp_templates_dir: Path
+):
     """Create a mocked WorkspaceManager."""
     with (
         patch("tools.agent.system_prompt.TEMPLATES_PATH", temp_templates_dir),
@@ -103,7 +105,7 @@ class TestSessionWorkspaceIntegration:
         # Patch the workspace manager singleton
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
-            return_value=mock_workspace_manager
+            return_value=mock_workspace_manager,
         ):
             session = Session(
                 user_id="alice",
@@ -137,7 +139,7 @@ class TestSessionWorkspaceIntegration:
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
-            return_value=mock_workspace_manager
+            return_value=mock_workspace_manager,
         ):
             session = Session(
                 user_id="bob",
@@ -176,7 +178,7 @@ class TestSessionWorkspaceIntegration:
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
-            return_value=mock_workspace_manager
+            return_value=mock_workspace_manager,
         ):
             session = Session(
                 user_id="charlie",
@@ -252,7 +254,7 @@ class TestSessionManagerWorkspaceIntegration:
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
-            return_value=mock_workspace_manager
+            return_value=mock_workspace_manager,
         ):
             manager = SessionManager(persist=False)
 
@@ -276,7 +278,7 @@ class TestSessionManagerWorkspaceIntegration:
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
-            return_value=mock_workspace_manager
+            return_value=mock_workspace_manager,
         ):
             manager = SessionManager(persist=False)
 
@@ -357,16 +359,14 @@ class TestWorkspaceWorkflows:
     """End-to-end workflow tests for workspace isolation."""
 
     @pytest.mark.asyncio
-    async def test_complete_session_lifecycle(
-        self, mock_workspace_manager, temp_workspace_base
-    ):
+    async def test_complete_session_lifecycle(self, mock_workspace_manager, temp_workspace_base):
         """Test complete session lifecycle with workspace."""
         from tools.agent.workspace_manager import WorkspaceScope  # noqa: F401
         from tools.channels.session_manager import Session
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
-            return_value=mock_workspace_manager
+            return_value=mock_workspace_manager,
         ):
             # 1. Create session
             session = Session(

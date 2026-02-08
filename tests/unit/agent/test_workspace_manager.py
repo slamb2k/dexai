@@ -82,7 +82,9 @@ def workspace_manager(workspace_config: dict, temp_workspace_base: Path, temp_te
     # Patch bootstrap files constant
     with (
         patch("tools.agent.system_prompt.TEMPLATES_PATH", temp_templates_dir),
-        patch("tools.agent.system_prompt.BOOTSTRAP_FILES", ["PERSONA.md", "IDENTITY.md", "USER.md"]),
+        patch(
+            "tools.agent.system_prompt.BOOTSTRAP_FILES", ["PERSONA.md", "IDENTITY.md", "USER.md"]
+        ),
     ):
         from tools.agent.workspace_manager import WorkspaceManager
 
@@ -170,6 +172,7 @@ class TestWorkspaceRetrieval:
 
         # Wait a tiny bit and get again
         import time
+
         time.sleep(0.01)
 
         workspace_manager.get_workspace("alice", "telegram")
