@@ -67,6 +67,11 @@ __all__ = [
     # Skill tracker exports (lazy loaded)
     "SkillTracker",
     "SkillUsageData",
+    # Workspace manager exports (lazy loaded)
+    "WorkspaceManager",
+    "WorkspaceScope",
+    "WorkspaceAccess",
+    "get_workspace_manager",
 ]
 
 
@@ -166,6 +171,27 @@ def __getattr__(name):
         return {
             "SkillTracker": SkillTracker,
             "SkillUsageData": SkillUsageData,
+        }[name]
+
+    # Workspace manager components
+    workspace_exports = (
+        "WorkspaceManager",
+        "WorkspaceScope",
+        "WorkspaceAccess",
+        "get_workspace_manager",
+    )
+    if name in workspace_exports:
+        from tools.agent.workspace_manager import (
+            WorkspaceManager,
+            WorkspaceScope,
+            WorkspaceAccess,
+            get_workspace_manager,
+        )
+        return {
+            "WorkspaceManager": WorkspaceManager,
+            "WorkspaceScope": WorkspaceScope,
+            "WorkspaceAccess": WorkspaceAccess,
+            "get_workspace_manager": get_workspace_manager,
         }[name]
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

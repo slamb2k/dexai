@@ -527,6 +527,7 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | `subagents.py` | ADHD-specific subagent definitions (task-decomposer, energy-matcher, commitment-tracker, friction-solver) for SDK agents parameter |
 | `schemas.py` | JSON schemas for structured SDK output (task_decomposition, energy_assessment, commitment_list, friction_check, current_step) |
 | `model_selector.py` | ModelSelector for subagent model selection: complexity scoring (0-10), heuristic analysis (technical terms, multi-step, codebase refs), agent-specific defaults |
+| `workspace_manager.py` | Per-user isolated workspaces with bootstrap files, scope-based lifecycle management, and security boundaries |
 
 ### System Prompt Architecture
 
@@ -652,11 +653,30 @@ Provider-agnostic memory tools using MemoryService facade. Works with any config
 |------|-------------|
 | `dexai_channel_pair` | Complete channel pairing with a pairing code (natural language: "pair my telegram with code 12345") |
 
+### Workspace Isolation
+
+Per-user isolated workspaces provide security through separation. Each user+channel combination gets a dedicated directory.
+
+| Component | Description |
+|-----------|-------------|
+| `WorkspaceManager` | Create, get, delete, and cleanup workspaces |
+| `WorkspaceScope` | Lifecycle control: SESSION (ephemeral), PERSISTENT (stale-cleaned), PERMANENT |
+| `WorkspaceAccess` | Access level: NONE, RO (read-only), RW (read-write) |
+
+**Security Model (Defense in Depth):**
+1. SDK Sandbox — Container isolation, cwd enforcement
+2. PreToolUse Hooks — Block dangerous bash, protected paths, path traversal
+3. RBAC System — Tool permissions per user role
+4. Workspace Isolation — Per-user directories, scope policies
+
+**Configuration:** `args/workspace.yaml`
+
 ### Configuration
 
 | File | Description |
 |------|-------------|
 | `args/agent.yaml` | Agent configuration (model, tools, system prompt, ADHD settings, security mapping) |
+| `args/workspace.yaml` | Workspace isolation settings (scope, cleanup, restrictions) |
 
 ### Removed Modules (SDK Migration)
 

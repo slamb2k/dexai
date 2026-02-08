@@ -51,6 +51,9 @@ token.json
 data/*.db
 data/*.db-journal
 
+# User workspaces (per-user isolated directories)
+data/workspaces/
+
 # Temporary files
 .tmp/
 tmp/

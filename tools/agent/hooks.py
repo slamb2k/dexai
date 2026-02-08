@@ -32,7 +32,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -424,14 +424,16 @@ def create_bash_security_hook(
 
 def create_file_path_security_hook(
     user_id: str,
+    workspace_path: Optional[Path] = None,
 ) -> Callable[[dict, str, Any], dict]:
     """
     Create a PreToolUse security hook for file path validation.
 
-    Blocks writes to protected system paths.
+    Blocks writes to protected system paths and workspace escape attempts.
 
     Args:
         user_id: User identifier for logging
+        workspace_path: Optional workspace path to enforce boundary
 
     Returns:
         Hook callback function (wrapped with timing)
@@ -445,7 +447,7 @@ def create_file_path_security_hook(
         Returns empty dict to proceed, or denial response to block.
         """
         tool_name = input_data.get("tool_name", "")
-        if tool_name not in ("Write", "Edit", "NotebookEdit"):
+        if tool_name not in ("Write", "Edit", "NotebookEdit", "Read"):
             return {}
 
         tool_input = input_data.get("tool_input", {})
@@ -456,6 +458,37 @@ def create_file_path_security_hook(
 
         # Expand ~ to home directory for checking
         expanded_path = file_path.replace("~", str(Path.home()))
+
+        # Check for path traversal attempts (../../../ patterns)
+        if ".." in file_path:
+            # Resolve the path to check if it escapes workspace
+            try:
+                resolved = Path(file_path).resolve()
+                if workspace_path:
+                    workspace_resolved = workspace_path.resolve()
+                    if not str(resolved).startswith(str(workspace_resolved)):
+                        logger.warning(
+                            f"BLOCKED path traversal escape for {user_id}: {file_path}"
+                        )
+                        _log_security_event(
+                            user_id=user_id,
+                            event="path_traversal_blocked",
+                            file_path=file_path,
+                            resolved_path=str(resolved),
+                            workspace=str(workspace_path),
+                        )
+                        return {
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "permissionDecision": "deny",
+                                "permissionDecisionReason": (
+                                    "Security: Path traversal outside workspace is not allowed. "
+                                    "File operations must stay within your workspace."
+                                ),
+                            }
+                        }
+            except Exception:
+                pass  # If resolve fails, continue with other checks
 
         # Check against protected paths
         for protected in PROTECTED_PATHS:
@@ -475,7 +508,7 @@ def create_file_path_security_hook(
                         "hookEventName": "PreToolUse",
                         "permissionDecision": "deny",
                         "permissionDecisionReason": (
-                            f"Security: Cannot write to protected path {protected}. "
+                            f"Security: Cannot access protected path {protected}. "
                             f"This path is protected for system safety."
                         ),
                     }
@@ -796,6 +829,7 @@ def create_hooks(
     enable_audit: bool = True,
     enable_dashboard: bool = True,
     enable_context_save: bool = True,
+    workspace_path: Optional[Path] = None,
 ) -> dict[str, list]:
     """
     Create the hooks configuration for SDK.
@@ -809,6 +843,7 @@ def create_hooks(
         enable_audit: Enable PreToolUse audit logging
         enable_dashboard: Enable PostToolUse dashboard recording
         enable_context_save: Enable Stop context saving
+        workspace_path: Optional workspace path for enforcing workspace boundaries
 
     Returns:
         Hooks configuration dict for SDK
@@ -825,10 +860,10 @@ def create_hooks(
             "matcher": "Bash",
             "hooks": [create_bash_security_hook(user_id)],
         })
-        # File path security - block writes to protected paths
+        # File path security - block writes to protected paths and workspace escapes
         pre_hooks.append({
-            "matcher": "Write|Edit|NotebookEdit",
-            "hooks": [create_file_path_security_hook(user_id)],
+            "matcher": "Write|Edit|NotebookEdit|Read",
+            "hooks": [create_file_path_security_hook(user_id, workspace_path)],
         })
 
     # Audit hooks (run after security checks)

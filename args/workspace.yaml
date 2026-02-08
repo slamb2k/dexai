@@ -1,0 +1,75 @@
+# Workspace Configuration for DexAI
+#
+# Controls per-user isolated workspaces for DexAI sessions.
+# Each user gets a dedicated workspace directory with bootstrap files.
+
+workspace:
+  # Enable/disable workspace isolation
+  # Set false to use PROJECT_ROOT (backward compatible)
+  enabled: true
+
+  # Base path for workspaces (relative to PROJECT_ROOT or absolute)
+  base_path: "data/workspaces"
+
+  # Workspace scope settings
+  scope:
+    # Default scope for new workspaces
+    # Options: session, persistent, permanent
+    #   - session: Deleted on session end
+    #   - persistent: Deleted after stale_days
+    #   - permanent: Never auto-deleted
+    default: "persistent"
+
+    # Cleanup settings
+    cleanup:
+      # Days after which persistent workspaces are considered stale
+      stale_days: 30
+
+      # Run cleanup on startup
+      cleanup_on_startup: true
+
+  # Template settings
+  templates:
+    # Path to template files (relative to PROJECT_ROOT)
+    path: "docs/templates"
+
+    # Bootstrap files to copy to new workspaces
+    # These are copied from templates/ during workspace creation
+    bootstrap_files:
+      - "PERSONA.md"
+      - "IDENTITY.md"
+      - "USER.md"
+      - "AGENTS.md"
+      - "ENV.md"
+      - "HEARTBEAT.md"
+      - "BOOTSTRAP.md"
+
+  # Access control settings
+  access:
+    # Default access level for new workspaces
+    # Options: none, ro, rw
+    #   - none: No access (disabled workspace)
+    #   - ro: Read-only
+    #   - rw: Read-write (default)
+    default: "rw"
+
+  # Workspace restrictions
+  restrictions:
+    # Maximum size of a single file in bytes (10MB)
+    max_file_size_bytes: 10485760
+
+    # Maximum total workspace size in bytes (100MB)
+    max_workspace_size_bytes: 104857600
+
+    # File extensions that are blocked from being written
+    # These cannot be created or uploaded to workspaces
+    blocked_extensions:
+      - ".exe"
+      - ".dll"
+      - ".so"
+      - ".dylib"
+      - ".com"
+      - ".bat"
+      - ".cmd"
+      - ".ps1"
+      - ".sh"  # Shell scripts blocked for security
