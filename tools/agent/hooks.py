@@ -509,32 +509,13 @@ def _log_security_event(
 # =============================================================================
 # PreCompact Hook - Archive Conversation Before Compaction
 # =============================================================================
-
-# Track which sessions have been compacted so the session manager can
-# re-inject history on the next message (the compacted summary won't
-# contain fine-grained details from early turns).
-_compacted_sessions: dict[str, dict] = {}
-
-
-def get_compacted_session_data(session_id: str) -> dict | None:
-    """
-    Get and consume compaction data for a session.
-
-    Returns the archived data once, then removes it so it's only
-    injected on the first post-compact message.
-
-    Args:
-        session_id: SDK session ID
-
-    Returns:
-        Dict with archived data, or None if no compaction occurred
-    """
-    return _compacted_sessions.pop(session_id, None)
-
-
-def has_session_compacted(session_id: str) -> bool:
-    """Check if a session has had a compaction event."""
-    return session_id in _compacted_sessions
+#
+# After compaction the SDK injects its own summary of earlier messages
+# into the continued session, so the agent still has context. We do NOT
+# re-inject history from the inbox — the SDK's summary is sufficient.
+#
+# The PreCompact hook archives the full transcript to disk for audit and
+# debugging purposes, and saves a memory snapshot for long-term recall.
 
 
 @async_timed_hook("archive_before_compaction")
@@ -676,9 +657,6 @@ async def archive_before_compaction(
         )
     except Exception:
         pass
-
-    # Store for session manager to detect and re-inject history
-    _compacted_sessions[session_id] = archived_data
 
     return {"success": True, "session_id": session_id}
 
