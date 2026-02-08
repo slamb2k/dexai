@@ -1180,6 +1180,22 @@ class ApiClient {
   async getServiceHealth(name: string): Promise<ApiResponse<ServiceHealth>> {
     return this.request<ServiceHealth>(`/api/services/${name}/health`);
   }
+
+  // ==========================================================================
+  // Skills endpoints
+  // ==========================================================================
+
+  async getSkills(): Promise<ApiResponse<SkillsResponse>> {
+    return this.request<SkillsResponse>('/api/skills');
+  }
+
+  async getSkill(name: string): Promise<ApiResponse<SkillDetail>> {
+    return this.request<SkillDetail>(`/api/skills/${name}`);
+  }
+
+  async getSkillsSummary(): Promise<ApiResponse<SkillsSummary>> {
+    return this.request<SkillsSummary>('/api/skills-summary');
+  }
 }
 
 // Push notification types
@@ -1239,6 +1255,35 @@ export interface PushStats {
   dismiss_rate: number;
   by_category: Record<string, { total: number; clicked: number; click_rate: number }>;
   by_day: { day: string; total: number; clicked: number }[];
+}
+
+// Skills types
+export interface Skill {
+  name: string;
+  display_name: string;
+  description: string | null;
+  status: 'idle' | 'running';
+  file_path: string;
+  has_instructions: boolean;
+}
+
+export interface SkillsResponse {
+  skills: Skill[];
+  total: number;
+  skills_dir: string;
+}
+
+export interface SkillDetail extends Skill {
+  instructions: string | null;
+  readme: string | null;
+}
+
+export interface SkillsSummary {
+  total: number;
+  active: number;
+  idle: number;
+  skills_dir: string;
+  exists: boolean;
 }
 
 // Service Management types
