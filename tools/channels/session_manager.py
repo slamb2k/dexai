@@ -81,6 +81,12 @@ class Session:
         self._message_count = 0
         self._total_cost = 0.0
         self._created_at = datetime.now()
+        # Track how many messages were sent before SDK session was established.
+        # When session_id is first captured, we record how many turns were
+        # "orphaned" (not part of the SDK's conversation memory). On the next
+        # message we inject history one final time so those orphaned turns
+        # are bridged into the resumed session.
+        self._sdk_session_started_at_msg: int = 0
 
     def _build_message_with_history(self, content: str) -> str:
         """
@@ -90,6 +96,12 @@ class Session:
         fetches recent messages from the inbox to provide conversation context.
         This ensures the agent always knows about prior messages.
 
+        Also handles the "bridge" case: if the SDK session was established
+        partway through the conversation (e.g. session_id first captured on
+        Message 3), the resumed session only knows about that one turn.
+        Messages 1-2 are orphaned. We inject history one more time on the
+        first resume to bridge those orphaned messages into the SDK session.
+
         Args:
             content: Current message content
 
@@ -97,13 +109,30 @@ class Session:
             Message with history context prepended, or original content if
             session resumption is available or no history exists
         """
-        # If we have a session ID, the SDK handles history via resumption
-        if self.sdk_session_id:
-            return content
-
         # Only inject history after the first message
         if self._message_count <= 1:
             return content
+
+        if self.sdk_session_id:
+            # SDK session exists. Check if there are orphaned messages that
+            # the SDK doesn't know about (messages before the session started).
+            # If the session was established on the same turn as the first
+            # message (_sdk_session_started_at_msg <= 1), the SDK has full
+            # history and we can skip injection.
+            if self._sdk_session_started_at_msg <= 1:
+                return content
+
+            # Session was established mid-conversation. Check if this is
+            # the first resume after capture (one turn after capture).
+            if self._message_count == self._sdk_session_started_at_msg + 1:
+                logger.info(
+                    f"Bridging {self._sdk_session_started_at_msg - 1} orphaned "
+                    f"messages into SDK session for {self.user_id}"
+                )
+                # Fall through to inject history this one time
+            else:
+                # Already bridged on a prior turn, SDK has full context now
+                return content
 
         try:
             from tools.channels import inbox
@@ -183,9 +212,15 @@ class Session:
                 result = await client.query(enriched_content)
 
                 # Capture session ID for future resumption
-                if client.session_id:
+                if client.session_id and not self.sdk_session_id:
                     self.sdk_session_id = client.session_id
-                    logger.info(f"Captured SDK session_id for {self.user_id}: {self.sdk_session_id}")
+                    self._sdk_session_started_at_msg = self._message_count
+                    logger.info(
+                        f"Captured SDK session_id for {self.user_id} on message "
+                        f"{self._message_count}: {self.sdk_session_id}"
+                    )
+                elif client.session_id:
+                    self.sdk_session_id = client.session_id
 
                 self._total_cost += result.cost_usd
 
@@ -247,12 +282,14 @@ class Session:
                         sid = _Client._extract_session_id(msg)
                         if sid:
                             self.sdk_session_id = sid
+                            self._sdk_session_started_at_msg = self._message_count
 
                     yield msg
 
                 # Fallback: capture from client after stream completes
                 if not self.sdk_session_id and client.session_id:
                     self.sdk_session_id = client.session_id
+                    self._sdk_session_started_at_msg = self._message_count
 
         except Exception as e:
             logger.error(f"Session stream error for {self.user_id}: {e}")
@@ -308,12 +345,14 @@ class Session:
                         sid = _Client._extract_session_id(msg)
                         if sid:
                             self.sdk_session_id = sid
+                            self._sdk_session_started_at_msg = self._message_count
 
                     yield msg
 
                 # Fallback: capture from client after stream completes
                 if not self.sdk_session_id and client.session_id:
                     self.sdk_session_id = client.session_id
+                    self._sdk_session_started_at_msg = self._message_count
 
         except Exception as e:
             logger.error(f"Session stream input error for {self.user_id}: {e}")
@@ -337,6 +376,7 @@ class Session:
             "channel": self.channel,
             "session_type": self.session_type,
             "sdk_session_id": self.sdk_session_id,
+            "sdk_session_started_at_msg": self._sdk_session_started_at_msg,
             "last_activity": self._last_activity.isoformat(),
             "message_count": self._message_count,
             "total_cost": self._total_cost,
@@ -356,6 +396,7 @@ class Session:
         session._last_activity = datetime.fromisoformat(data["last_activity"])
         session._message_count = data.get("message_count", 0)
         session._total_cost = data.get("total_cost", 0.0)
+        session._sdk_session_started_at_msg = data.get("sdk_session_started_at_msg", 0)
         if "created_at" in data:
             session._created_at = datetime.fromisoformat(data["created_at"])
         return session
