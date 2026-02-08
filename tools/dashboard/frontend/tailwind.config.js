@@ -123,6 +123,9 @@ module.exports = {
       backdropBlur: {
         'crystal': '12px',
       },
+      screens: {
+        'xs': '480px',
+      },
       backgroundImage: {
         // Gradient backgrounds
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

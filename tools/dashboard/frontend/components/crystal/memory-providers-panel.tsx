@@ -126,8 +126,8 @@ function ProviderRow({ provider, isPrimary }: ProviderRowProps) {
       {/* Primary indicator */}
       <div className="relative">
         {isPrimary ? (
-          <div className="p-1.5 rounded-lg bg-amber-500/10">
-            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+          <div className="p-1.5 rounded-lg bg-white/[0.06]">
+            <Star className="w-4 h-4 text-white/60 fill-white/60" />
           </div>
         ) : (
           <div className="p-1.5 rounded-lg bg-white/[0.04]">
@@ -143,7 +143,7 @@ function ProviderRow({ provider, isPrimary }: ProviderRowProps) {
             {provider.name}
           </span>
           {isPrimary && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-amber-500/10 text-amber-400">
+            <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-white/[0.06] text-white/60">
               Primary
             </span>
           )}
