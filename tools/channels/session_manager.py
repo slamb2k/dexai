@@ -50,6 +50,7 @@ class Session:
 
     Wraps DexAIClient and maintains session state for continuity.
     The client is kept alive across messages to maintain conversation context.
+    Each session has an isolated workspace directory for file operations.
     """
 
     def __init__(
@@ -59,6 +60,7 @@ class Session:
         session_type: str = "main",
         sdk_session_id: Optional[str] = None,
         ask_user_handler: Optional[Callable] = None,
+        workspace_path: Optional[Path] = None,
     ):
         """
         Initialize a session.
@@ -69,12 +71,14 @@ class Session:
             session_type: Session type (main, subagent, heartbeat, cron)
             sdk_session_id: Optional SDK session ID to resume
             ask_user_handler: Optional handler for AskUserQuestion
+            workspace_path: Optional workspace path (auto-created if None)
         """
         self.user_id = user_id
         self.channel = channel
         self.session_type = session_type
         self.sdk_session_id = sdk_session_id
         self.ask_user_handler = ask_user_handler
+        self.workspace_path = workspace_path
 
         self._client = None
         self._client_active = False  # Track if client context is active
@@ -89,18 +93,29 @@ class Session:
         Ensure the DexAIClient is initialized and active.
 
         The client is kept alive to maintain conversation context across messages.
+        Workspace is created/retrieved for isolated file operations.
         """
         if self._client_active and self._client is not None:
             return
 
         from tools.agent.sdk_client import DexAIClient
+        from tools.agent.workspace_manager import get_workspace_manager
 
         # Clean up any existing client first
         await self._cleanup_client()
 
-        # Create new client
+        # Get or create workspace for this session
+        if self.workspace_path is None:
+            workspace_manager = get_workspace_manager()
+            self.workspace_path = workspace_manager.get_workspace(
+                user_id=self.user_id,
+                channel=self.channel,
+            )
+
+        # Create new client with workspace as working directory
         self._client = DexAIClient(
             user_id=self.user_id,
+            working_dir=str(self.workspace_path),
             session_type=self.session_type,
             channel=self.channel,
             resume_session_id=self.sdk_session_id,
@@ -110,7 +125,8 @@ class Session:
         # Enter the async context to start the client
         await self._client.__aenter__()
         self._client_active = True
-        logger.debug(f"Initialized persistent client for session {self.user_id}:{self.channel}")
+        logger.debug(f"Initialized persistent client for session {self.user_id}:{self.channel} "
+                     f"with workspace {self.workspace_path}")
 
     async def _cleanup_client(self) -> None:
         """Clean up the client when session ends."""
@@ -269,8 +285,19 @@ class Session:
         Close the session and clean up resources.
 
         Should be called when the session is no longer needed.
+        Also marks the workspace session as ended for cleanup.
         """
         await self._cleanup_client()
+
+        # Mark workspace session end (for SESSION scoped workspaces)
+        if self.workspace_path:
+            try:
+                from tools.agent.workspace_manager import get_workspace_manager
+                workspace_manager = get_workspace_manager()
+                workspace_manager.mark_session_end(self.user_id, self.channel)
+            except Exception as e:
+                logger.debug(f"Failed to mark workspace session end: {e}")
+
         logger.debug(f"Closed session for {self.user_id}:{self.channel}")
 
     @property
@@ -291,6 +318,7 @@ class Session:
             "channel": self.channel,
             "session_type": self.session_type,
             "sdk_session_id": self.sdk_session_id,
+            "workspace_path": str(self.workspace_path) if self.workspace_path else None,
             "last_activity": self._last_activity.isoformat(),
             "message_count": self._message_count,
             "total_cost": self._total_cost,
@@ -300,12 +328,18 @@ class Session:
     @classmethod
     def from_dict(cls, data: dict, ask_user_handler: Optional[Callable] = None) -> "Session":
         """Restore session from persisted state."""
+        # Restore workspace path if present
+        workspace_path = None
+        if data.get("workspace_path"):
+            workspace_path = Path(data["workspace_path"])
+
         session = cls(
             user_id=data["user_id"],
             channel=data["channel"],
             session_type=data.get("session_type", "main"),
             sdk_session_id=data.get("sdk_session_id"),
             ask_user_handler=ask_user_handler,
+            workspace_path=workspace_path,
         )
         session._last_activity = datetime.fromisoformat(data["last_activity"])
         session._message_count = data.get("message_count", 0)

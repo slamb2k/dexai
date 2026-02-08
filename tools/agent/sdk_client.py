@@ -175,6 +175,7 @@ def build_system_prompt(
     channel: str = "direct",
     session_type: str = "main",
     prompt_mode: Optional[str] = None,
+    workspace_root: Optional[Path] = None,
 ) -> str:
     """
     Build the system prompt with user-specific context.
@@ -189,6 +190,8 @@ def build_system_prompt(
         channel: Communication channel (direct, telegram, discord, slack)
         session_type: Session type (main, subagent, heartbeat, cron)
         prompt_mode: Prompt mode override (full, minimal, none). If None, uses session default.
+        workspace_root: Optional workspace root for reading bootstrap files.
+                       If None, uses PROJECT_ROOT.
 
     Returns:
         Complete system prompt string
@@ -200,7 +203,7 @@ def build_system_prompt(
         session_type=SessionType(session_type),
         prompt_mode=PromptMode(prompt_mode) if prompt_mode else None,
         channel=channel,
-        workspace_root=PROJECT_ROOT,
+        workspace_root=workspace_root or PROJECT_ROOT,
     )
     prompt = builder.build(context)
 
@@ -560,6 +563,7 @@ class DexAIClient:
             enable_audit=True,
             enable_dashboard=True,
             enable_context_save=True,
+            workspace_path=workspace_root,  # For workspace boundary enforcement
         )
 
         # Get subagent definitions if enabled
@@ -573,6 +577,8 @@ class DexAIClient:
                 logger.warning(f"Failed to load subagents: {e}")
 
         # Build options with session-aware system prompt
+        # Pass workspace as workspace_root for reading bootstrap files
+        workspace_root = Path(self.working_dir) if self.working_dir else None
         options_kwargs = {
             "model": model,
             "allowed_tools": allowed_tools,
@@ -584,6 +590,7 @@ class DexAIClient:
                 config=self.config,
                 channel=self.channel,
                 session_type=self.session_type,
+                workspace_root=workspace_root,
             ),
             "can_use_tool": create_permission_callback(
                 user_id=self.user_id,
@@ -966,6 +973,7 @@ class DexAIClient:
             enable_audit=True,
             enable_dashboard=True,
             enable_context_save=True,
+            workspace_path=workspace_root,  # For workspace boundary enforcement
         )
 
         subagents_config = self.config.get("subagents", {})
@@ -977,6 +985,8 @@ class DexAIClient:
                 pass
 
         # Build options with output_format
+        # Pass workspace as workspace_root for reading bootstrap files
+        workspace_root = Path(self.working_dir) if self.working_dir else None
         options_kwargs = {
             "model": model,
             "allowed_tools": allowed_tools,
@@ -988,6 +998,7 @@ class DexAIClient:
                 config=self.config,
                 channel=self.channel,
                 session_type=self.session_type,
+                workspace_root=workspace_root,
             ),
             "can_use_tool": create_permission_callback(
                 user_id=self.user_id,
