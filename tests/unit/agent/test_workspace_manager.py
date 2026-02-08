@@ -12,7 +12,6 @@ These tests ensure workspace isolation works correctly.
 
 import json
 import shutil
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -81,16 +80,18 @@ def workspace_config(temp_workspace_base: Path, temp_templates_dir: Path) -> dic
 def workspace_manager(workspace_config: dict, temp_workspace_base: Path, temp_templates_dir: Path):
     """Create a WorkspaceManager with test configuration."""
     # Patch bootstrap files constant
-    with patch("tools.agent.system_prompt.TEMPLATES_PATH", temp_templates_dir):
-        with patch("tools.agent.system_prompt.BOOTSTRAP_FILES", ["PERSONA.md", "IDENTITY.md", "USER.md"]):
-            from tools.agent.workspace_manager import WorkspaceManager
+    with (
+        patch("tools.agent.system_prompt.TEMPLATES_PATH", temp_templates_dir),
+        patch("tools.agent.system_prompt.BOOTSTRAP_FILES", ["PERSONA.md", "IDENTITY.md", "USER.md"]),
+    ):
+        from tools.agent.workspace_manager import WorkspaceManager
 
-            manager = WorkspaceManager(config=workspace_config)
-            yield manager
+        manager = WorkspaceManager(config=workspace_config)
+        yield manager
 
-            # Cleanup: remove all workspaces
-            if temp_workspace_base.exists():
-                shutil.rmtree(temp_workspace_base)
+        # Cleanup: remove all workspaces
+        if temp_workspace_base.exists():
+            shutil.rmtree(temp_workspace_base)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -313,7 +314,7 @@ class TestWorkspaceLimits:
 
     def test_check_limits_within_bounds(self, workspace_manager):
         """Workspace within limits should pass check."""
-        workspace = workspace_manager.create_workspace("alice", "telegram")
+        workspace_manager.create_workspace("alice", "telegram")
 
         limits = workspace_manager.check_workspace_limits("alice", "telegram")
 
@@ -429,7 +430,7 @@ class TestDisabledWorkspaces:
             }
         }
 
-        from tools.agent.workspace_manager import WorkspaceManager, PROJECT_ROOT
+        from tools.agent.workspace_manager import PROJECT_ROOT, WorkspaceManager
 
         manager = WorkspaceManager(config=config)
         workspace = manager.get_workspace("alice", "telegram")

@@ -7,10 +7,7 @@ These tests verify that:
 - Session cleanup handles workspaces correctly
 """
 
-import asyncio
-import json
 import shutil
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -74,16 +71,18 @@ def workspace_config(temp_workspace_base: Path, temp_templates_dir: Path) -> dic
 @pytest.fixture
 def mock_workspace_manager(workspace_config: dict, temp_workspace_base: Path, temp_templates_dir: Path):
     """Create a mocked WorkspaceManager."""
-    with patch("tools.agent.system_prompt.TEMPLATES_PATH", temp_templates_dir):
-        with patch("tools.agent.system_prompt.BOOTSTRAP_FILES", ["PERSONA.md", "IDENTITY.md"]):
-            from tools.agent.workspace_manager import WorkspaceManager
+    with (
+        patch("tools.agent.system_prompt.TEMPLATES_PATH", temp_templates_dir),
+        patch("tools.agent.system_prompt.BOOTSTRAP_FILES", ["PERSONA.md", "IDENTITY.md"]),
+    ):
+        from tools.agent.workspace_manager import WorkspaceManager
 
-            manager = WorkspaceManager(config=workspace_config)
-            yield manager
+        manager = WorkspaceManager(config=workspace_config)
+        yield manager
 
-            # Cleanup
-            if temp_workspace_base.exists():
-                shutil.rmtree(temp_workspace_base)
+        # Cleanup
+        if temp_workspace_base.exists():
+            shutil.rmtree(temp_workspace_base)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -115,11 +114,11 @@ class TestSessionWorkspaceIntegration:
             assert session.workspace_path is None
 
             # Mock the SDK client initialization
-            with patch("tools.agent.sdk_client.DexAIClient") as MockClient:
+            with patch("tools.agent.sdk_client.DexAIClient") as mock_dexai_client:
                 mock_client = AsyncMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
                 mock_client.__aexit__ = AsyncMock()
-                MockClient.return_value = mock_client
+                mock_dexai_client.return_value = mock_client
 
                 await session._ensure_client()
 
@@ -145,17 +144,17 @@ class TestSessionWorkspaceIntegration:
                 channel="discord",
             )
 
-            with patch("tools.agent.sdk_client.DexAIClient") as MockClient:
+            with patch("tools.agent.sdk_client.DexAIClient") as mock_dexai_client:
                 mock_client = AsyncMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
                 mock_client.__aexit__ = AsyncMock()
-                MockClient.return_value = mock_client
+                mock_dexai_client.return_value = mock_client
 
                 await session._ensure_client()
 
                 # Check DexAIClient was called with working_dir
-                MockClient.assert_called_once()
-                call_kwargs = MockClient.call_args.kwargs
+                mock_dexai_client.assert_called_once()
+                call_kwargs = mock_dexai_client.call_args.kwargs
                 assert "working_dir" in call_kwargs
                 assert str(temp_workspace_base) in call_kwargs["working_dir"]
 
@@ -166,8 +165,8 @@ class TestSessionWorkspaceIntegration:
         self, mock_workspace_manager, temp_workspace_base
     ):
         """Session close should mark workspace session end."""
-        from tools.channels.session_manager import Session
         from tools.agent.workspace_manager import WorkspaceScope
+        from tools.channels.session_manager import Session
 
         # Create a SESSION scoped workspace
         workspace = mock_workspace_manager.create_workspace(
@@ -185,11 +184,11 @@ class TestSessionWorkspaceIntegration:
                 workspace_path=workspace,
             )
 
-            with patch("tools.agent.sdk_client.DexAIClient") as MockClient:
+            with patch("tools.agent.sdk_client.DexAIClient") as mock_dexai_client:
                 mock_client = AsyncMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
                 mock_client.__aexit__ = AsyncMock()
-                MockClient.return_value = mock_client
+                mock_dexai_client.return_value = mock_client
 
                 await session._ensure_client()
                 await session.close()
@@ -267,8 +266,8 @@ class TestSessionManagerWorkspaceIntegration:
     @pytest.mark.asyncio
     async def test_clear_session_handles_workspace(self, mock_workspace_manager):
         """Clearing a session should properly handle workspace cleanup."""
-        from tools.channels.session_manager import SessionManager
         from tools.agent.workspace_manager import WorkspaceScope
+        from tools.channels.session_manager import SessionManager
 
         # Create a SESSION scoped workspace
         workspace = mock_workspace_manager.create_workspace(
@@ -334,19 +333,19 @@ class TestDexAIClientWorkspace:
         }
 
         # Patch SystemPromptBuilder to use workspace
-        with patch("tools.agent.sdk_client.SystemPromptBuilder") as MockBuilder:
+        with patch("tools.agent.sdk_client.SystemPromptBuilder") as mock_builder_class:
             mock_builder = MagicMock()
             mock_builder.build.return_value = "Built prompt"
-            MockBuilder.return_value = mock_builder
+            mock_builder_class.return_value = mock_builder
 
-            prompt = build_system_prompt(
+            build_system_prompt(
                 user_id="alice",
                 config=config,
                 workspace_root=workspace,
             )
 
             # Builder should have been called with the workspace root
-            MockBuilder.assert_called_once()
+            mock_builder_class.assert_called_once()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -362,8 +361,8 @@ class TestWorkspaceWorkflows:
         self, mock_workspace_manager, temp_workspace_base
     ):
         """Test complete session lifecycle with workspace."""
+        from tools.agent.workspace_manager import WorkspaceScope  # noqa: F401
         from tools.channels.session_manager import Session
-        from tools.agent.workspace_manager import WorkspaceScope
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
@@ -376,11 +375,11 @@ class TestWorkspaceWorkflows:
             )
 
             # 2. Initialize client (creates workspace)
-            with patch("tools.agent.sdk_client.DexAIClient") as MockClient:
+            with patch("tools.agent.sdk_client.DexAIClient") as mock_dexai_client:
                 mock_client = AsyncMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
                 mock_client.__aexit__ = AsyncMock()
-                MockClient.return_value = mock_client
+                mock_dexai_client.return_value = mock_client
 
                 await session._ensure_client()
 
