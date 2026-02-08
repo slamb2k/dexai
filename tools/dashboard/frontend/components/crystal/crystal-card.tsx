@@ -52,11 +52,12 @@ interface CrystalCardHeaderProps {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  border?: boolean;
 }
 
-export function CrystalCardHeader({ icon, title, subtitle, action }: CrystalCardHeaderProps) {
+export function CrystalCardHeader({ icon, title, subtitle, action, border = true }: CrystalCardHeaderProps) {
   return (
-    <div className="flex items-center justify-between pb-4 border-b border-white/[0.04]">
+    <div className={cn('flex items-center justify-between', border && 'pb-4 border-b border-white/[0.04]')}>
       <div className="flex items-center gap-3">
         {icon && <div className="text-white/40">{icon}</div>}
         <div>
