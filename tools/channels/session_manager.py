@@ -88,6 +88,36 @@ class Session:
         # are bridged into the resumed session.
         self._sdk_session_started_at_msg: int = 0
 
+    def _check_post_compact(self) -> bool:
+        """
+        Check if the SDK session was recently compacted.
+
+        If so, consume the compaction data and flag for history re-injection.
+        After a compact the SDK's context is a summary — detailed early
+        messages are gone. We inject history once to restore them.
+
+        Returns:
+            True if a compaction was detected and history should be injected
+        """
+        if not self.sdk_session_id:
+            return False
+
+        try:
+            from tools.agent.hooks import get_compacted_session_data
+
+            compact_data = get_compacted_session_data(self.sdk_session_id)
+            if compact_data:
+                logger.info(
+                    f"Post-compact detected for {self.user_id} "
+                    f"(session={self.sdk_session_id}). "
+                    f"Re-injecting history to restore detailed context."
+                )
+                return True
+        except ImportError:
+            pass
+
+        return False
+
     def _build_message_with_history(self, content: str) -> str:
         """
         Build message content with recent conversation history prepended.
@@ -96,11 +126,17 @@ class Session:
         fetches recent messages from the inbox to provide conversation context.
         This ensures the agent always knows about prior messages.
 
-        Also handles the "bridge" case: if the SDK session was established
-        partway through the conversation (e.g. session_id first captured on
-        Message 3), the resumed session only knows about that one turn.
-        Messages 1-2 are orphaned. We inject history one more time on the
-        first resume to bridge those orphaned messages into the SDK session.
+        Also handles two recovery cases:
+
+        1. **Bridge**: If the SDK session was established partway through the
+           conversation (e.g. session_id first captured on Message 3), the
+           resumed session only knows about that one turn. Messages 1-2 are
+           orphaned. We inject history one more time on the first resume to
+           bridge those orphaned messages into the SDK session.
+
+        2. **Post-compact**: After the SDK compacts the context window, early
+           messages are summarized away. We detect compaction via the
+           PreCompact hook and inject history once to restore detail.
 
         Args:
             content: Current message content
@@ -113,12 +149,15 @@ class Session:
         if self._message_count <= 1:
             return content
 
-        if self.sdk_session_id:
-            # SDK session exists. Check if there are orphaned messages that
-            # the SDK doesn't know about (messages before the session started).
-            # If the session was established on the same turn as the first
-            # message (_sdk_session_started_at_msg <= 1), the SDK has full
-            # history and we can skip injection.
+        # Check if a compaction just happened — if so, force history injection
+        post_compact = self._check_post_compact()
+
+        if self.sdk_session_id and not post_compact:
+            # SDK session exists and no compact. Check if there are orphaned
+            # messages that the SDK doesn't know about (messages before the
+            # session started). If the session was established on the same
+            # turn as the first message (_sdk_session_started_at_msg <= 1),
+            # the SDK has full history and we can skip injection.
             if self._sdk_session_started_at_msg <= 1:
                 return content
 

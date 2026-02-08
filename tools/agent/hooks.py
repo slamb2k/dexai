@@ -507,6 +507,224 @@ def _log_security_event(
 
 
 # =============================================================================
+# PreCompact Hook - Archive Conversation Before Compaction
+# =============================================================================
+
+# Track which sessions have been compacted so the session manager can
+# re-inject history on the next message (the compacted summary won't
+# contain fine-grained details from early turns).
+_compacted_sessions: dict[str, dict] = {}
+
+
+def get_compacted_session_data(session_id: str) -> dict | None:
+    """
+    Get and consume compaction data for a session.
+
+    Returns the archived data once, then removes it so it's only
+    injected on the first post-compact message.
+
+    Args:
+        session_id: SDK session ID
+
+    Returns:
+        Dict with archived data, or None if no compaction occurred
+    """
+    return _compacted_sessions.pop(session_id, None)
+
+
+def has_session_compacted(session_id: str) -> bool:
+    """Check if a session has had a compaction event."""
+    return session_id in _compacted_sessions
+
+
+@async_timed_hook("archive_before_compaction")
+async def archive_before_compaction(
+    user_id: str,
+    channel: str,
+    input_data: dict,
+) -> dict[str, Any]:
+    """
+    Archive conversation data before the SDK compacts the context window.
+
+    The PreCompact hook fires before compaction. This is the last chance
+    to extract detailed conversation data that will be summarized away.
+
+    We archive:
+    - Full transcript (if transcript_path is available)
+    - Conversation summary for the session manager to re-inject
+    - Compaction metadata for debugging
+
+    Args:
+        user_id: User identifier
+        channel: Communication channel
+        input_data: Hook input from SDK (includes session_id, transcript_path)
+
+    Returns:
+        Dict with success status
+    """
+    session_id = input_data.get("session_id", "unknown")
+    transcript_path = input_data.get("transcript_path")
+    trigger = input_data.get("trigger", "auto")
+
+    logger.info(
+        f"PreCompact hook fired for {user_id} (session={session_id}, "
+        f"trigger={trigger})"
+    )
+
+    archived_data = {
+        "user_id": user_id,
+        "channel": channel,
+        "session_id": session_id,
+        "trigger": trigger,
+        "compacted_at": datetime.now().isoformat(),
+    }
+
+    # Read the full transcript if path is available
+    transcript_content = None
+    if transcript_path:
+        try:
+            transcript_file = Path(transcript_path)
+            if transcript_file.exists():
+                transcript_content = transcript_file.read_text()
+                archived_data["transcript_length"] = len(transcript_content)
+                logger.info(
+                    f"Read transcript ({len(transcript_content)} chars) "
+                    f"before compaction for {user_id}"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to read transcript: {e}")
+
+    # Save transcript to archive file
+    if transcript_content:
+        try:
+            archive_dir = PROJECT_ROOT / "data" / "compaction_archives"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+
+            archive_file = archive_dir / f"{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            archive_file.write_text(transcript_content)
+            archived_data["archive_path"] = str(archive_file)
+
+            logger.info(f"Archived transcript to {archive_file}")
+        except Exception as e:
+            logger.warning(f"Failed to archive transcript: {e}")
+
+    # Extract recent message history from inbox for re-injection
+    try:
+        from tools.channels import inbox
+
+        history = inbox.get_conversation_history(
+            user_id=user_id,
+            limit=20,
+            channel=channel,
+        )
+
+        if history:
+            history.reverse()  # Chronological order
+            history_lines = []
+            for msg in history:
+                role = "User" if msg.direction == "inbound" else "Assistant"
+                msg_content = msg.content[:500] if msg.content else ""
+                if len(msg.content or "") > 500:
+                    msg_content += "..."
+                history_lines.append(f"[{role}]: {msg_content}")
+
+            archived_data["conversation_summary"] = "\n".join(history_lines)
+            archived_data["message_count"] = len(history)
+    except Exception as e:
+        logger.warning(f"Failed to extract message history: {e}")
+
+    # Save context snapshot to memory system
+    try:
+        try:
+            from tools.memory.service import MemoryService
+
+            service = MemoryService()
+            await service.initialize()
+
+            snapshot_id = await service.capture_context(
+                user_id=user_id,
+                state={
+                    "channel": channel,
+                    "session_id": session_id,
+                    "trigger": f"pre_compact_{trigger}",
+                },
+                trigger="compact",
+                summary=f"Pre-compaction context snapshot ({trigger})",
+            )
+            archived_data["memory_snapshot_id"] = snapshot_id
+        except ImportError:
+            pass  # Memory service not available
+    except Exception as e:
+        logger.warning(f"Failed to save memory snapshot: {e}")
+
+    # Log to audit trail
+    try:
+        from tools.security import audit
+
+        audit.log_event(
+            event_type="session",
+            action="pre_compact",
+            user_id=user_id,
+            channel=channel,
+            status="archived",
+            details={
+                "session_id": session_id,
+                "trigger": trigger,
+                "transcript_length": archived_data.get("transcript_length", 0),
+                "message_count": archived_data.get("message_count", 0),
+            },
+        )
+    except Exception:
+        pass
+
+    # Store for session manager to detect and re-inject history
+    _compacted_sessions[session_id] = archived_data
+
+    return {"success": True, "session_id": session_id}
+
+
+def create_pre_compact_hook(
+    user_id: str,
+    channel: str,
+) -> Callable[[dict, str, Any], dict]:
+    """
+    Create a PreCompact hook that archives conversation before compaction.
+
+    Args:
+        user_id: User identifier
+        channel: Communication channel
+
+    Returns:
+        Hook callback function
+    """
+
+    @timed_hook("pre_compact_hook")
+    def pre_compact_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
+        """
+        PreCompact hook callback.
+
+        Archives the conversation before the SDK compresses the context.
+        """
+        # Run async archival in sync context
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(
+                    archive_before_compaction(user_id, channel, input_data)
+                )
+            else:
+                loop.run_until_complete(
+                    archive_before_compaction(user_id, channel, input_data)
+                )
+        except RuntimeError:
+            asyncio.run(archive_before_compaction(user_id, channel, input_data))
+
+        return {}
+
+    return pre_compact_hook
+
+
+# =============================================================================
 # Stop Hook - Context Saving
 # =============================================================================
 
@@ -796,6 +1014,7 @@ def create_hooks(
     enable_audit: bool = True,
     enable_dashboard: bool = True,
     enable_context_save: bool = True,
+    enable_compact_archive: bool = True,
 ) -> dict[str, list]:
     """
     Create the hooks configuration for SDK.
@@ -809,6 +1028,7 @@ def create_hooks(
         enable_audit: Enable PreToolUse audit logging
         enable_dashboard: Enable PostToolUse dashboard recording
         enable_context_save: Enable Stop context saving
+        enable_compact_archive: Enable PreCompact conversation archival
 
     Returns:
         Hooks configuration dict for SDK
@@ -849,6 +1069,14 @@ def create_hooks(
 
     if post_hooks:
         hooks["PostToolUse"] = post_hooks
+
+    # PreCompact hooks - archive conversation before compaction
+    if enable_compact_archive:
+        compact_hooks = []
+        compact_hooks.append({
+            "hooks": [create_pre_compact_hook(user_id, channel)],
+        })
+        hooks["PreCompact"] = compact_hooks
 
     # Stop hooks
     stop_hooks = []
