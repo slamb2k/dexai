@@ -20,6 +20,7 @@ from .push import router as push_router
 from .services import router as services_router
 from .settings import router as settings_router
 from .setup import router as setup_router
+from .skills import router as skills_router
 from .status import router as status_router
 from .tasks import router as tasks_router
 
@@ -42,6 +43,7 @@ api_router.include_router(actions_router, prefix="/actions", tags=["actions"])
 api_router.include_router(policies_router, tags=["policies"])
 api_router.include_router(push_router, prefix="/push", tags=["push"])
 api_router.include_router(services_router, tags=["services"])
+api_router.include_router(skills_router, tags=["skills"])
 api_router.include_router(audit_router, tags=["audit"])
 api_router.include_router(debug_router, tags=["debug"])
 
