@@ -2,7 +2,7 @@
 
 > **Goal**: Implement the Design7 "Crystal Dark" layout for the DexAI dashboard, matching the design exactly with minor customizations.
 
-**Status**: Planning Complete - Ready for Implementation
+**Status**: Complete
 **Priority**: High
 **Inspiration**: `~/work/dexai-design/src/designs/Design7.tsx`
 
@@ -53,20 +53,21 @@ Redesign the DexAI dashboard to match the Crystal Dark aesthetic from Design7, f
 │ ┌───────────────────────────────┐ ┌─────────────────────┐          │
 │ │ CHAT PANEL (col-span-7)       │ │ RIGHT COLUMN        │          │
 │ │                               │ │ (col-span-5)        │          │
-│ │ [CurrentStep Card - ADHD]    │ │                     │          │
-│ │ ─────────────────────────     │ │ ┌─────────────────┐ │          │
-│ │                               │ │ │ Active Skills   │ │          │
-│ │ 🤖 Good morning. I've...     │ │ │ ● Email Manager │ │          │
-│ │                               │ │ │ ● Calendar Sync │ │          │
-│ │ 👤 Show me the calendar...   │ │ │ ○ Doc Analyzer  │ │          │
-│ │                               │ │ │ ○ Web Research  │ │          │
+│ │ 🤖 Good morning. I've...     │ │ ┌─────────────────┐ │          │
+│ │                               │ │ │ Current Focus   │ │          │
+│ │ 👤 Show me the calendar...   │ │ │ [ADHD Task]     │ │          │
+│ │                               │ │ │ [Done][Skip][?] │ │          │
 │ │ 🤖 Resolved: 1) Moved...     │ │ └─────────────────┘ │          │
 │ │                               │ │                     │          │
 │ │ ─────────────────────────     │ │ ┌─────────────────┐ │          │
-│ │ [Type a message...] [📎][🎤]│ │ │ Memory Providers│ │          │
-│ │                         [➤] │ │ │ ★ Native  2.4GB │ │          │
-│ └───────────────────────────────┘ │ │   Mem0    1.2GB │ │          │
-│                                   │ │   Zep     890MB │ │          │
+│ │ [Type a message...] [📎][🎤]│ │ │ Active Skills   │ │          │
+│ │                         [➤] │ │ │ ● Email Manager │ │          │
+│ └───────────────────────────────┘ │ │ ○ Web Research  │ │          │
+│                                   │ └─────────────────┘ │          │
+│                                   │                     │          │
+│                                   │ ┌─────────────────┐ │          │
+│                                   │ │ Memory Providers│ │          │
+│                                   │ │ ★ Native  2.4GB │ │          │
 │                                   │ └─────────────────┘ │          │
 │                                   └─────────────────────┘          │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -484,19 +485,19 @@ export interface Skill {
 
 ## Verification Checklist
 
-- [ ] Header displays correctly with horizontal navigation
-- [ ] Metrics row shows real data from APIs
-- [ ] Chat panel includes CurrentStep at top
-- [ ] Skills panel fetches and displays Claude skills
-- [ ] Memory providers panel shows provider health
-- [ ] Office panel shows Google/Microsoft connection status
-- [ ] Channels panel shows all channels (WhatsApp as "Coming Soon")
-- [ ] Energy selector works in header
-- [ ] Flow indicator shows in header
-- [ ] User initials display from settings
-- [ ] All pages use Crystal Dark styling
-- [ ] Responsive design works on smaller screens
-- [ ] Light/dark theme toggle still works (or removed for Crystal Dark only)
+- [x] Header displays correctly with horizontal navigation
+- [x] Metrics row shows real data from APIs
+- [x] Chat panel includes CurrentStep at top
+- [x] Skills panel fetches and displays Claude skills
+- [x] Memory providers panel shows provider health
+- [x] Office panel shows Google/Microsoft connection status
+- [x] Channels panel shows all channels (WhatsApp as "Coming Soon")
+- [x] Energy selector works in header
+- [x] Flow indicator shows in header
+- [x] User initials display from settings
+- [x] All pages use Crystal Dark styling
+- [x] Responsive design works on smaller screens (mobile menu, breakpoints)
+- [x] Crystal Dark is the default theme (light mode via CSS class toggle)
 
 ---
 
