@@ -9,14 +9,16 @@ import {
   CrystalCardHeader,
   CrystalCardContent,
   MetricsCard,
+  CurrentStepPanel,
   SkillsPanel,
   MemoryProvidersPanel,
   OfficePanel,
   ChannelsPanel,
 } from '@/components/crystal';
+import type { CurrentStep } from '@/components/crystal';
 
-// Existing ADHD-focused components
-import { CurrentStepCard, CurrentStep, EnergyLevel } from '@/components/current-step-card';
+// Energy level type for API compatibility
+type EnergyLevel = 'low' | 'medium' | 'high';
 import { QuickChat } from '@/components/quick-chat';
 
 // Utilities and API
@@ -50,6 +52,7 @@ export default function HomePage() {
   const [avgResponse, setAvgResponse] = useState<string>('--');
   const [tasksWeek, setTasksWeek] = useState<number>(0);
   const [providersActive, setProvidersActive] = useState<string>('--');
+  const [userInitials, setUserInitials] = useState<string>('U');
 
   // Load initial data
   useEffect(() => {
@@ -121,6 +124,20 @@ export default function HomePage() {
           const active = providersRes.data.active_count || 0;
           const total = providersRes.data.providers?.length || 0;
           setProvidersActive(`${active}/${total}`);
+        }
+
+        // Fetch user settings for initials
+        const setupRes = await api.getSetupState();
+        if (setupRes.success && setupRes.data?.user_name) {
+          const name = setupRes.data.user_name;
+          const parts = name.trim().split(/\s+/);
+          if (parts.length === 1) {
+            setUserInitials(parts[0].charAt(0).toUpperCase());
+          } else {
+            setUserInitials(
+              (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
+            );
+          }
         }
 
         // Use demo data in demo mode if no real data
@@ -305,6 +322,7 @@ export default function HomePage() {
               <CrystalCardHeader
                 icon={<MessageSquare className="w-5 h-5" />}
                 title="Direct Chat"
+                border={false}
                 action={
                   <div className="flex items-center gap-2 text-sm text-white/40">
                     <div
@@ -319,35 +337,31 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Current Step Card - ADHD Feature */}
-            {currentStep && (
-              <div className="px-6 pt-4">
-                <CurrentStepCard
-                  step={currentStep}
-                  onComplete={handleStepComplete}
-                  onSkip={handleStepSkip}
-                  onStuck={handleStepStuck}
-                  isLoading={isLoading}
-                />
-              </div>
-            )}
-
             {/* Chat Area */}
-            <CrystalCardContent className="flex-1 px-6 pb-6 flex flex-col">
+            <CrystalCardContent className="flex-1 p-6 flex flex-col">
               <QuickChat
                 showHistory={true}
                 conversationId={conversationId}
                 onConversationChange={setConversationId}
                 onStateChange={handleChatStateChange}
                 isProcessing={avatarState === 'thinking' || avatarState === 'working'}
-                placeholder="Ask Dex anything..."
+                placeholder="Type a message..."
+                userInitials={userInitials}
               />
             </CrystalCardContent>
           </CrystalCard>
         </div>
 
-        {/* Right Column - Skills & Memory Providers */}
+        {/* Right Column - Current Step, Skills & Memory Providers */}
         <div className="lg:col-span-5 space-y-6">
+          {/* Current Step Panel - ADHD Focus Feature */}
+          <CurrentStepPanel
+            step={currentStep}
+            onComplete={handleStepComplete}
+            onSkip={handleStepSkip}
+            onStuck={handleStepStuck}
+            isLoading={isLoading}
+          />
           <SkillsPanel maxDisplay={4} />
           <MemoryProvidersPanel />
         </div>

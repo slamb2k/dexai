@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CommitmentList, Commitment } from '@/components/commitment-badge';
+import { CrystalCard, CrystalCardHeader, CrystalCardContent } from '@/components/crystal';
 import { api, MemorySearchResult, MemoryContext, MemoryProvider, MemoryCommitment } from '@/lib/api';
 
 const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -201,67 +202,69 @@ export default function MemoryPage() {
     <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-page-title text-text-primary">Memory</h1>
-        <p className="text-body text-text-secondary mt-1">
+        <h1 className="text-3xl font-light tracking-wide text-white/90">Memory</h1>
+        <p className="text-sm text-white/60 mt-1">
           Search your memories and track commitments
         </p>
       </div>
 
       {/* Error banner */}
       {error && !isDemo && (
-        <div className="bg-status-error/10 border border-status-error/30 rounded-2xl px-4 py-3 flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-status-error flex-shrink-0" />
-          <p className="text-body text-status-error">{error}</p>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       )}
 
       {/* Search */}
       <form onSubmit={handleSearch}>
-        <div className="crystal-card p-2">
-          <div className="flex items-center gap-3 px-4 py-2">
-            <Search className="w-5 h-5 text-text-muted flex-shrink-0" />
+        <CrystalCard padding="sm">
+          <div className="flex items-center gap-3 px-2 py-1">
+            <Search className="w-5 h-5 text-white/40 flex-shrink-0" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search memories..."
-              className="flex-1 bg-transparent text-body-lg text-text-primary placeholder:text-text-muted focus:outline-none"
+              className="flex-1 bg-transparent text-base text-white/90 placeholder:text-white/40 focus:outline-none"
             />
-            {isSearching && <RefreshCw className="w-5 h-5 text-text-muted animate-spin" />}
+            {isSearching && <RefreshCw className="w-5 h-5 text-white/40 animate-spin" />}
           </div>
-        </div>
+        </CrystalCard>
       </form>
 
       {/* Search Results */}
       {searchResults.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-section-header text-text-primary">Search Results</h2>
+            <h2 className="text-lg font-medium text-white/90">Search Results</h2>
             <button
               onClick={() => setSearchResults([])}
-              className="text-caption text-text-muted hover:text-text-primary"
+              className="text-xs text-white/40 hover:text-white/90 transition-colors"
             >
               Clear
             </button>
           </div>
           <div className="space-y-2">
             {searchResults.map((result) => (
-              <div
+              <CrystalCard
                 key={result.id}
-                className="crystal-card p-4 hover:border-accent-primary/30 cursor-pointer transition-colors"
+                padding="md"
+                hover
+                className="cursor-pointer"
               >
-                <p className="text-body text-text-primary">{result.content}</p>
+                <p className="text-sm text-white/90">{result.content}</p>
                 <div className="flex items-center gap-4 mt-2">
-                  <span className="text-caption text-text-muted">
+                  <span className="text-xs text-white/40">
                     Relevance: {Math.round(result.score * 100)}%
                   </span>
                   {result.entry_type && (
-                    <span className="text-caption text-text-disabled">
+                    <span className="text-xs text-white/20">
                       {result.entry_type}
                     </span>
                   )}
                 </div>
-              </div>
+              </CrystalCard>
             ))}
           </div>
         </section>
@@ -270,7 +273,7 @@ export default function MemoryPage() {
       {/* Loading state */}
       {isLoading && (
         <div className="flex items-center justify-center p-8">
-          <Loader2 className="w-6 h-6 text-text-muted animate-spin" />
+          <Loader2 className="w-6 h-6 text-white/40 animate-spin" />
         </div>
       )}
 
@@ -279,10 +282,10 @@ export default function MemoryPage() {
           {/* Waiting on You - RSD-Safe Language */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <Clock className="w-5 h-5 text-text-muted" />
-              <h2 className="text-section-header text-text-primary">Waiting on you</h2>
+              <Clock className="w-5 h-5 text-white/40" />
+              <h2 className="text-lg font-medium text-white/90">Waiting on you</h2>
               {commitments.length > 0 && (
-                <span className="text-caption text-text-muted">({commitments.length})</span>
+                <span className="text-xs text-white/40">({commitments.length})</span>
               )}
             </div>
             {commitments.length > 0 ? (
@@ -294,53 +297,55 @@ export default function MemoryPage() {
                 }}
               />
             ) : (
-              <div className="crystal-card p-6 text-center">
-                <p className="text-body text-text-muted">
+              <CrystalCard padding="lg" className="text-center">
+                <p className="text-sm text-white/40">
                   No active commitments. Nice work!
                 </p>
-              </div>
+              </CrystalCard>
             )}
           </section>
 
           {/* Context Snapshots */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <History className="w-5 h-5 text-text-muted" />
-              <h2 className="text-section-header text-text-primary">Context Snapshots</h2>
+              <History className="w-5 h-5 text-white/40" />
+              <h2 className="text-lg font-medium text-white/90">Context Snapshots</h2>
             </div>
             <div className="space-y-2">
               {snapshots.length === 0 ? (
-                <div className="crystal-card p-6 text-center">
-                  <p className="text-body text-text-muted">No saved contexts yet</p>
-                </div>
+                <CrystalCard padding="lg" className="text-center">
+                  <p className="text-sm text-white/40">No saved contexts yet</p>
+                </CrystalCard>
               ) : (
                 snapshots.map((snapshot) => (
                   <button
                     key={snapshot.id}
                     onClick={() => handleResumeContext(snapshot)}
-                    className="w-full crystal-card p-4 text-left group hover:border-accent-primary/30 transition-colors"
+                    className="w-full text-left group"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-body text-text-primary font-medium truncate">
-                          {snapshot.title}
-                        </p>
-                        {snapshot.summary && (
-                          <p className="text-caption text-text-muted mt-1 truncate">
-                            {snapshot.summary}
+                    <CrystalCard padding="md" hover>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white/90 font-medium truncate">
+                            {snapshot.title}
                           </p>
-                        )}
-                        <p className="text-caption text-text-disabled mt-2">
-                          {formatTimestamp(snapshot.created_at)}
-                        </p>
+                          {snapshot.summary && (
+                            <p className="text-xs text-white/40 mt-1 truncate">
+                              {snapshot.summary}
+                            </p>
+                          )}
+                          <p className="text-xs text-white/20 mt-2">
+                            {formatTimestamp(snapshot.created_at)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Resume
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-emerald-400 transition-colors" />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
-                        <span className="text-caption text-accent-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                          Resume
-                        </span>
-                        <ChevronRight className="w-4 h-4 text-text-muted group-hover:text-accent-primary transition-colors" />
-                      </div>
-                    </div>
+                    </CrystalCard>
                   </button>
                 ))
               )}
@@ -350,10 +355,10 @@ export default function MemoryPage() {
           {/* Memory Providers */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <Database className="w-5 h-5 text-text-muted" />
-              <h2 className="text-section-header text-text-primary">Memory Providers</h2>
+              <Database className="w-5 h-5 text-white/40" />
+              <h2 className="text-lg font-medium text-white/90">Memory Providers</h2>
             </div>
-            <div className="crystal-card divide-y divide-border-default">
+            <CrystalCard padding="none" className="divide-y divide-white/[0.06]">
               {providers.map((provider) => (
                 <div
                   key={provider.name}
@@ -364,30 +369,32 @@ export default function MemoryPage() {
                       className={cn(
                         'w-8 h-8 rounded-lg flex items-center justify-center',
                         provider.status === 'active'
-                          ? 'bg-status-success/20'
+                          ? 'bg-emerald-500/20'
                           : provider.status === 'error'
-                          ? 'bg-status-error/20'
-                          : 'bg-bg-surface'
+                          ? 'bg-red-500/20'
+                          : 'bg-white/[0.04]'
                       )}
                     >
                       {provider.status === 'active' ? (
-                        <CheckCircle2 className="w-4 h-4 text-status-success" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                       ) : provider.status === 'error' ? (
-                        <XCircle className="w-4 h-4 text-status-error" />
+                        <XCircle className="w-4 h-4 text-red-400" />
                       ) : (
-                        <Database className="w-4 h-4 text-text-muted" />
+                        <Database className="w-4 h-4 text-white/40" />
                       )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-body text-text-primary font-medium">
+                        <p className="text-sm text-white/90 font-medium">
                           {provider.name}
                         </p>
                         {provider.is_primary && (
-                          <span className="badge badge-success text-xs">Primary</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
+                            Primary
+                          </span>
                         )}
                       </div>
-                      <p className="text-caption text-text-muted">
+                      <p className="text-xs text-white/40">
                         {provider.status === 'active'
                           ? provider.storage_used || 'Connected'
                           : provider.status === 'error'
@@ -398,13 +405,13 @@ export default function MemoryPage() {
                   </div>
                   {provider.health_score !== undefined && (
                     <div className="text-right">
-                      <p className="text-body text-text-primary">{provider.health_score}%</p>
-                      <p className="text-caption text-text-muted">Health</p>
+                      <p className="text-sm text-white/90">{provider.health_score}%</p>
+                      <p className="text-xs text-white/40">Health</p>
                     </div>
                   )}
                 </div>
               ))}
-            </div>
+            </CrystalCard>
           </section>
         </>
       )}
