@@ -12,6 +12,7 @@ Features:
 - Handles streaming responses
 - Properly truncates for channel limits
 - Intelligent model routing with complexity hints
+- AskUserQuestion handling for ADHD-friendly clarification
 
 Usage:
     from tools.channels.sdk_handler import sdk_handler
@@ -26,7 +27,7 @@ import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 # Ensure project root is in path
 import sys
@@ -40,6 +41,225 @@ if TYPE_CHECKING:
     from tools.agent.model_router import TaskComplexity
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# AskUserQuestion Handler
+# =============================================================================
+
+# Global storage for pending question responses
+_pending_questions: dict[str, asyncio.Future] = {}
+
+
+def create_ask_user_handler(
+    message: UnifiedMessage,
+    timeout: float = 300.0,
+) -> Callable:
+    """
+    Create an AskUserQuestion handler for a specific message context.
+
+    The handler sends formatted questions to the user through the channel
+    and waits for their response.
+
+    Args:
+        message: The original inbound message (for channel/user context)
+        timeout: Maximum seconds to wait for user response (default: 5 min)
+
+    Returns:
+        Async callable that handles AskUserQuestion tool invocation
+    """
+
+    async def ask_user_handler(
+        formatted_questions: list[dict],
+        user_id: str,
+        channel: str,
+    ) -> dict[str, Any]:
+        """
+        Handle AskUserQuestion by sending to channel and collecting response.
+
+        Args:
+            formatted_questions: ADHD-formatted questions from permissions.py
+            user_id: User ID to send to
+            channel: Channel to use
+
+        Returns:
+            Dict mapping question numbers to user answers
+        """
+        # Format questions for display
+        question_text = _format_questions_for_display(formatted_questions)
+
+        # Create unique key for this question session
+        question_key = f"{user_id}:{channel}:{uuid.uuid4().hex[:8]}"
+
+        # Create future to wait for response
+        response_future: asyncio.Future = asyncio.get_event_loop().create_future()
+        _pending_questions[question_key] = response_future
+
+        try:
+            # Send questions through the channel
+            question_message = UnifiedMessage(
+                id=str(uuid.uuid4()),
+                channel=channel,
+                channel_message_id=None,
+                user_id=user_id,
+                channel_user_id=message.channel_user_id,
+                direction="outbound",
+                content=question_text,
+                content_type="text",
+                attachments=[],
+                reply_to=message.id,
+                timestamp=datetime.now(),
+                metadata={
+                    "type": "ask_user_question",
+                    "question_key": question_key,
+                    "question_count": len(formatted_questions),
+                },
+            )
+
+            # Route the question message
+            try:
+                from tools.channels.router import get_router
+                router = get_router()
+                await router.route_outbound(question_message)
+            except Exception as e:
+                logger.warning(f"Failed to send question: {e}")
+                # Return empty answers on send failure
+                return {}
+
+            # Wait for user response with timeout
+            try:
+                answers = await asyncio.wait_for(response_future, timeout=timeout)
+                return answers
+            except asyncio.TimeoutError:
+                logger.info(f"Question timeout for {user_id}")
+                return {}  # Return empty on timeout
+
+        finally:
+            # Clean up pending question
+            _pending_questions.pop(question_key, None)
+
+    return ask_user_handler
+
+
+def submit_question_response(
+    user_id: str,
+    channel: str,
+    response_content: str,
+) -> bool:
+    """
+    Submit a user's response to a pending question.
+
+    Called by channel adapters when they detect a response to a question.
+
+    Args:
+        user_id: User who responded
+        channel: Channel of response
+        response_content: The user's response text
+
+    Returns:
+        True if response was matched to a pending question
+    """
+    # Find matching pending question
+    prefix = f"{user_id}:{channel}:"
+    for key, future in list(_pending_questions.items()):
+        if key.startswith(prefix) and not future.done():
+            # Parse response into answers dict
+            answers = _parse_user_response(response_content)
+            future.set_result(answers)
+            return True
+
+    return False
+
+
+def has_pending_question(user_id: str, channel: str) -> bool:
+    """Check if user has a pending question awaiting response."""
+    prefix = f"{user_id}:{channel}:"
+    return any(
+        key.startswith(prefix) and not future.done()
+        for key, future in _pending_questions.items()
+    )
+
+
+def _format_questions_for_display(formatted_questions: list[dict]) -> str:
+    """
+    Format questions for channel display.
+
+    Creates ADHD-friendly text output:
+    - Clear numbering
+    - Brief options
+    - Simple instructions
+
+    Args:
+        formatted_questions: Questions from permissions.py formatting
+
+    Returns:
+        Formatted string for display
+    """
+    lines = ["I need some clarification:\n"]
+
+    for q in formatted_questions:
+        num = q.get("number", 1)
+        header = q.get("header", "")
+        question = q.get("question", "")
+        options = q.get("options", [])
+        multi = q.get("multi_select", False)
+
+        # Add question header
+        if header:
+            lines.append(f"**{header}**")
+        lines.append(f"{num}. {question}")
+
+        # Add options
+        for opt in options:
+            opt_num = opt.get("number", "")
+            label = opt.get("label", "")
+            desc = opt.get("description", "")
+
+            if desc:
+                lines.append(f"   {opt_num}) {label} - {desc}")
+            else:
+                lines.append(f"   {opt_num}) {label}")
+
+        if multi:
+            lines.append("   (You can select multiple)")
+        lines.append("")
+
+    lines.append("Reply with the number(s) of your choice, or type your own answer.")
+
+    return "\n".join(lines)
+
+
+def _parse_user_response(response: str) -> dict[str, Any]:
+    """
+    Parse user's response to extract answers.
+
+    Handles:
+    - Numeric selections ("1", "2,3", "1 and 3")
+    - Text responses
+    - Mixed responses
+
+    Args:
+        response: Raw user response text
+
+    Returns:
+        Dict with parsed answers (question_num -> answer)
+    """
+    response = response.strip()
+    answers = {}
+
+    # Try to extract numbers
+    numbers = re.findall(r'\d+', response)
+
+    if numbers:
+        # User selected numbered options
+        answers["selections"] = [int(n) for n in numbers]
+        answers["raw"] = response
+    else:
+        # Free-text response
+        answers["text"] = response
+        answers["raw"] = response
+
+    return answers
 
 
 def _log_to_dashboard(
@@ -110,12 +330,16 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
     # Get session manager
     manager = get_session_manager()
 
+    # Create AskUserQuestion handler for this message context
+    ask_handler = create_ask_user_handler(message)
+
     # Handle message through session manager
     result = await manager.handle_message(
         user_id=message.user_id,
         channel=message.channel,
         content=message.content,
         context=context,
+        ask_user_handler=ask_handler,
     )
 
     if not result.get("success"):
@@ -268,12 +492,16 @@ async def sdk_handler_streaming(
     # Get session manager
     manager = get_session_manager()
 
+    # Create AskUserQuestion handler for this message context
+    ask_handler = create_ask_user_handler(message)
+
     try:
         full_response = []
         async for msg in manager.stream_message(
             user_id=message.user_id,
             channel=message.channel,
             content=message.content,
+            ask_user_handler=ask_handler,
         ):
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
