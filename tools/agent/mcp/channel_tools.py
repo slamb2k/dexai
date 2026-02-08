@@ -24,6 +24,9 @@ def dexai_channel_pair(code: str) -> dict[str, Any]:
         {"success": True, "channel": str, "message": str} on success
         {"success": False, "error": str} on failure
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     from tools.channels.inbox import (
         consume_pairing_code,
         link_identity,
@@ -31,7 +34,9 @@ def dexai_channel_pair(code: str) -> dict[str, Any]:
     )
 
     # Clean up the code (remove spaces, normalize)
+    original_code = code
     code = code.strip().upper() if code else ""
+    logger.info(f"[PAIRING] Attempting to pair with code: '{code}' (original: '{original_code}')")
 
     if not code:
         return {
@@ -69,6 +74,15 @@ def dexai_channel_pair(code: str) -> dict[str, Any]:
 
     # Update the paired status
     update_user_paired_status(user_id, is_paired=True)
+
+    # Grant the 'user' role for chat permissions
+    try:
+        from tools.security.permissions import grant_role
+        grant_role(user_id, "user", granted_by="pairing_system")
+        logger.info(f"[PAIRING] Granted 'user' role to {user_id}")
+    except Exception as e:
+        logger.warning(f"[PAIRING] Failed to grant user role: {e}")
+        # Continue anyway - pairing succeeded even if role grant failed
 
     # Format friendly channel name
     channel_names = {
