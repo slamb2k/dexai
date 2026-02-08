@@ -646,6 +646,12 @@ Provider-agnostic memory tools using MemoryService facade. Works with any config
 | `dexai_calendar_propose` | Propose meeting (requires confirmation to create) |
 | `dexai_calendar_availability` | Find available meeting time slots |
 
+#### Channel MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_channel_pair` | Complete channel pairing with a pairing code (natural language: "pair my telegram with code 12345") |
+
 ### Configuration
 
 | File | Description |

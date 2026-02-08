@@ -304,6 +304,10 @@ class ChatService:
         """
         Send a message and get a response from DexAI.
 
+        Uses SessionManager to maintain conversation context across messages.
+        The same session is reused for all messages in a conversation, allowing
+        Claude to remember previous context.
+
         Args:
             message: User message to send
             conversation_id: Conversation ID to continue
@@ -319,36 +323,68 @@ class ChatService:
         self.save_message(role="user", content=message, conversation_id=conv_id)
 
         try:
-            # Import and use DexAIClient
-            from tools.agent.sdk_client import DexAIClient
+            # Use SessionManager to maintain conversation context
+            from tools.channels.session_manager import get_session_manager
 
-            async with DexAIClient(user_id=self.user_id) as client:
-                result = await client.query(message)
+            manager = get_session_manager()
 
+            # Use conversation_id as part of session key for web chat
+            # This ensures each conversation maintains its own context
+            session_user_id = f"web:{self.user_id}:{conv_id}"
+
+            result = await manager.handle_message(
+                user_id=session_user_id,
+                channel="web",
+                content=message,
+            )
+
+            if result.get("success"):
                 # Save assistant response
                 self.save_message(
                     role="assistant",
-                    content=result.text,
+                    content=result.get("content", ""),
                     conversation_id=conv_id,
-                    model=result.model,
-                    complexity=result.complexity,
-                    cost_usd=result.cost_usd,
-                    tool_uses=result.tool_uses,
+                    model=result.get("model"),
+                    complexity=result.get("complexity"),
+                    cost_usd=result.get("cost_usd", 0.0),
+                    tool_uses=result.get("tool_uses", []),
                 )
 
                 return {
                     "conversation_id": conv_id,
                     "message_id": str(uuid.uuid4()),
-                    "content": result.text,
+                    "content": result.get("content", ""),
                     "role": "assistant",
-                    "model": result.model,
-                    "complexity": result.complexity,
-                    "cost_usd": result.cost_usd,
-                    "tool_uses": result.tool_uses,
+                    "model": result.get("model"),
+                    "complexity": result.get("complexity"),
+                    "cost_usd": result.get("cost_usd", 0.0),
+                    "tool_uses": result.get("tool_uses", []),
+                }
+            else:
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Session query failed: {error_msg}")
+
+                error_response = f"I encountered an error: {error_msg}"
+                self.save_message(
+                    role="assistant",
+                    content=error_response,
+                    conversation_id=conv_id,
+                )
+
+                return {
+                    "conversation_id": conv_id,
+                    "message_id": str(uuid.uuid4()),
+                    "content": error_response,
+                    "role": "assistant",
+                    "model": None,
+                    "complexity": None,
+                    "cost_usd": 0.0,
+                    "tool_uses": [],
+                    "error": error_msg,
                 }
 
         except ImportError as e:
-            logger.warning(f"DexAIClient not available: {e}")
+            logger.warning(f"SessionManager not available: {e}")
             # Fallback response when SDK not available
             fallback_response = (
                 "I'm sorry, but I'm currently unable to process your request. "
@@ -375,6 +411,8 @@ class ChatService:
 
         except Exception as e:
             logger.error(f"Error sending message: {e}")
+            import traceback
+            traceback.print_exc()
             error_response = f"I encountered an error: {str(e)}"
 
             self.save_message(
@@ -403,6 +441,8 @@ class ChatService:
         """
         Stream a response from DexAI.
 
+        Uses SessionManager to maintain conversation context.
+
         Args:
             message: User message to send
             conversation_id: Conversation ID to continue
@@ -416,57 +456,58 @@ class ChatService:
         self.save_message(role="user", content=message, conversation_id=conv_id)
 
         try:
-            from tools.agent.sdk_client import DexAIClient
+            from tools.channels.session_manager import get_session_manager
             from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-            async with DexAIClient(user_id=self.user_id) as client:
-                await client.query(message)
+            manager = get_session_manager()
 
-                full_response = []
-                tool_uses = []
-                cost_usd = 0.0
-                model = None
-                complexity = None
+            # Use conversation_id as part of session key for web chat
+            session_user_id = f"web:{self.user_id}:{conv_id}"
 
-                async for msg in client.receive_response():
-                    if isinstance(msg, AssistantMessage):
-                        for block in msg.content:
-                            if isinstance(block, TextBlock):
-                                full_response.append(block.text)
-                                yield {
-                                    "type": "chunk",
-                                    "content": block.text,
-                                    "conversation_id": conv_id,
-                                }
-                    elif isinstance(msg, ResultMessage):
-                        if hasattr(msg, "total_cost_usd"):
-                            cost_usd = msg.total_cost_usd or 0.0
-                        break
+            full_response = []
+            tool_uses = []
+            cost_usd = 0.0
+            model = None
+            complexity = None
 
-                # Get routing metadata
-                if client._last_routing_decision:
-                    model = client._last_routing_decision.primary_model.routed_id
-                    complexity = client._last_routing_decision.complexity.value
+            async for msg in manager.stream_message(
+                user_id=session_user_id,
+                channel="web",
+                content=message,
+            ):
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            full_response.append(block.text)
+                            yield {
+                                "type": "chunk",
+                                "content": block.text,
+                                "conversation_id": conv_id,
+                            }
+                elif isinstance(msg, ResultMessage):
+                    if hasattr(msg, "total_cost_usd"):
+                        cost_usd = msg.total_cost_usd or 0.0
+                    break
 
-                # Save complete response
-                response_text = "".join(full_response)
-                self.save_message(
-                    role="assistant",
-                    content=response_text,
-                    conversation_id=conv_id,
-                    model=model,
-                    complexity=complexity,
-                    cost_usd=cost_usd,
-                    tool_uses=tool_uses,
-                )
+            # Save complete response
+            response_text = "".join(full_response)
+            self.save_message(
+                role="assistant",
+                content=response_text,
+                conversation_id=conv_id,
+                model=model,
+                complexity=complexity,
+                cost_usd=cost_usd,
+                tool_uses=tool_uses,
+            )
 
-                yield {
-                    "type": "done",
-                    "conversation_id": conv_id,
-                    "model": model,
-                    "complexity": complexity,
-                    "cost_usd": cost_usd,
-                }
+            yield {
+                "type": "done",
+                "conversation_id": conv_id,
+                "model": model,
+                "complexity": complexity,
+                "cost_usd": cost_usd,
+            }
 
         except ImportError:
             fallback = "AI service temporarily unavailable."

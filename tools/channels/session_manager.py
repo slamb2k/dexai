@@ -49,7 +49,7 @@ class Session:
     Represents a user's conversation session.
 
     Wraps DexAIClient and maintains session state for continuity.
-    Uses SDK session resumption for context persistence.
+    The client is kept alive across messages to maintain conversation context.
     """
 
     def __init__(
@@ -77,16 +77,58 @@ class Session:
         self.ask_user_handler = ask_user_handler
 
         self._client = None
+        self._client_active = False  # Track if client context is active
         self._last_activity = datetime.now()
         self._message_count = 0
         self._total_cost = 0.0
         self._created_at = datetime.now()
+        self._lock = asyncio.Lock()  # Prevent concurrent client access
+
+    async def _ensure_client(self) -> None:
+        """
+        Ensure the DexAIClient is initialized and active.
+
+        The client is kept alive to maintain conversation context across messages.
+        """
+        if self._client_active and self._client is not None:
+            return
+
+        from tools.agent.sdk_client import DexAIClient
+
+        # Clean up any existing client first
+        await self._cleanup_client()
+
+        # Create new client
+        self._client = DexAIClient(
+            user_id=self.user_id,
+            session_type=self.session_type,
+            channel=self.channel,
+            resume_session_id=self.sdk_session_id,
+            ask_user_handler=self.ask_user_handler,
+        )
+
+        # Enter the async context to start the client
+        await self._client.__aenter__()
+        self._client_active = True
+        logger.debug(f"Initialized persistent client for session {self.user_id}:{self.channel}")
+
+    async def _cleanup_client(self) -> None:
+        """Clean up the client when session ends."""
+        if self._client is not None and self._client_active:
+            try:
+                await self._client.__aexit__(None, None, None)
+            except Exception as e:
+                logger.warning(f"Error cleaning up client: {e}")
+            finally:
+                self._client = None
+                self._client_active = False
 
     async def send_message(self, content: str) -> dict[str, Any]:
         """
         Send a message and get a response.
 
-        Uses DexAIClient with session resumption for context continuity.
+        The client is kept alive across messages to maintain conversation context.
+        This allows Claude to remember previous messages in the conversation.
 
         Args:
             content: Message content
@@ -94,24 +136,20 @@ class Session:
         Returns:
             Dict with response data
         """
-        from tools.agent.sdk_client import DexAIClient
+        async with self._lock:  # Prevent concurrent message sends
+            self._last_activity = datetime.now()
+            self._message_count += 1
 
-        self._last_activity = datetime.now()
-        self._message_count += 1
+            try:
+                # Ensure client is initialized (reuse if already active)
+                await self._ensure_client()
 
-        try:
-            async with DexAIClient(
-                user_id=self.user_id,
-                session_type=self.session_type,
-                channel=self.channel,
-                resume_session_id=self.sdk_session_id,
-                ask_user_handler=self.ask_user_handler,
-            ) as client:
-                result = await client.query(content)
+                # Query using the persistent client
+                result = await self._client.query(content)
 
-                # Capture session ID for future resumption
-                if client.session_id:
-                    self.sdk_session_id = client.session_id
+                # Capture session ID for persistence
+                if self._client.session_id:
+                    self.sdk_session_id = self._client.session_id
 
                 self._total_cost += result.cost_usd
 
@@ -128,19 +166,21 @@ class Session:
                     "sdk_session_id": self.sdk_session_id,
                 }
 
-        except Exception as e:
-            logger.error(f"Session query error for {self.user_id}: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "content": "",
-            }
+            except Exception as e:
+                logger.error(f"Session query error for {self.user_id}: {e}")
+                # Clean up client on error - will be recreated on next message
+                await self._cleanup_client()
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "content": "",
+                }
 
     async def stream_response(self, content: str) -> AsyncIterator[Any]:
         """
         Send a message and stream the response.
 
-        Yields message objects from the SDK.
+        Uses the persistent client to maintain conversation context.
 
         Args:
             content: Message content
@@ -148,22 +188,17 @@ class Session:
         Yields:
             SDK message objects
         """
-        from tools.agent.sdk_client import DexAIClient
+        async with self._lock:
+            self._last_activity = datetime.now()
+            self._message_count += 1
 
-        self._last_activity = datetime.now()
-        self._message_count += 1
+            try:
+                # Ensure client is initialized (reuse if already active)
+                await self._ensure_client()
 
-        try:
-            async with DexAIClient(
-                user_id=self.user_id,
-                session_type=self.session_type,
-                channel=self.channel,
-                resume_session_id=self.sdk_session_id,
-                ask_user_handler=self.ask_user_handler,
-            ) as client:
-                await client._client.query(content)
+                await self._client._client.query(content)
 
-                async for msg in client.receive_response():
+                async for msg in self._client.receive_response():
                     # Capture session ID from init message
                     if hasattr(msg, "type") and msg.type == "system":
                         if hasattr(msg, "subtype") and msg.subtype == "init":
@@ -172,9 +207,10 @@ class Session:
 
                     yield msg
 
-        except Exception as e:
-            logger.error(f"Session stream error for {self.user_id}: {e}")
-            raise
+            except Exception as e:
+                logger.error(f"Session stream error for {self.user_id}: {e}")
+                await self._cleanup_client()
+                raise
 
     async def stream_input(
         self,
@@ -206,20 +242,15 @@ class Session:
             async for response in session.stream_input(my_messages()):
                 print(response)
         """
-        from tools.agent.sdk_client import DexAIClient
+        async with self._lock:
+            self._last_activity = datetime.now()
+            self._message_count += 1
 
-        self._last_activity = datetime.now()
-        self._message_count += 1
+            try:
+                # Ensure client is initialized
+                await self._ensure_client()
 
-        try:
-            async with DexAIClient(
-                user_id=self.user_id,
-                session_type=self.session_type,
-                channel=self.channel,
-                resume_session_id=self.sdk_session_id,
-                ask_user_handler=self.ask_user_handler,
-            ) as client:
-                async for msg in client.query_stream(message_generator):
+                async for msg in self._client.query_stream(message_generator):
                     # Capture session ID from init message
                     if hasattr(msg, "type") and msg.type == "system":
                         if hasattr(msg, "subtype") and msg.subtype == "init":
@@ -228,9 +259,19 @@ class Session:
 
                     yield msg
 
-        except Exception as e:
-            logger.error(f"Session stream input error for {self.user_id}: {e}")
-            raise
+            except Exception as e:
+                logger.error(f"Session stream input error for {self.user_id}: {e}")
+                await self._cleanup_client()
+                raise
+
+    async def close(self) -> None:
+        """
+        Close the session and clean up resources.
+
+        Should be called when the session is no longer needed.
+        """
+        await self._cleanup_client()
+        logger.debug(f"Closed session for {self.user_id}:{self.channel}")
 
     @property
     def is_stale(self) -> bool:
@@ -271,6 +312,8 @@ class Session:
         session._total_cost = data.get("total_cost", 0.0)
         if "created_at" in data:
             session._created_at = datetime.fromisoformat(data["created_at"])
+        # Note: _lock and _client are initialized in __init__
+        # The client will be lazily initialized on first message
         return session
 
 
@@ -463,9 +506,9 @@ class SessionManager:
             return "subagent"
         return default
 
-    def clear_session(self, user_id: str, channel: str) -> bool:
+    async def clear_session(self, user_id: str, channel: str) -> bool:
         """
-        Clear a specific session.
+        Clear a specific session and clean up resources.
 
         Args:
             user_id: User identifier
@@ -476,15 +519,17 @@ class SessionManager:
         """
         key = self._session_key(user_id, channel)
         if key in self._sessions:
+            session = self._sessions[key]
+            await session.close()
             del self._sessions[key]
             if self._persist:
                 self._save_sessions()
             return True
         return False
 
-    def clear_all_sessions(self, user_id: Optional[str] = None) -> int:
+    async def clear_all_sessions(self, user_id: Optional[str] = None) -> int:
         """
-        Clear sessions.
+        Clear sessions and clean up resources.
 
         Args:
             user_id: Optional user ID to clear only their sessions
@@ -501,6 +546,8 @@ class SessionManager:
             keys_to_remove = list(self._sessions.keys())
 
         for key in keys_to_remove:
+            session = self._sessions[key]
+            await session.close()
             del self._sessions[key]
 
         if self._persist:
@@ -509,13 +556,25 @@ class SessionManager:
         return len(keys_to_remove)
 
     def _cleanup_stale_sessions(self) -> int:
-        """Remove stale sessions."""
+        """Remove stale sessions and clean up their resources."""
         stale_keys = [
             key for key, session in self._sessions.items()
             if session.is_stale
         ]
         for key in stale_keys:
             logger.debug(f"Cleaning up stale session: {key}")
+            session = self._sessions[key]
+            # Schedule cleanup in background (don't block)
+            try:
+                asyncio.create_task(session.close())
+            except RuntimeError:
+                # No event loop running - try synchronous cleanup
+                try:
+                    loop = asyncio.new_event_loop()
+                    loop.run_until_complete(session.close())
+                    loop.close()
+                except Exception:
+                    pass
             del self._sessions[key]
 
         if stale_keys and self._persist:
@@ -536,6 +595,7 @@ class SessionManager:
                     "message_count": session._message_count,
                     "total_cost": session._total_cost,
                     "has_sdk_session": bool(session.sdk_session_id),
+                    "client_active": session._client_active,
                 }
                 for key, session in self._sessions.items()
             ],
@@ -627,10 +687,14 @@ def main():
         for session in stats["sessions"]:
             print(f"  {session['key']}: {session['message_count']} msgs, "
                   f"${session['total_cost']:.4f}, "
-                  f"{session['age_minutes']:.1f} min old")
+                  f"{session['age_minutes']:.1f} min old, "
+                  f"client_active: {session.get('client_active', False)}")
 
     elif args.clear:
-        count = manager.clear_all_sessions(args.user)
+        async def do_clear():
+            return await manager.clear_all_sessions(args.user)
+
+        count = asyncio.run(do_clear())
         print(f"Cleared {count} sessions")
 
     elif args.message and args.user:
@@ -643,6 +707,7 @@ def main():
             if result.get("success"):
                 print(f"Response: {result['content']}")
                 print(f"Cost: ${result.get('cost_usd', 0):.4f}")
+                print(f"Message count: {result.get('message_count', 0)}")
             else:
                 print(f"Error: {result.get('error')}")
 

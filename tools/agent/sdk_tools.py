@@ -360,6 +360,25 @@ async def calendar_propose(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # =============================================================================
+# Channel Tools
+# =============================================================================
+
+@tool(
+    "channel_pair",
+    "Complete channel pairing with a pairing code. Use when user wants to pair/link their Telegram, Discord, or other chat app.",
+    {"code": str}
+)
+async def channel_pair(args: dict[str, Any]) -> dict[str, Any]:
+    """Pair a channel using a pairing code."""
+    from tools.agent.mcp.channel_tools import dexai_channel_pair
+
+    result = dexai_channel_pair(
+        code=args["code"]
+    )
+    return _format_result(result)
+
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -414,6 +433,8 @@ ALL_TOOLS = [
     email_draft,
     calendar_today,
     calendar_propose,
+    # Channel
+    channel_pair,
 ]
 
 # Create the SDK MCP server

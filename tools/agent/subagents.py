@@ -318,14 +318,29 @@ def get_agent_definition(agent_name: str) -> AgentDefinition | None:
     return DEXAI_AGENTS.get(agent_name)
 
 
-def get_agents_for_sdk() -> dict[str, dict]:
+def get_agents_for_sdk() -> dict[str, Any]:
     """
     Get agents formatted for SDK registration.
 
     Returns:
-        Dict mapping agent names to their SDK-compatible definitions
+        Dict mapping agent names to their SDK-compatible AgentDefinition instances
     """
-    return {name: agent.to_dict() for name, agent in DEXAI_AGENTS.items()}
+    try:
+        from claude_agent_sdk.types import AgentDefinition as SDKAgentDefinition
+
+        # Convert our AgentDefinition to SDK's AgentDefinition dataclass
+        return {
+            name: SDKAgentDefinition(
+                description=agent.description,
+                prompt=agent.prompt,
+                tools=agent.tools if agent.tools else None,
+                model=agent.model if agent.model in ("sonnet", "opus", "haiku", "inherit") else "haiku",
+            )
+            for name, agent in DEXAI_AGENTS.items()
+        }
+    except ImportError:
+        logger.warning("claude_agent_sdk not installed, returning dict format")
+        return {name: agent.to_dict() for name, agent in DEXAI_AGENTS.items()}
 
 
 def list_agents() -> list[dict]:
