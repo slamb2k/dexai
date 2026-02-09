@@ -226,7 +226,35 @@ class DiscordAdapter(ChannelAdapter):
                 "success": True,
                 "message_id": str(result.id),
                 "channel_id": str(result.channel.id),
+                "message_obj": result,  # Include message object for updates
             }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def update_message(
+        self,
+        message_obj,
+        content: str,
+    ) -> dict[str, Any]:
+        """
+        Update an existing Discord message.
+
+        Used for streaming responses by progressively updating the message.
+        Discord has a 2000 character limit per message.
+
+        Args:
+            message_obj: Discord Message object to update
+            content: New message content (truncated at 2000 chars)
+
+        Returns:
+            Dict with success status
+        """
+        try:
+            # Respect Discord's 2000 character limit
+            truncated_content = content[:2000]
+            await message_obj.edit(content=truncated_content)
+            return {"success": True}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -581,7 +609,12 @@ async def run_adapter() -> None:
     router = get_router()
     router.register_adapter(adapter)
 
-    print("Starting Discord adapter...")
+    # Register SDK handler for full Claude Agent SDK capabilities
+    # Uses streaming handler for progressive message updates
+    from tools.channels.sdk_handler import sdk_handler_with_streaming
+    router.add_message_handler(sdk_handler_with_streaming)
+
+    print("Starting Discord adapter with streaming support...")
     await adapter.connect()
 
 

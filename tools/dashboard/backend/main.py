@@ -85,10 +85,11 @@ async def lifespan(app: FastAPI):
         logger.info("Channel router initialized")
 
         # Register SDK message handler for processing messages with Claude
+        # Uses streaming handler which routes to channel-specific implementations
         try:
-            from tools.channels.sdk_handler import sdk_handler
-            router.add_message_handler(sdk_handler)
-            logger.info("SDK message handler registered")
+            from tools.channels.sdk_handler import sdk_handler_with_streaming
+            router.add_message_handler(sdk_handler_with_streaming)
+            logger.info("SDK streaming message handler registered")
         except ImportError as e:
             logger.warning(f"SDK handler not available: {e}")
         except Exception as e:

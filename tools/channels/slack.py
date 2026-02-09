@@ -228,6 +228,44 @@ class SlackAdapter(ChannelAdapter):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    async def update_message(
+        self,
+        channel_id: str,
+        message_ts: str,
+        content: str,
+    ) -> dict[str, Any]:
+        """
+        Update an existing Slack message in place.
+
+        Used for streaming responses by progressively updating the message.
+
+        Args:
+            channel_id: Slack channel ID
+            message_ts: Message timestamp (ID) to update
+            content: New message content
+
+        Returns:
+            Dict with success status and timestamp
+        """
+        try:
+            from slack_sdk.web.async_client import AsyncWebClient
+            from slack_sdk.errors import SlackApiError
+
+            client = AsyncWebClient(token=self.bot_token)
+
+            result = await client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text=content,
+            )
+
+            return {"success": True, "ts": result["ts"]}
+
+        except SlackApiError as e:
+            return {"success": False, "error": str(e)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def to_unified(self, event: dict[str, Any]) -> UnifiedMessage:
         """
         Convert Slack event to UnifiedMessage.
@@ -661,7 +699,12 @@ async def run_adapter() -> None:
     router = get_router()
     router.register_adapter(adapter)
 
-    print("Starting Slack adapter...")
+    # Register SDK handler for full Claude Agent SDK capabilities
+    # Uses streaming handler for progressive message updates
+    from tools.channels.sdk_handler import sdk_handler_with_streaming
+    router.add_message_handler(sdk_handler_with_streaming)
+
+    print("Starting Slack adapter with streaming support...")
     await adapter.connect()
 
     # Keep running
