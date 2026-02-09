@@ -589,10 +589,11 @@ async def run_adapter() -> None:
     router.register_adapter(adapter)
 
     # Register SDK handler for full Claude Agent SDK capabilities
-    from tools.channels.sdk_handler import sdk_handler
-    router.add_message_handler(sdk_handler)
+    # Uses streaming handler which routes to channel-specific implementations
+    from tools.channels.sdk_handler import sdk_handler_with_streaming
+    router.add_message_handler(sdk_handler_with_streaming)
 
-    print("Starting Telegram adapter with DexAI SDK client...")
+    print("Starting Telegram adapter with DexAI SDK streaming handler...")
     await adapter.connect()
 
     # Keep running
