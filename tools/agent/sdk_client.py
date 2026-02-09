@@ -555,6 +555,9 @@ class DexAIClient:
                     "allowUnixSockets": network_config.get("allow_unix_sockets", []),
                 }
 
+        # Determine workspace root for system prompt and security hooks
+        workspace_root = Path(self.working_dir) if self.working_dir else None
+
         # Build hooks for lifecycle events (including security)
         hooks = create_hooks(
             user_id=self.user_id,
@@ -577,8 +580,6 @@ class DexAIClient:
                 logger.warning(f"Failed to load subagents: {e}")
 
         # Build options with session-aware system prompt
-        # Pass workspace as workspace_root for reading bootstrap files
-        workspace_root = Path(self.working_dir) if self.working_dir else None
         options_kwargs = {
             "model": model,
             "allowed_tools": allowed_tools,
@@ -966,6 +967,9 @@ class DexAIClient:
                     "allowUnixSockets": network_config.get("allow_unix_sockets", []),
                 }
 
+        # Determine workspace root for system prompt and security hooks
+        workspace_root = Path(self.working_dir) if self.working_dir else None
+
         hooks = create_hooks(
             user_id=self.user_id,
             channel=self.channel,
@@ -985,8 +989,6 @@ class DexAIClient:
                 pass
 
         # Build options with output_format
-        # Pass workspace as workspace_root for reading bootstrap files
-        workspace_root = Path(self.working_dir) if self.working_dir else None
         options_kwargs = {
             "model": model,
             "allowed_tools": allowed_tools,
