@@ -379,6 +379,58 @@ async def channel_pair(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # =============================================================================
+# Dependency Tools (Skill Package Management)
+# =============================================================================
+
+@tool(
+    "get_skill_dependency_setting",
+    "Get user's preference for skill dependency installation (ask/always/never)",
+    {"user_id": str}
+)
+async def get_skill_dependency_setting(args: dict[str, Any]) -> dict[str, Any]:
+    """Get user's dependency installation preference."""
+    from tools.agent.mcp.dependency_tools import dexai_get_skill_dependency_setting
+
+    result = dexai_get_skill_dependency_setting(
+        user_id=args.get("user_id", "default")
+    )
+    return _format_result(result)
+
+
+@tool(
+    "verify_package",
+    "Verify a Python package is safe to install (security check before installation)",
+    {"package_name": str, "version": str}
+)
+async def verify_package(args: dict[str, Any]) -> dict[str, Any]:
+    """Verify package security before installation."""
+    from tools.agent.mcp.dependency_tools import dexai_verify_package
+
+    result = dexai_verify_package(
+        package_name=args["package_name"],
+        version=args.get("version")
+    )
+    return _format_result(result)
+
+
+@tool(
+    "install_package",
+    "Install a Python package after security verification",
+    {"package_name": str, "version": str, "skip_verification": bool}
+)
+async def install_package(args: dict[str, Any]) -> dict[str, Any]:
+    """Install a verified Python package."""
+    from tools.agent.mcp.dependency_tools import dexai_install_package
+
+    result = dexai_install_package(
+        package_name=args["package_name"],
+        version=args.get("version"),
+        skip_verification=args.get("skip_verification", False)
+    )
+    return _format_result(result)
+
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -435,6 +487,10 @@ ALL_TOOLS = [
     calendar_propose,
     # Channel
     channel_pair,
+    # Dependency (Skill Package Management)
+    get_skill_dependency_setting,
+    verify_package,
+    install_package,
 ]
 
 # Create the SDK MCP server

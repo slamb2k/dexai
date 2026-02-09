@@ -90,7 +90,7 @@ export function ChatHistory({
   return (
     <div
       ref={containerRef}
-      className={cn('flex flex-col space-y-6 overflow-y-auto', className)}
+      className={cn('flex flex-col space-y-4 overflow-y-auto', className)}
     >
       {messages.map((message) => (
         <CrystalMessage
@@ -103,7 +103,7 @@ export function ChatHistory({
         />
       ))}
 
-      {/* Typing indicator */}
+      {/* Typing indicator with streaming content */}
       {isTyping && (
         <div className="flex gap-4">
           <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center flex-shrink-0">
@@ -114,6 +114,8 @@ export function ChatHistory({
               {typingContent ? (
                 <div className="prose prose-sm prose-invert max-w-none">
                   <ReactMarkdown>{typingContent}</ReactMarkdown>
+                  {/* Blinking cursor animation */}
+                  <span className="inline-block w-[2px] h-[1.1em] bg-white/60 ml-0.5 align-middle animate-pulse" />
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5">

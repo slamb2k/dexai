@@ -9,15 +9,12 @@ import {
   User,
   Menu,
   X,
-  Zap,
-  Shield,
   Home,
   Database,
   Sparkles,
   Radio,
+  Building2,
 } from 'lucide-react';
-import { EnergySelector } from '@/components/energy-selector';
-import { FlowIndicator } from '@/components/flow-indicator';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -29,15 +26,13 @@ const NAV_ITEMS = [
   { label: 'Overview', href: '/', icon: Home },
   { label: 'Memory', href: '/memory', icon: Database },
   { label: 'Skills', href: '/skills', icon: Sparkles },
+  { label: 'Services', href: '/office', icon: Building2 },
   { label: 'Channels', href: '/channels', icon: Radio },
 ];
 
 export function CrystalHeader({ className }: CrystalHeaderProps) {
   const pathname = usePathname();
   const [userName, setUserName] = useState<string>('');
-  const [energyLevel, setEnergyLevel] = useState<'low' | 'medium' | 'high'>('medium');
-  const [isInFlow, setIsInFlow] = useState(false);
-  const [flowStartTime, setFlowStartTime] = useState<Date | undefined>();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Close mobile menu on route change
@@ -53,19 +48,6 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
         if (setupRes.success && setupRes.data?.user_name) {
           setUserName(setupRes.data.user_name);
         }
-
-        const energyRes = await api.getEnergyLevel();
-        if (energyRes.success && energyRes.data) {
-          setEnergyLevel(energyRes.data.level as 'low' | 'medium' | 'high');
-        }
-
-        const flowRes = await api.getFlowState();
-        if (flowRes.success && flowRes.data) {
-          setIsInFlow(flowRes.data.is_in_flow);
-          if (flowRes.data.flow_start_time) {
-            setFlowStartTime(new Date(flowRes.data.flow_start_time));
-          }
-        }
       } catch (e) {
         console.error('Failed to fetch settings:', e);
       }
@@ -74,15 +56,6 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
     fetchSettings();
   }, []);
 
-  const handleEnergyChange = async (level: 'low' | 'medium' | 'high') => {
-    setEnergyLevel(level);
-    try {
-      await api.setEnergyLevel(level);
-    } catch (e) {
-      console.error('Failed to save energy level:', e);
-    }
-  };
-
   const getInitials = (name: string): string => {
     if (!name) return 'U';
     const parts = name.trim().split(/\s+/);
@@ -90,15 +63,6 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
       return parts[0].charAt(0).toUpperCase();
     }
     return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-  };
-
-  const getEnergyColor = (level: 'low' | 'medium' | 'high') => {
-    const colors = {
-      low: 'text-teal-400',
-      medium: 'text-emerald-400',
-      high: 'text-green-400',
-    };
-    return colors[level];
   };
 
   return (
@@ -163,46 +127,6 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
 
           {/* Right Section */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Mobile ADHD Indicators - Icon Only */}
-            <div className="flex sm:hidden items-center gap-1.5">
-              <button
-                className={cn(
-                  'w-10 h-10 rounded-lg flex items-center justify-center',
-                  'bg-white/[0.04] border border-white/[0.06]',
-                  'hover:bg-white/[0.08]'
-                )}
-                title={`Energy: ${energyLevel}`}
-              >
-                <Zap className={cn('w-4 h-4', getEnergyColor(energyLevel))} />
-              </button>
-              {isInFlow && (
-                <button
-                  className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center',
-                    'bg-purple-500/10 border border-purple-500/20'
-                  )}
-                  title="Flow state active"
-                >
-                  <Shield className="w-4 h-4 text-purple-400" />
-                </button>
-              )}
-            </div>
-
-            {/* Desktop ADHD Features - Hidden on mobile */}
-            <div className="hidden sm:flex items-center gap-3 pr-4 border-r border-white/[0.06]">
-              <EnergySelector
-                value={energyLevel}
-                onChange={handleEnergyChange}
-                compact
-              />
-              <FlowIndicator
-                isInFlow={isInFlow}
-                flowStartTime={flowStartTime}
-                onPauseFlow={() => setIsInFlow(false)}
-                compact
-              />
-            </div>
-
             {/* Online Status - Hide text on small screens */}
             <div
               className={cn(
@@ -317,17 +241,6 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
                   </div>
                 </div>
 
-                {/* Mobile Energy Selector */}
-                <div className="px-4 py-3">
-                  <p className="text-xs text-white/40 mb-2 uppercase tracking-wider">
-                    Energy Level
-                  </p>
-                  <EnergySelector
-                    value={energyLevel}
-                    onChange={handleEnergyChange}
-                    compact={false}
-                  />
-                </div>
               </div>
             </div>
           </nav>

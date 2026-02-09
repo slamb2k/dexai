@@ -34,8 +34,8 @@ services:
       - ./args:/app/args
       # Mount memory for persistent storage
       - ./memory:/app/memory
-      # Mount .claude directory for agent-created skills
-      - ./.claude:/app/.claude
+      # Note: .claude/skills/ is baked into the image (built-in skills, read-only)
+      # User-created skills go in workspace: /app/data/workspaces/{user}/.claude/skills/
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/api/health', timeout=5).raise_for_status()"]
       interval: 30s

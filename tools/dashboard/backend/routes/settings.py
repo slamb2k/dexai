@@ -19,6 +19,7 @@ from tools.dashboard.backend.models import (
     NotificationSettings,
     PrivacySettings,
     SettingsUpdate,
+    SkillDependencySettings,
 )
 
 
@@ -154,6 +155,15 @@ async def get_settings(user_id: str = "default"):
         data_retention_days=90,
     )
 
+    # Build skill dependency settings
+    skill_deps_config = load_yaml_config("skill_dependencies.yaml")
+    skill_deps_data = skill_deps_config.get("skill_dependencies", {})
+    # Also check user preferences for per-user override
+    user_skill_deps = prefs.get("skill_dependency_install_mode")
+    skill_dep_settings = SkillDependencySettings(
+        install_mode=user_skill_deps or skill_deps_data.get("install_mode", "ask"),
+    )
+
     # Build complete settings object
     settings = DashboardSettings(
         display_name=prefs.get("display_name", "User"),
@@ -161,6 +171,7 @@ async def get_settings(user_id: str = "default"):
         language=prefs.get("language", "en"),
         notifications=notification_settings,
         privacy=privacy_settings,
+        skill_dependencies=skill_dep_settings,
         theme=prefs.get("theme", "dark"),
         sidebar_collapsed=bool(prefs.get("sidebar_collapsed", False)),
     )
@@ -255,6 +266,29 @@ async def update_settings(updates: SettingsUpdate, user_id: str = "default"):
         # Save updated config
         save_yaml_config("privacy.yaml", config)
 
+    # Handle skill dependency settings updates
+    if updates.skill_dependencies is not None:
+        skill_deps = updates.skill_dependencies
+
+        # Validate install_mode
+        valid_modes = ["ask", "always", "never"]
+        if skill_deps.install_mode not in valid_modes:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid install_mode. Must be one of: {valid_modes}"
+            )
+
+        # Store in user preferences for per-user setting
+        set_preferences(user_id, {"skill_dependency_install_mode": skill_deps.install_mode})
+
+        # Also save to config file for system-wide default
+        config = load_yaml_config("skill_dependencies.yaml")
+        if "skill_dependencies" not in config:
+            config["skill_dependencies"] = {}
+        config["skill_dependencies"]["install_mode"] = skill_deps.install_mode
+        save_yaml_config("skill_dependencies.yaml", config)
+
     # Get updated settings
     result = await get_settings(user_id)
 
@@ -267,6 +301,8 @@ async def update_settings(updates: SettingsUpdate, user_id: str = "default"):
             changed_fields.append("notifications")
         if updates.privacy is not None:
             changed_fields.append("privacy")
+        if updates.skill_dependencies is not None:
+            changed_fields.append("skill_dependencies")
 
         log_audit(
             event_type="config.changed",
@@ -592,6 +628,86 @@ async def set_energy_level(request: EnergyUpdateRequest, user_id: str = "default
         "success": True,
         "level": request.level,
         "message": f"Energy level set to {request.level}",
+    }
+
+
+# =============================================================================
+# Skill Dependency Settings
+# =============================================================================
+
+
+class SkillDependencyUpdateRequest(BaseModel):
+    """Request to update skill dependency install mode."""
+
+    install_mode: str  # "ask", "always", "never"
+
+
+@router.get("/skill-dependencies")
+async def get_skill_dependency_settings(user_id: str = "default"):
+    """
+    Get the current skill dependency installation settings.
+
+    Returns the install mode which controls how Dex handles package
+    dependencies when creating skills.
+    """
+    prefs = get_preferences(user_id) or {}
+
+    # Check user preference first, then fall back to config file
+    user_mode = prefs.get("skill_dependency_install_mode")
+    if user_mode:
+        install_mode = user_mode
+    else:
+        config = load_yaml_config("skill_dependencies.yaml")
+        install_mode = config.get("skill_dependencies", {}).get("install_mode", "ask")
+
+    return {
+        "install_mode": install_mode,
+        "options": [
+            {"value": "ask", "label": "Ask before installing", "description": "Dex will ask for approval before installing packages"},
+            {"value": "always", "label": "Always install", "description": "Auto-install after security verification"},
+            {"value": "never", "label": "Never install", "description": "Suggest code-only alternatives instead"},
+        ],
+    }
+
+
+@router.post("/skill-dependencies")
+async def set_skill_dependency_settings(request: SkillDependencyUpdateRequest, user_id: str = "default"):
+    """
+    Set the skill dependency installation mode.
+
+    This controls how Dex handles package dependencies when creating skills:
+    - ask: Prompt user before installing (recommended)
+    - always: Auto-install after security check
+    - never: Never install, suggest alternatives
+    """
+    valid_modes = ["ask", "always", "never"]
+    if request.install_mode not in valid_modes:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid install_mode. Must be one of: {valid_modes}"
+        )
+
+    # Save to user preferences
+    set_preferences(user_id, {"skill_dependency_install_mode": request.install_mode})
+
+    # Log to audit
+    try:
+        from tools.dashboard.backend.database import log_audit
+        log_audit(
+            event_type="config.skill_dependencies",
+            severity="info",
+            actor=user_id,
+            target="skill_dependencies",
+            details={"install_mode": request.install_mode},
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "install_mode": request.install_mode,
+        "message": f"Skill dependency mode set to '{request.install_mode}'",
     }
 
 

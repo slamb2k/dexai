@@ -8,14 +8,13 @@ import {
   CrystalCard,
   CrystalCardHeader,
   CrystalCardContent,
-  MetricsCard,
+  ExpandableMetricsRow,
   CurrentStepPanel,
-  SkillsPanel,
-  MemoryProvidersPanel,
-  OfficePanel,
-  ChannelsPanel,
+  EnergyWidgetCompact,
+  ServicesWidgetCompact,
+  SkillsWidgetCompact,
 } from '@/components/crystal';
-import type { CurrentStep } from '@/components/crystal';
+import type { CurrentStep, MetricItem } from '@/components/crystal';
 
 // Energy level type for API compatibility
 type EnergyLevel = 'low' | 'medium' | 'high';
@@ -48,11 +47,44 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<CurrentStep | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [userInitials, setUserInitials] = useState<string>('U');
+
+  // Metrics state
   const [uptime, setUptime] = useState<string>('--');
   const [avgResponse, setAvgResponse] = useState<string>('--');
   const [tasksWeek, setTasksWeek] = useState<number>(0);
   const [providersActive, setProvidersActive] = useState<string>('--');
-  const [userInitials, setUserInitials] = useState<string>('U');
+
+  // Build metrics array for expandable row
+  const metrics: MetricItem[] = [
+    {
+      icon: Activity,
+      label: 'System Uptime',
+      value: uptime,
+      sub: 'Last 30 days',
+      trend: { value: 0.1, direction: 'up' },
+    },
+    {
+      icon: Zap,
+      label: 'Avg Response',
+      value: avgResponse,
+      sub: 'Last hour',
+      trend: { value: 12, direction: 'down' },
+    },
+    {
+      icon: Cpu,
+      label: 'Tasks Completed',
+      value: tasksWeek.toLocaleString(),
+      sub: 'This week',
+      trend: { value: 8, direction: 'up' },
+    },
+    {
+      icon: Database,
+      label: 'Active Providers',
+      value: providersActive,
+      sub: 'Memory systems',
+    },
+  ];
 
   // Load initial data
   useEffect(() => {
@@ -272,53 +304,27 @@ export default function HomePage() {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="h-[calc(100vh-140px)] flex flex-col overflow-hidden">
       {/* Error banner */}
       {error && !isDemo && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+        <div className="flex-shrink-0 mb-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2 flex items-center gap-3">
+          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <p className="text-sm text-red-400">{error}</p>
         </div>
       )}
 
-      {/* Metrics Row */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricsCard
-          icon={Activity}
-          label="System Uptime"
-          value={uptime}
-          sub="Last 30 days"
-          trend={{ value: 0.1, direction: 'up' }}
-        />
-        <MetricsCard
-          icon={Zap}
-          label="Avg Response"
-          value={avgResponse}
-          sub="Last hour"
-          trend={{ value: 12, direction: 'down' }}
-        />
-        <MetricsCard
-          icon={Cpu}
-          label="Tasks Completed"
-          value={tasksWeek.toLocaleString()}
-          sub="This week"
-          trend={{ value: 8, direction: 'up' }}
-        />
-        <MetricsCard
-          icon={Database}
-          label="Active Providers"
-          value={providersActive}
-          sub="Memory systems"
-        />
+      {/* Expandable Metrics Row */}
+      <section className="flex-shrink-0 mb-4">
+        <ExpandableMetricsRow metrics={metrics} />
       </section>
 
       {/* Main Content - 7/5 Grid Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0 overflow-hidden">
         {/* Left Column - Chat Panel */}
-        <div className="lg:col-span-7">
-          <CrystalCard padding="none" className="h-full flex flex-col min-h-[600px]">
+        <div className="lg:col-span-7 flex flex-col min-h-0 overflow-hidden">
+          <CrystalCard padding="none" className="h-full flex flex-col overflow-hidden">
             {/* Chat Header */}
-            <div className="p-6 border-b border-white/[0.04]">
+            <div className="flex-shrink-0 px-5 py-4 border-b border-white/[0.04]">
               <CrystalCardHeader
                 icon={<MessageSquare className="w-5 h-5" />}
                 title="Direct Chat"
@@ -337,8 +343,8 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Chat Area */}
-            <CrystalCardContent className="flex-1 p-6 flex flex-col">
+            {/* Chat Area - Scrollable */}
+            <CrystalCardContent className="flex-1 p-4 flex flex-col min-h-0 overflow-hidden">
               <QuickChat
                 showHistory={true}
                 conversationId={conversationId}
@@ -352,26 +358,24 @@ export default function HomePage() {
           </CrystalCard>
         </div>
 
-        {/* Right Column - Current Step, Skills & Memory Providers */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Current Step Panel - ADHD Focus Feature */}
+        {/* Right Column - Current Step & Compact Widgets */}
+        <div className="lg:col-span-5 flex flex-col gap-3 overflow-y-auto">
+          {/* Current Step Panel - ADHD Focus Feature with Flow Mode */}
           <CurrentStepPanel
             step={currentStep}
             onComplete={handleStepComplete}
             onSkip={handleStepSkip}
             onStuck={handleStepStuck}
             isLoading={isLoading}
+            showFlowMode={true}
           />
-          <SkillsPanel maxDisplay={4} />
-          <MemoryProvidersPanel />
+
+          {/* Compact Sidebar Widgets */}
+          <EnergyWidgetCompact />
+          <ServicesWidgetCompact />
+          <SkillsWidgetCompact />
         </div>
       </div>
-
-      {/* Bottom Row - Office & Channels */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <OfficePanel />
-        <ChannelsPanel />
-      </section>
     </div>
   );
 }

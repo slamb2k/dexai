@@ -28,7 +28,8 @@ Index of all available goal workflows. Check here before creating new goals.
 | `phase7_dashboard.md` | Phase 7 tactical implementation guide — web dashboard with Dex avatar and monitoring |
 | `phase8_installation.md` | Phase 8 tactical implementation guide — guided setup wizard (web + TUI) |
 | `phase8_ui_refresh.md` | Phase 8b — Crystal theme UI refresh with ADHD-first components (dark/light mode, energy selector, flow indicator) |
-| `dashboard_crystal_dark_redesign.md` | **Active** — Dashboard redesign to match Design7 Crystal Dark layout (horizontal nav, metrics row, 7/5 grid) |
+| `dashboard_crystal_dark_redesign.md` | **Complete** — Dashboard redesign to match Design7 Crystal Dark layout (horizontal nav, metrics row, 7/5 grid) |
+| `dashboard_landing_page_redesign.md` | **Active** — Simplified no-scroll landing page with chat focus, expandable metrics, compact sidebar widgets, skill categorization |
 | `task_orchestration.md` | Task execution patterns — sequential, parallel, fan-out, fan-in, pipeline |
 | `sdk_alignment_review.md` | SDK integration analysis and implementation roadmap (Phase 2 complete) |
 | `prd_addulting_ai_v1.md` | **Archived** — Original PRD before ADHD pivot |

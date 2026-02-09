@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Paperclip, Mic, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
+import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
 import { ChatHistory, ChatMessage } from './chat-history';
 
 interface QuickChatProps {
@@ -90,51 +90,64 @@ export function QuickChat({
     // Notify parent if provided
     onSendMessage?.(trimmedMessage);
 
+    // Show typing indicator
+    setIsTyping(true);
+    setTypingContent('');
+
     try {
-      // Call the chat API
-      const response = await api.sendChatMessage(trimmedMessage, conversationId || undefined);
+      // Use WebSocket streaming for progressive response display
+      let fullContent = '';
+      let metadata: Partial<ChatStreamChunk> = {};
 
-      if (response.success && response.data) {
-        const data = response.data;
+      for await (const chunk of streamChatMessage(trimmedMessage, conversationId || undefined)) {
+        if (chunk.type === 'chunk') {
+          // Accumulate content and update typing indicator
+          fullContent += chunk.content || '';
+          setTypingContent(fullContent);
 
-        // Update conversation ID if new
-        if (data.conversation_id && data.conversation_id !== conversationId) {
-          setConversationId(data.conversation_id);
-          onConversationChange?.(data.conversation_id);
+          // Update conversation ID if provided
+          if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
+            setConversationId(chunk.conversation_id);
+            onConversationChange?.(chunk.conversation_id);
+          }
+        } else if (chunk.type === 'done') {
+          // Store metadata for the final message
+          metadata = chunk;
+          if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
+            setConversationId(chunk.conversation_id);
+            onConversationChange?.(chunk.conversation_id);
+          }
+        } else if (chunk.type === 'error') {
+          setError(chunk.error || 'Unknown error');
+          // Still add what we have as the response
+          if (!fullContent) {
+            fullContent = chunk.error || 'An error occurred. Please try again.';
+          }
         }
-
-        // Add assistant response
-        const assistantMessage: ChatMessage = {
-          id: data.message_id || `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: data.content,
-          model: data.model,
-          complexity: data.complexity,
-          cost_usd: data.cost_usd,
-          tool_uses: data.tool_uses,
-          created_at: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-
-        // Handle error in response
-        if (data.error) {
-          setError(data.error);
-        }
-      } else {
-        setError(response.error || 'Failed to get response');
-
-        // Add error message
-        const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: response.error || 'Something went wrong. Please try again.',
-          created_at: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, errorMessage]);
       }
+
+      // Hide typing indicator
+      setIsTyping(false);
+      setTypingContent('');
+
+      // Add assistant response with accumulated content
+      const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: fullContent || 'No response received.',
+        model: metadata.model,
+        complexity: metadata.complexity,
+        cost_usd: metadata.cost_usd,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
     } catch (e) {
       const errorText = e instanceof Error ? e.message : 'Failed to send message';
       setError(errorText);
+
+      setIsTyping(false);
+      setTypingContent('');
 
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
@@ -146,8 +159,6 @@ export function QuickChat({
     }
 
     setIsProcessing(false);
-    setIsTyping(false);
-    setTypingContent('');
     onStateChange?.('idle');
   };
 
@@ -214,14 +225,14 @@ export function QuickChat({
       )}
 
       {/* Input Form - Design7 styling */}
-      <div className="-mx-6 px-6 border-t border-white/[0.04] pt-6">
+      <div className="flex-shrink-0 border-t border-white/[0.04] pt-3">
         <form onSubmit={handleSubmit}>
-          <div className="flex gap-4">
+          <div className="flex gap-3">
             {/* Input container - Design7 style */}
             <div
               className={cn(
-                'flex-1 flex items-center gap-3',
-                'bg-white/[0.02] border rounded-xl px-5 py-4',
+                'flex-1 flex items-center gap-2',
+                'bg-white/[0.02] border rounded-xl px-4 py-3',
                 'transition-all duration-200',
                 isFocused ? 'border-white/20' : 'border-white/[0.06]'
               )}

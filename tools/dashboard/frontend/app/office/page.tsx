@@ -141,7 +141,7 @@ export default function OfficePage() {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-page-title text-text-primary">Office Integration</h1>
+        <h1 className="text-page-title text-text-primary">Services</h1>
         <p className="text-body text-text-secondary mt-1">
           Manage email drafts and meeting schedules with ADHD-safe confirmation flows
         </p>
