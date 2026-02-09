@@ -13,11 +13,11 @@ interface OAuthStatusItem {
   integration_level: number | null;
 }
 
-interface OfficePanelProps {
+interface ServicesPanelProps {
   className?: string;
 }
 
-export function OfficePanel({ className }: OfficePanelProps) {
+export function ServicesPanel({ className }: ServicesPanelProps) {
   const [oauthStatus, setOauthStatus] = useState<OAuthStatusItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -47,7 +47,7 @@ export function OfficePanel({ className }: OfficePanelProps) {
       <div className="p-6">
         <CrystalCardHeader
           icon={<Building2 className="w-5 h-5" />}
-          title="Office Integration"
+          title="Services"
           subtitle={`${connectedCount}/2 connected`}
         />
       </div>

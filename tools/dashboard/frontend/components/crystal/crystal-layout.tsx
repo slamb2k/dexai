@@ -20,7 +20,7 @@ export function CrystalLayout({ children, className }: CrystalLayoutProps) {
   }
 
   return (
-    <div className={cn('min-h-screen bg-black text-white', className)}>
+    <div className={cn('h-screen bg-black text-white overflow-hidden', className)}>
       {/* Crystal refraction background effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         {/* Primary gradient orb - top left */}
@@ -87,9 +87,11 @@ export function CrystalLayout({ children, className }: CrystalLayoutProps) {
       {/* Header */}
       <CrystalHeader />
 
-      {/* Main Content */}
-      <main className="relative z-10 max-w-7xl mx-auto px-8 py-10">
-        <div className="animate-fade-in">{children}</div>
+      {/* Main Content - scrollable container for all pages except home */}
+      <main className="relative z-10 h-[calc(100vh-80px)] overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-8 pt-4 pb-6">
+          <div className="animate-fade-in">{children}</div>
+        </div>
       </main>
 
       {/* Bottom edge gradient */}
