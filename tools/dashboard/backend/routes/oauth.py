@@ -85,7 +85,7 @@ async def google_oauth_callback(
             <body>
                 <h1>Authentication Failed</h1>
                 <p>Error: {error}</p>
-                <p><a href="/office">Return to Office Integration</a></p>
+                <p><a href="/office">Return to Services</a></p>
             </body>
             </html>
             """,
@@ -208,7 +208,7 @@ async def google_oauth_callback(
                 <h1>Google Account Connected</h1>
                 <p>Successfully connected: <strong>{email}</strong></p>
                 <p>Integration Level: <strong>Level {integration_level}</strong></p>
-                <p>Redirecting to Office Integration...</p>
+                <p>Redirecting to Services...</p>
             </body>
             </html>
             """
@@ -242,7 +242,7 @@ async def microsoft_oauth_callback(
                 <h1>Authentication Failed</h1>
                 <p>Error: {error}</p>
                 <p>{error_description or ''}</p>
-                <p><a href="/office">Return to Office Integration</a></p>
+                <p><a href="/office">Return to Services</a></p>
             </body>
             </html>
             """,
@@ -361,7 +361,7 @@ async def microsoft_oauth_callback(
                 <h1>Microsoft Account Connected</h1>
                 <p>Successfully connected: <strong>{email}</strong></p>
                 <p>Integration Level: <strong>Level {integration_level}</strong></p>
-                <p>Redirecting to Office Integration...</p>
+                <p>Redirecting to Services...</p>
             </body>
             </html>
             """
