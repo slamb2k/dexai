@@ -22,6 +22,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Sparkles,
+  Package,
 } from 'lucide-react';
 
 // Default settings
@@ -41,6 +43,9 @@ const defaultSettings: Settings = {
     dataRetentionDays: 30,
     rememberConversations: true,
     rememberPreferences: true,
+  },
+  skills: {
+    dependencyInstallMode: 'ask',
   },
   advanced: {
     defaultModel: 'claude-3-5-sonnet-20241022',
@@ -168,7 +173,7 @@ export default function SettingsPage() {
     google: false,
   });
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['general', 'notifications', 'privacy', 'advanced', 'channels', 'apikeys'])
+    new Set(['general', 'notifications', 'privacy', 'skills', 'advanced', 'channels', 'apikeys'])
   );
   const { addToast } = useToastStore();
 
@@ -205,6 +210,11 @@ export default function SettingsPage() {
         rememberPreferences: ((data?.privacy as Record<string, unknown>)?.remember_preferences as boolean) ??
           ((data?.privacy as Record<string, unknown>)?.rememberPreferences as boolean) ??
           defaultSettings.privacy.rememberPreferences,
+      },
+      skills: {
+        dependencyInstallMode: (((data?.skill_dependencies as Record<string, unknown>)?.install_mode as string) ||
+          ((data?.skills as Record<string, unknown>)?.dependencyInstallMode as string) ||
+          defaultSettings.skills.dependencyInstallMode) as 'ask' | 'always' | 'never',
       },
       advanced: {
         defaultModel: ((data?.advanced as Record<string, unknown>)?.defaultModel as string) ||
@@ -354,6 +364,9 @@ export default function SettingsPage() {
 
       // Cast to unknown since we're sending backend format, not frontend Settings type
       const res = await api.updateSettings(backendPayload as unknown as Partial<Settings>);
+
+      // Save skill dependency settings
+      await api.setSkillDependencySettings(settings.skills.dependencyInstallMode);
 
       // Save channel tokens if they've been modified
       if (tokensModified) {
@@ -668,6 +681,54 @@ export default function SettingsPage() {
               updateSetting('advanced', 'debugMode', checked)
             }
           />
+        </div>
+      </SettingsSection>
+
+      {/* Skills Settings */}
+      <SettingsSection
+        id="skills"
+        title="Skills"
+        icon={Sparkles}
+        expanded={expandedSections.has('skills')}
+        onToggle={() => toggleSection('skills')}
+        onReset={() => handleReset('skills')}
+      >
+        <div className="space-y-4">
+          <FormField label="Dependency Installation">
+            <SelectField
+              value={settings.skills.dependencyInstallMode}
+              onChange={(value) => updateSetting('skills', 'dependencyInstallMode', value as 'ask' | 'always' | 'never')}
+              options={[
+                { value: 'ask', label: 'Ask before installing (Recommended)' },
+                { value: 'always', label: 'Always install after security check' },
+                { value: 'never', label: 'Never install - suggest alternatives' },
+              ]}
+            />
+          </FormField>
+
+          <div className="bg-bg-elevated/50 rounded-card p-3 space-y-2">
+            <p className="text-caption text-text-muted">
+              When Dex creates a skill that needs external packages, this controls how dependencies are handled.
+            </p>
+            <div className="flex items-start gap-2">
+              <Package size={14} className="text-text-muted mt-0.5" />
+              <div className="text-caption text-text-muted">
+                <strong className="text-text-primary">Ask:</strong> Dex will request approval before installing any packages
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Package size={14} className="text-text-muted mt-0.5" />
+              <div className="text-caption text-text-muted">
+                <strong className="text-text-primary">Always:</strong> Packages are auto-installed after security verification
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Package size={14} className="text-text-muted mt-0.5" />
+              <div className="text-caption text-text-muted">
+                <strong className="text-text-primary">Never:</strong> Dex will suggest code-only alternatives or report when a dependency is required
+              </div>
+            </div>
+          </div>
         </div>
       </SettingsSection>
 
