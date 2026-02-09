@@ -109,22 +109,53 @@ COMMUNICATION STYLE:
 SKILLS_AUTHORIZATION = """
 ## Self-Improvement Capabilities
 
-You can extend your own capabilities by creating new skills.
+You can extend your own capabilities by creating new skills in your workspace.
 
 SKILL CREATION RULES:
-1. Create skills in `.claude/skills/<skill-name>/`
+1. Create skills in `.claude/skills/<skill-name>/` (relative to your workspace)
 2. Each skill needs:
-   - `SKILL.md` - YAML frontmatter (name, description) + brief overview
+   - `SKILL.md` - YAML frontmatter (name, description, dependencies) + brief overview
    - `instructions.md` - Step-by-step implementation instructions
-3. Skills are automatically loaded on next interaction
-4. Never modify skills in `.claude/prime/`, `.claude/ship/`, `.claude/sync/` - those are system skills
+3. Skills are automatically loaded and visible in the dashboard
+4. Built-in skills (adhd-decomposition, energy-matching, etc.) are read-only
+
+SKILL.md FORMAT:
+```yaml
+---
+name: skill-name
+description: What the skill does
+dependencies:        # Optional - Python packages needed
+  - package-name>=1.0.0
+  - another-package
+---
+# Skill Title
+[Brief overview of what this skill does]
+```
+
+DEPENDENCY HANDLING:
+When a skill requires external packages:
+
+1. **Declare dependencies** in SKILL.md frontmatter (as shown above)
+2. **Check user preference** using `dexai_get_skill_dependency_setting` tool
+3. Based on setting:
+   - "ask": Ask user "This skill needs `{package}`. Install it?"
+   - "always": Inform user, then verify and install
+   - "never": Suggest code-only alternative OR report cannot create skill
+4. **Before installing**, verify package security using `dexai_verify_package` tool
+5. **Install** using `dexai_install_package` tool (NOT direct pip commands)
+6. **Verify** the import works before completing skill creation
+
+WHEN DEPENDENCIES AREN'T AVAILABLE:
+- First, try to find a code-only solution (pure Python, no external deps)
+- If no alternative exists, clearly explain what's needed and why
+- Never create a skill that won't work due to missing dependencies
 
 WHEN TO CREATE A SKILL:
 - Repetitive multi-step workflows the user performs often
 - Domain-specific knowledge worth preserving
 - Automations that combine multiple tools
 
-This is NOT modifying your core code - it's extending capabilities through the skills system.
+Your skills are stored in your isolated workspace and are separate from built-in system skills.
 """
 
 
@@ -209,12 +240,19 @@ def build_system_prompt(
 
     # Only add runtime context for sessions that include it (main sessions with full mode)
     if context.include_runtime_context:
-        prompt = _add_runtime_context(prompt, user_id, config)
+        prompt = _add_runtime_context(
+            prompt, user_id, config, workspace_root=workspace_root or PROJECT_ROOT
+        )
 
     return prompt
 
 
-def _add_runtime_context(prompt: str, user_id: str, config: dict) -> str:
+def _add_runtime_context(
+    prompt: str,
+    user_id: str,
+    config: dict,
+    workspace_root: Optional[Path] = None,
+) -> str:
     """
     Add runtime context (memory, commitments, energy, skills) to prompt.
 
@@ -222,6 +260,8 @@ def _add_runtime_context(prompt: str, user_id: str, config: dict) -> str:
         prompt: Base prompt from SystemPromptBuilder
         user_id: User identifier
         config: Agent configuration
+        workspace_root: Optional workspace root for skill paths.
+                       If None, uses PROJECT_ROOT.
 
     Returns:
         Prompt with runtime context added
@@ -356,10 +396,11 @@ def _add_runtime_context(prompt: str, user_id: str, config: dict) -> str:
     if skills_config.get("allow_self_modification", False):
         parts.append(SKILLS_AUTHORIZATION)
 
-        # List agent-created skills if any exist
+        # List agent-created skills if any exist (from workspace, not global)
         try:
             writable_dir = skills_config.get("writable_directory", ".claude/skills")
-            skills_path = PROJECT_ROOT / writable_dir
+            skills_root = workspace_root or PROJECT_ROOT
+            skills_path = skills_root / writable_dir
             if skills_path.exists():
                 agent_skills = [
                     d.name for d in skills_path.iterdir()

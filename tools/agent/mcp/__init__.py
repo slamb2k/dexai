@@ -9,12 +9,13 @@ These tools wrap existing DexAI functionality so the SDK agent can invoke them:
 - ADHD tools: response formatting, RSD-safe language filtering
 - Automation tools: scheduling, notifications, reminders
 - Office tools: email, calendar integration
+- Dependency tools: package verification, installation for skill creation
 
 Tool naming convention: dexai_<feature>_<action>
 Examples: dexai_memory_search, dexai_task_decompose, dexai_current_step
 
 Usage:
-    from tools.agent.mcp import memory_tools, task_tools, adhd_tools, automation_tools, office_tools
+    from tools.agent.mcp import memory_tools, task_tools, adhd_tools, automation_tools, office_tools, dependency_tools
 """
 
 from pathlib import Path
@@ -30,6 +31,7 @@ from tools.agent.mcp import task_tools
 from tools.agent.mcp import adhd_tools
 from tools.agent.mcp import automation_tools
 from tools.agent.mcp import office_tools
+from tools.agent.mcp import dependency_tools
 
 __all__ = [
     "MCP_ROOT",
@@ -40,6 +42,7 @@ __all__ = [
     "adhd_tools",
     "automation_tools",
     "office_tools",
+    "dependency_tools",
     "get_tool",
     "list_all_tools",
 ]
@@ -61,12 +64,13 @@ def list_all_tools() -> dict[str, list[str]]:
         "adhd": adhd_tools.list_tools(),
         "automation": automation_tools.list_tools(),
         "office": office_tools.list_tools(),
+        "dependency": dependency_tools.list_tools(),
     }
 
 
 def get_tool(tool_name: str):
     """Get a tool function by name from any category."""
-    for module in [memory_tools, task_tools, adhd_tools, automation_tools, office_tools]:
+    for module in [memory_tools, task_tools, adhd_tools, automation_tools, office_tools, dependency_tools]:
         tool = module.get_tool(tool_name)
         if tool:
             return tool
