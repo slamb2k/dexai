@@ -235,6 +235,15 @@ class TimeSeriesResponse(BaseModel):
 # =============================================================================
 
 
+class SkillDependencySettings(BaseModel):
+    """Settings for skill dependency installation."""
+
+    install_mode: str = Field(
+        default="ask",
+        description="How to handle skill dependencies: 'ask' (prompt user), 'always' (auto-install after security check), 'never' (suggest alternatives)",
+    )
+
+
 class NotificationSettings(BaseModel):
     """Notification preferences."""
 
@@ -260,6 +269,7 @@ class DashboardSettings(BaseModel):
     language: str = Field(default="en", description="Preferred language")
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     privacy: PrivacySettings = Field(default_factory=PrivacySettings)
+    skill_dependencies: SkillDependencySettings = Field(default_factory=SkillDependencySettings)
     theme: str = Field(default="dark", description="UI theme")
     sidebar_collapsed: bool = Field(default=False, description="Sidebar state")
 
@@ -272,6 +282,7 @@ class SettingsUpdate(BaseModel):
     language: str | None = Field(None, description="Preferred language")
     notifications: NotificationSettings | None = Field(None)
     privacy: PrivacySettings | None = Field(None)
+    skill_dependencies: SkillDependencySettings | None = Field(None)
     theme: str | None = Field(None, description="UI theme")
     sidebar_collapsed: bool | None = Field(None, description="Sidebar state")
 
