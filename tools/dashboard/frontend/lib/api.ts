@@ -9,6 +9,26 @@
 // - Without proxy: set NEXT_PUBLIC_API_URL to browser-accessible URL (e.g., http://hostname:8080)
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
+/**
+ * Get the WebSocket base URL.
+ * Converts HTTP(S) URLs to WS(S) URLs, handles relative URLs.
+ */
+function getWsBaseUrl(): string {
+  // If we have an explicit API URL, convert it to WebSocket
+  if (API_URL) {
+    return API_URL.replace(/^http/, 'ws');
+  }
+
+  // For relative URLs, construct from current location
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+  }
+
+  // Fallback for SSR
+  return 'ws://localhost:8080';
+}
+
 // Types
 export interface ApiResponse<T> {
   success: boolean;
@@ -82,6 +102,21 @@ export interface AuditEvent {
   ipAddress?: string;
 }
 
+export interface SkillDependencySettings {
+  installMode: 'ask' | 'always' | 'never';
+}
+
+export interface SkillDependencyOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export interface SkillDependencySettingsResponse {
+  install_mode: string;
+  options: SkillDependencyOption[];
+}
+
 export interface Settings {
   general: {
     displayName: string;
@@ -98,6 +133,9 @@ export interface Settings {
     dataRetentionDays: number;
     rememberConversations: boolean;
     rememberPreferences: boolean;
+  };
+  skills: {
+    dependencyInstallMode: 'ask' | 'always' | 'never';
   };
   advanced: {
     defaultModel: string;
@@ -328,6 +366,19 @@ export interface ChatHistoryResponse {
   conversation_id: string;
   messages: ChatHistoryMessage[];
   total: number;
+}
+
+/**
+ * Chunk received from WebSocket chat streaming.
+ */
+export interface ChatStreamChunk {
+  type: 'chunk' | 'done' | 'error';
+  content?: string;
+  conversation_id?: string;
+  model?: string;
+  complexity?: string;
+  cost_usd?: number;
+  error?: string;
 }
 
 export interface ChatConversation {
@@ -677,6 +728,22 @@ class ApiClient {
       {
         method: 'POST',
         body: JSON.stringify({ level }),
+      }
+    );
+  }
+
+  async getSkillDependencySettings(): Promise<ApiResponse<SkillDependencySettingsResponse>> {
+    return this.request<SkillDependencySettingsResponse>('/api/settings/skill-dependencies');
+  }
+
+  async setSkillDependencySettings(
+    installMode: string
+  ): Promise<ApiResponse<{ success: boolean; install_mode: string; message?: string }>> {
+    return this.request<{ success: boolean; install_mode: string; message?: string }>(
+      '/api/settings/skill-dependencies',
+      {
+        method: 'POST',
+        body: JSON.stringify({ install_mode: installMode }),
       }
     );
   }
@@ -1265,6 +1332,8 @@ export interface Skill {
   status: 'idle' | 'running';
   file_path: string;
   has_instructions: boolean;
+  category: 'built-in' | 'user';
+  dependencies: string[];
 }
 
 export interface SkillsResponse {
@@ -1276,12 +1345,15 @@ export interface SkillsResponse {
 export interface SkillDetail extends Skill {
   instructions: string | null;
   readme: string | null;
+  dependencies: string[];
 }
 
 export interface SkillsSummary {
   total: number;
   active: number;
   idle: number;
+  builtin: number;
+  user: number;
   skills_dir: string;
   exists: boolean;
 }
@@ -1311,6 +1383,109 @@ export interface ServiceHealth {
   timestamp: string;
   overall: 'healthy' | 'unhealthy' | 'degraded';
   checks: Record<string, { status: string; detail: unknown }>;
+}
+
+// ==========================================================================
+// WebSocket Streaming
+// ==========================================================================
+
+/**
+ * Stream a chat message via WebSocket.
+ *
+ * This function connects to the WebSocket streaming endpoint and yields
+ * chunks as they arrive. Use this instead of sendChatMessage() for long-running
+ * operations to avoid HTTP timeout issues.
+ *
+ * @param message - The user message to send
+ * @param conversationId - Optional conversation ID to continue
+ * @yields ChatStreamChunk objects with type 'chunk', 'done', or 'error'
+ *
+ * @example
+ * ```typescript
+ * let fullContent = '';
+ * for await (const chunk of streamChatMessage('Hello')) {
+ *   if (chunk.type === 'chunk') {
+ *     fullContent += chunk.content;
+ *     setTypingContent(fullContent);
+ *   } else if (chunk.type === 'done') {
+ *     setConversationId(chunk.conversation_id);
+ *   } else if (chunk.type === 'error') {
+ *     setError(chunk.error);
+ *   }
+ * }
+ * ```
+ */
+export async function* streamChatMessage(
+  message: string,
+  conversationId?: string
+): AsyncGenerator<ChatStreamChunk, void, unknown> {
+  const wsUrl = `${getWsBaseUrl()}/api/chat/stream`;
+
+  // Create WebSocket connection
+  const ws = new WebSocket(wsUrl);
+
+  // Queue for received chunks
+  const chunks: ChatStreamChunk[] = [];
+  let done = false;
+  let connectionError: Error | null = null;
+
+  // Set up event handlers
+  const openPromise = new Promise<void>((resolve, reject) => {
+    ws.onopen = () => resolve();
+    ws.onerror = (event) => {
+      connectionError = new Error('WebSocket connection failed');
+      reject(connectionError);
+    };
+  });
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as ChatStreamChunk;
+      chunks.push(data);
+      if (data.type === 'done' || data.type === 'error') {
+        done = true;
+      }
+    } catch {
+      chunks.push({ type: 'error', error: 'Failed to parse server response' });
+      done = true;
+    }
+  };
+
+  ws.onclose = () => {
+    if (!done) {
+      chunks.push({ type: 'error', error: 'Connection closed unexpectedly' });
+    }
+    done = true;
+  };
+
+  try {
+    // Wait for connection to open
+    await openPromise;
+
+    // Send the message
+    ws.send(JSON.stringify({ message, conversation_id: conversationId }));
+
+    // Yield chunks as they arrive
+    while (!done || chunks.length > 0) {
+      if (chunks.length > 0) {
+        yield chunks.shift()!;
+      } else {
+        // Small delay to avoid busy-waiting
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+  } catch (e) {
+    // Connection error
+    yield {
+      type: 'error',
+      error: e instanceof Error ? e.message : 'WebSocket connection failed',
+    };
+  } finally {
+    // Clean up
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+  }
 }
 
 // Export singleton instance
