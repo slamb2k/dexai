@@ -563,7 +563,7 @@ Backend APIs for native mobile features.
 
 ---
 
-## Voice Interface Tools (`tools/voice/`) — Phase 11a
+## Voice Interface Tools (`tools/voice/`) — Phase 11a/11b/11c
 
 ### Core Modules
 
@@ -578,6 +578,8 @@ Backend APIs for native mobile features.
 |------|-------------|
 | `base.py` | Abstract BaseTranscriber interface for all recognition providers |
 | `web_speech_config.py` | Web Speech API config and result processing (browser-side recognition) |
+| `whisper_adapter.py` | Adapter wrapping Phase 15b AudioProcessor as BaseTranscriber for Whisper API (Phase 11b) |
+| `transcriber.py` | TranscriptionCoordinator — provider selection, fallback chain, accuracy logging (Phase 11b) |
 
 ### Parser (`tools/voice/parser/`)
 
@@ -602,32 +604,37 @@ Backend APIs for native mobile features.
 |------|-------------|
 | `user_preferences.py` | Per-user voice settings CRUD, command history retrieval |
 
-### Dashboard Routes (Phase 11a)
+### Dashboard Routes (Phase 11a/11b/11c)
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/voice/status` | Check voice config, available sources, user preferences |
 | `POST /api/voice/command` | Submit transcript, parse intent, execute, return result |
+| `POST /api/voice/transcribe` | Server-side audio transcription via Whisper API (Phase 11b) |
+| `POST /api/voice/tts` | Text-to-speech generation with cloud/browser fallback (Phase 11c) |
 | `GET /api/voice/preferences` | Get user voice preferences |
 | `PUT /api/voice/preferences` | Update voice preferences |
 | `GET /api/voice/history` | Get voice command history |
 | `GET /api/voice/commands` | List all available voice commands |
 
-### Frontend Components (Phase 11a)
+### Frontend Components (Phase 11a/11b/11c)
 
 | File | Description |
 |------|-------------|
 | `components/voice/use-voice-recognition.ts` | React hook wrapping Web Speech API (Chrome, Edge, Safari) |
+| `components/voice/use-audio-recorder.ts` | React hook for MediaRecorder API audio capture (WebM/Opus) (Phase 11b) |
+| `components/voice/use-tts.ts` | React hook for browser SpeechSynthesis + cloud TTS playback (Phase 11c) |
+| `components/voice/use-audio-feedback.ts` | React hook for Web Audio API tone synthesis (start/stop/success/error) (Phase 11c) |
 | `components/voice/voice-button.tsx` | Push-to-talk button with idle/listening/processing/unsupported states |
 | `components/voice/transcript-display.tsx` | Live transcript with confidence indicator and intent badge |
-| `components/voice/voice-input.tsx` | Composed widget: listen -> transcribe -> parse -> execute -> feedback |
-| `components/voice/voice-settings.tsx` | Voice settings panel (language, confidence, feedback toggles) |
+| `components/voice/voice-input.tsx` | Composed widget: dual-mode (Web Speech / Whisper), TTS, audio feedback, continuous listening |
+| `components/voice/voice-settings.tsx` | Voice settings panel (source, language, TTS, continuous listening, feedback toggles) |
 
 ### Configuration
 
 | File | Description |
 |------|-------------|
-| `args/voice.yaml` | Recognition, parsing, feedback, ADHD settings for voice interface |
+| `args/voice.yaml` | Recognition, transcription, TTS, audio feedback, continuous listening, ADHD settings |
 
 ---
 
