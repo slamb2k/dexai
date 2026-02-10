@@ -1,9 +1,11 @@
 """
-Media Processor for Multi-Modal Messaging (Phase 15a)
+Media Processor for Multi-Modal Messaging (Phase 15a/15b)
 
-Handles processing of images, documents, and other attachments:
+Handles processing of images, documents, audio, video, and other attachments:
 - Image analysis via Claude Vision API
 - Document text extraction (PDF, DOCX)
+- Audio/voice transcription via Whisper API (Phase 15b)
+- Video frame extraction and audio track transcription (Phase 15b)
 - Cost tracking
 
 Usage:
@@ -18,19 +20,21 @@ from __future__ import annotations
 import base64
 import io
 import logging
-import tempfile
-import uuid
-from pathlib import Path
-from typing import Any, TYPE_CHECKING
-
-import yaml
 
 # Ensure project root is in path
 import sys
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import yaml
+
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.channels.models import Attachment, MediaContent
+
 
 if TYPE_CHECKING:
     from tools.channels.router import ChannelAdapter
@@ -56,6 +60,8 @@ class MediaProcessor:
     Handles:
     - Image analysis via Claude Vision
     - Document text extraction
+    - Audio/voice transcription via Whisper (Phase 15b)
+    - Video processing with frame extraction (Phase 15b)
     - Cost tracking and budget enforcement
     """
 
@@ -73,7 +79,7 @@ class MediaProcessor:
         self,
         attachment: Attachment,
         channel: str,
-        adapter: "ChannelAdapter",
+        adapter: ChannelAdapter,
     ) -> MediaContent:
         """
         Process a single attachment.
@@ -106,6 +112,10 @@ class MediaProcessor:
                 return await self._process_image(attachment, channel, adapter)
             elif attachment.type == "document":
                 return await self._process_document(attachment, channel, adapter)
+            elif attachment.type == "audio":
+                return await self._process_audio(attachment, channel, adapter)
+            elif attachment.type == "video":
+                return await self._process_video(attachment, channel, adapter)
             else:
                 # Passthrough for unsupported types
                 return MediaContent(
@@ -126,7 +136,7 @@ class MediaProcessor:
         self,
         attachments: list[Attachment],
         channel: str,
-        adapter: "ChannelAdapter",
+        adapter: ChannelAdapter,
     ) -> list[MediaContent]:
         """
         Process multiple attachments with ADHD-friendly limits.
@@ -188,7 +198,7 @@ class MediaProcessor:
         self,
         attachment: Attachment,
         channel: str,
-        adapter: "ChannelAdapter",
+        adapter: ChannelAdapter,
     ) -> MediaContent:
         """
         Process image with Claude Vision API.
@@ -365,7 +375,7 @@ class MediaProcessor:
         self,
         attachment: Attachment,
         channel: str,
-        adapter: "ChannelAdapter",
+        adapter: ChannelAdapter,
     ) -> MediaContent:
         """
         Extract text from document.
@@ -510,6 +520,184 @@ class MediaProcessor:
 
         except ImportError:
             raise ImportError("python-docx not installed. Run: uv pip install python-docx")
+
+    # =========================================================================
+    # Audio Processing (Phase 15b)
+    # =========================================================================
+
+    async def _process_audio(
+        self,
+        attachment: Attachment,
+        channel: str,
+        adapter: ChannelAdapter,
+    ) -> MediaContent:
+        """
+        Process audio/voice with Whisper transcription.
+
+        Args:
+            attachment: Audio attachment
+            channel: Source channel
+            adapter: Channel adapter for download
+
+        Returns:
+            MediaContent with transcription
+        """
+        transcription_config = self.config.get("processing", {}).get("transcription", {})
+
+        if not transcription_config.get("enabled", True):
+            return MediaContent(attachment=attachment, processed=False)
+
+        # Download audio
+        try:
+            audio_bytes = await adapter.download_attachment(attachment)
+            if not audio_bytes:
+                return MediaContent(
+                    attachment=attachment,
+                    processed=False,
+                    processing_error="Downloaded file is empty",
+                )
+        except Exception as e:
+            return MediaContent(
+                attachment=attachment,
+                processed=False,
+                processing_error=f"Download failed: {str(e)[:100]}",
+            )
+
+        # Use AudioProcessor for transcription
+        try:
+            from tools.channels.audio_processor import get_audio_processor
+
+            audio_processor = get_audio_processor()
+            result = await audio_processor.transcribe(
+                audio_bytes,
+                attachment.filename,
+                attachment.mime_type,
+            )
+
+            if result.success:
+                return MediaContent(
+                    attachment=attachment,
+                    processed=True,
+                    transcription=result.text,
+                    duration_seconds=result.duration_seconds,
+                    processing_cost_usd=result.cost_usd,
+                    metadata={
+                        "language": result.language,
+                        "segments": result.segments,
+                    },
+                )
+            else:
+                return MediaContent(
+                    attachment=attachment,
+                    processed=False,
+                    processing_error=result.error,
+                )
+
+        except Exception as e:
+            logger.error(f"Audio transcription error: {e}")
+            return MediaContent(
+                attachment=attachment,
+                processed=False,
+                processing_error=f"Transcription error: {str(e)[:100]}",
+            )
+
+    # =========================================================================
+    # Video Processing (Phase 15b)
+    # =========================================================================
+
+    async def _process_video(
+        self,
+        attachment: Attachment,
+        channel: str,
+        adapter: ChannelAdapter,
+    ) -> MediaContent:
+        """
+        Process video with frame extraction and audio transcription.
+
+        Args:
+            attachment: Video attachment
+            channel: Source channel
+            adapter: Channel adapter for download
+
+        Returns:
+            MediaContent with transcription and frame descriptions
+        """
+        video_config = self.config.get("processing", {}).get("video", {})
+
+        if not video_config.get("enabled", True):
+            return MediaContent(attachment=attachment, processed=False)
+
+        # Download video
+        try:
+            video_bytes = await adapter.download_attachment(attachment)
+            if not video_bytes:
+                return MediaContent(
+                    attachment=attachment,
+                    processed=False,
+                    processing_error="Downloaded file is empty",
+                )
+        except Exception as e:
+            return MediaContent(
+                attachment=attachment,
+                processed=False,
+                processing_error=f"Download failed: {str(e)[:100]}",
+            )
+
+        # Use VideoProcessor
+        try:
+            from tools.channels.video_processor import get_video_processor
+
+            video_processor = get_video_processor()
+            result = await video_processor.process_video(
+                video_bytes,
+                attachment.filename,
+                attachment.mime_type,
+            )
+
+            if result.success:
+                # Build description from transcription and frame descriptions
+                description_parts = []
+
+                if result.transcription:
+                    description_parts.append(f"Audio transcription: {result.transcription}")
+
+                if result.frame_descriptions:
+                    description_parts.append("Key frames:")
+                    for desc in result.frame_descriptions:
+                        description_parts.append(f"  {desc}")
+
+                combined_description = "\n".join(description_parts) if description_parts else None
+
+                return MediaContent(
+                    attachment=attachment,
+                    processed=True,
+                    transcription=result.transcription,
+                    vision_description=combined_description,
+                    duration_seconds=result.duration_seconds,
+                    processing_cost_usd=result.total_cost_usd,
+                    metadata={
+                        "language": result.audio_language,
+                        "width": result.width,
+                        "height": result.height,
+                        "fps": result.fps,
+                        "frame_descriptions": result.frame_descriptions,
+                        "has_thumbnail": result.thumbnail_bytes is not None,
+                    },
+                )
+            else:
+                return MediaContent(
+                    attachment=attachment,
+                    processed=False,
+                    processing_error=result.error,
+                )
+
+        except Exception as e:
+            logger.error(f"Video processing error: {e}")
+            return MediaContent(
+                attachment=attachment,
+                processed=False,
+                processing_error=f"Video error: {str(e)[:100]}",
+            )
 
     # =========================================================================
     # Cleanup
