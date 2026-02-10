@@ -77,8 +77,8 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 14 | Analytics & Insights (Patterns, reports) | 📋 Planned |
 | Phase 15a | Multi-Modal: Core (images, documents, code) | ✅ Complete |
 | Phase 15b | Multi-Modal: Audio/Video (transcription, TTS) | ✅ Complete |
-| Phase 15c | Multi-Modal: Platform Rendering (embeds, Block Kit) | 📋 Planned |
-| Phase 15d | Multi-Modal: Advanced (location, contacts, interactive) | 📋 Planned |
+| Phase 15c | Multi-Modal: Platform Rendering (embeds, Block Kit) | ✅ Complete |
+| Phase 15d | Multi-Modal: Advanced (location, contacts, interactive) | ✅ Complete |
 
 ---
 

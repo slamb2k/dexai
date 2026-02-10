@@ -88,6 +88,40 @@ Pluggable memory backend system supporting multiple storage providers.
 | `video_processor.py` | Video processing with FFmpeg: frame extraction, audio track transcription, thumbnail generation (Phase 15b) |
 | `tts_generator.py` | Text-to-Speech generation via OpenAI TTS API with voice selection and channel-optimized formats (Phase 15b) |
 
+### Platform Renderers (`tools/channels/renderers/`) — Phase 15c
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | ChannelRenderer ABC, renderer registry (register, get, list), auto-registration on import |
+| `telegram_renderer.py` | Telegram renderer: HTML parse_mode, media groups, inline keyboards, native polls |
+| `discord_renderer.py` | Discord renderer: rich embeds, markdown formatting, message components, reaction-based polls |
+| `slack_renderer.py` | Slack renderer: Block Kit format, mrkdwn sections, action blocks, button/poll elements |
+
+### Content Processing (`tools/channels/content/`) — Phase 15c
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Re-exports ContentSplitter and MarkdownConverter |
+| `splitter.py` | Content splitting per channel limits with code-block preservation and natural boundary detection |
+| `markdown.py` | Markdown converter: to_telegram (HTML), to_discord (markdown), to_slack (mrkdwn), strip_markdown |
+
+### Interactive Elements (`tools/channels/interactive/`) — Phase 15d
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Re-exports ButtonHandler and PollHandler |
+| `buttons.py` | Button state management with SQLite persistence, callback handling, expiry cleanup |
+| `polls.py` | Poll lifecycle: creation, vote tracking (single/multi-choice), results, close with SQLite state |
+
+### Media Processors (`tools/channels/media/`) — Phase 15d
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Re-exports LocationProcessor, ContactProcessor, StorageCleanup with graceful fallbacks |
+| `location_processor.py` | Geocoding via Nominatim (reverse/forward), rate-limited, map URL generation |
+| `contact_processor.py` | vCard 3.0/4.0 parsing, Telegram contact dict processing, field extraction |
+| `storage_cleanup.py` | Temp file cleanup, expired DB entry removal, storage stats reporting |
+
 ---
 
 ## System Tools (`tools/system/`)
