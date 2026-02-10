@@ -78,6 +78,9 @@ all = [
     "slack-bolt>=1.20.0",
     "google-auth>=2.25.0",
     "google-auth-oauthlib>=1.2.0",
+    "pypdf2>=3.0.0",
+    "python-docx>=1.1.0",
+    "pillow>=10.0.0",
 ]
 
 # Memory provider packages
@@ -101,6 +104,14 @@ memory-cloud = [
 # Memory provider development/testing
 memory-dev = [
     "pytest-docker>=3.0.0",
+]
+
+# Multi-modal messaging (Phase 15a)
+multimodal = [
+    "pypdf2>=3.0.0",           # PDF text extraction
+    "python-docx>=1.1.0",       # Word document parsing
+    "pillow>=10.0.0",           # Image processing
+    "openai>=1.0.0",            # Image generation (DALL-E)
 ]
 
 [project.scripts]

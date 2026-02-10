@@ -29,6 +29,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -228,6 +230,56 @@ class SlackAdapter(ChannelAdapter):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    async def send_image(
+        self,
+        channel_id: str,
+        image: bytes | str,
+        caption: str | None = None,
+        thread_ts: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Send an image to a Slack channel.
+
+        Args:
+            channel_id: Slack channel ID to send to
+            image: Image bytes or URL
+            caption: Optional caption/initial comment
+            thread_ts: Optional thread timestamp to reply in
+
+        Returns:
+            Dict with success status and file ID
+        """
+        try:
+            from slack_sdk.web.async_client import AsyncWebClient
+
+            client = AsyncWebClient(token=self.bot_token)
+
+            if isinstance(image, str) and image.startswith("http"):
+                # URL - download first
+                async with httpx.AsyncClient(timeout=30.0) as http_client:
+                    response = await http_client.get(image)
+                    response.raise_for_status()
+                    image = response.content
+
+            # Upload file to Slack
+            result = await client.files_upload_v2(
+                channel=channel_id,
+                file=image,
+                filename="image.png",
+                initial_comment=caption,
+                thread_ts=thread_ts,
+            )
+
+            return {
+                "success": True,
+                "file_id": result.get("file", {}).get("id"),
+                "channel_id": channel_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to send image: {e}")
+            return {"success": False, "error": str(e)}
+
     async def update_message(
         self,
         channel_id: str,
@@ -349,6 +401,34 @@ class SlackAdapter(ChannelAdapter):
             "text": message.content,
             "thread_ts": message.metadata.get("slack_thread_ts"),
         }
+
+    async def download_attachment(self, attachment: Attachment) -> bytes:
+        """
+        Download attachment content from Slack.
+
+        Uses url_private which requires authorization with bot token.
+
+        Args:
+            attachment: Attachment with Slack url_private
+
+        Returns:
+            File content as bytes
+
+        Raises:
+            ValueError: If no URL available
+            Exception: On download failure
+        """
+        if not attachment.url:
+            raise ValueError("No URL in Slack attachment")
+
+        import httpx
+
+        headers = {"Authorization": f"Bearer {self.bot_token}"}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(attachment.url, headers=headers)
+            response.raise_for_status()
+            return response.content
 
     # =========================================================================
     # Message Handlers

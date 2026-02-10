@@ -216,6 +216,58 @@ class TelegramAdapter(ChannelAdapter):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    async def send_image(
+        self,
+        chat_id: str | int,
+        image: bytes | str,
+        caption: str | None = None,
+        reply_to: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        Send an image to a Telegram chat.
+
+        Args:
+            chat_id: Telegram chat ID to send to
+            image: Image bytes or URL
+            caption: Optional caption for the image
+            reply_to: Optional message ID to reply to
+
+        Returns:
+            Dict with success status and message ID
+        """
+        if not self.bot:
+            return {"success": False, "error": "bot_not_connected"}
+
+        try:
+            if isinstance(image, str) and image.startswith("http"):
+                # URL - send directly
+                result = await self.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=image,
+                    caption=caption,
+                    reply_to_message_id=reply_to,
+                )
+            else:
+                # Bytes - send as file
+                import io
+                photo_file = io.BytesIO(image)
+                photo_file.name = "image.png"
+                result = await self.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo_file,
+                    caption=caption,
+                    reply_to_message_id=reply_to,
+                )
+
+            return {
+                "success": True,
+                "message_id": str(result.message_id),
+                "chat_id": str(result.chat.id),
+            }
+        except Exception as e:
+            logger.error(f"Failed to send image: {e}")
+            return {"success": False, "error": str(e)}
+
     def to_unified(self, update) -> UnifiedMessage:
         """
         Convert Telegram Update to UnifiedMessage.
@@ -321,6 +373,37 @@ class TelegramAdapter(ChannelAdapter):
             "text": message.content,
             "reply_to_message_id": int(message.reply_to) if message.reply_to else None,
         }
+
+    async def download_attachment(self, attachment: Attachment) -> bytes:
+        """
+        Download attachment content from Telegram.
+
+        Uses file_id stored in attachment.id to download via Telegram Bot API.
+
+        Args:
+            attachment: Attachment with Telegram file_id
+
+        Returns:
+            File content as bytes
+
+        Raises:
+            ValueError: If no file_id available
+            Exception: On download failure
+        """
+        if not self.bot:
+            raise RuntimeError("Bot not connected")
+
+        file_id = attachment.id
+        if not file_id:
+            raise ValueError("No file_id in Telegram attachment")
+
+        # Get file info from Telegram
+        file_info = await self.bot.get_file(file_id)
+
+        # Download the file
+        file_bytes = await file_info.download_as_bytearray()
+
+        return bytes(file_bytes)
 
     # =========================================================================
     # Command Handlers

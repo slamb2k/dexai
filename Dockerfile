@@ -22,10 +22,10 @@ WORKDIR /app
 COPY pyproject.toml ./
 
 # Install dependencies into the virtual environment
-# Include channels extra so Telegram/Discord/Slack are available during setup
+# Include channels + multimodal extras for messaging and image generation
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /app/.venv && \
-    uv pip install --python=/app/.venv/bin/python -e ".[channels]"
+    uv pip install --python=/app/.venv/bin/python -e ".[channels,multimodal]"
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime

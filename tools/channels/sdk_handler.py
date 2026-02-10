@@ -319,6 +319,7 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
 
     This is the main handler function registered with the router.
     Uses SessionManager for continuous conversations with SDK session resumption.
+    Supports multi-modal processing (images, documents) via MediaProcessor.
 
     Args:
         message: Inbound UnifiedMessage from a channel adapter
@@ -333,11 +334,25 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
     # Create AskUserQuestion handler for this message context
     ask_handler = create_ask_user_handler(message)
 
+    # Process attachments if present (Phase 15a multi-modal support)
+    enhanced_content = message.content
+    media_cost = 0.0
+
+    if message.attachments:
+        processed_media, media_cost = await _process_message_attachments(
+            message, context
+        )
+
+        # Build enhanced context with media descriptions
+        media_context = _build_media_context(processed_media)
+        if media_context:
+            enhanced_content = f"{message.content}\n\n{media_context}"
+
     # Handle message through session manager
     result = await manager.handle_message(
         user_id=message.user_id,
         channel=message.channel,
-        content=message.content,
+        content=enhanced_content,
         context=context,
         ask_user_handler=ask_handler,
     )
@@ -364,6 +379,12 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
     else:
         response_content = result.get("content") or "I completed the task but have no text response."
 
+        # Format response for channel (Phase 15a: code block handling)
+        response_content = _format_response_for_channel(response_content, message.channel)
+
+        # Total cost includes media processing
+        total_cost = result.get("cost_usd", 0) + media_cost
+
         # Log successful LLM response to dashboard
         _log_to_dashboard(
             event_type="task",
@@ -374,17 +395,17 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
                 "message_id": message.id,
                 "response_length": len(response_content),
                 "tool_uses": len(result.get("tool_uses", [])),
-                "cost_usd": result.get("cost_usd", 0),
+                "cost_usd": total_cost,
+                "media_cost_usd": media_cost,
             },
             severity="info",
         )
 
-        # Record cost metric
-        cost_usd = result.get("cost_usd", 0)
-        if cost_usd > 0:
+        # Record cost metric (including media cost)
+        if total_cost > 0:
             _record_dashboard_metric(
                 metric_name="api_cost_usd",
-                metric_value=cost_usd,
+                metric_value=total_cost,
                 labels={"channel": message.channel, "user_id": message.user_id},
             )
 
@@ -410,8 +431,9 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
         timestamp=datetime.now(),
         metadata={
             **message.metadata,
-            "sdk_cost_usd": result.get("cost_usd", 0),
+            "sdk_cost_usd": result.get("cost_usd", 0) + media_cost,
             "sdk_tool_uses": result.get("tool_uses", []),
+            "media_cost_usd": media_cost,
         },
     )
 
@@ -430,11 +452,15 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
     except Exception as e:
         send_result = {"success": False, "error": str(e)}
 
+    # Check for generated images in tool results and send them
+    image_send_result = await _send_generated_images(message, result, context)
+
     return {
         "success": True,
         "handler": "sdk_handler",
         "ai_response": result.get("success", False),
         "send_result": send_result,
+        "image_send_result": image_send_result,
         "cost_usd": result.get("cost_usd", 0),
         "tool_uses": len(result.get("tool_uses", [])),
     }
@@ -457,6 +483,286 @@ def _log_error(message: UnifiedMessage, error: str) -> None:
         )
     except Exception:
         pass
+
+
+# =============================================================================
+# Multi-Modal Processing (Phase 15a)
+# =============================================================================
+
+
+async def _process_message_attachments(
+    message: UnifiedMessage,
+    context: dict,
+) -> tuple[list, float]:
+    """
+    Process message attachments using MediaProcessor.
+
+    Args:
+        message: Message with attachments
+        context: Security/routing context
+
+    Returns:
+        Tuple of (processed_media_list, total_cost_usd)
+    """
+    try:
+        from tools.channels.media_processor import get_media_processor
+        from tools.channels.router import get_router
+
+        processor = get_media_processor()
+        router = get_router()
+
+        # Get adapter for the channel
+        adapter = router.adapters.get(message.channel)
+        if not adapter:
+            logger.warning(f"No adapter found for channel: {message.channel}")
+            return [], 0.0
+
+        # Process attachments
+        processed = await processor.process_attachments_batch(
+            attachments=message.attachments,
+            channel=message.channel,
+            adapter=adapter,
+        )
+
+        # Calculate total cost
+        total_cost = sum(m.processing_cost_usd for m in processed)
+
+        return processed, total_cost
+
+    except Exception as e:
+        logger.error(f"Media processing failed: {e}")
+        return [], 0.0
+
+
+def _build_media_context(processed_media: list) -> str:
+    """
+    Build context string from processed media for AI.
+
+    Creates ADHD-friendly summaries when multiple attachments present.
+
+    Args:
+        processed_media: List of MediaContent objects
+
+    Returns:
+        Context string to prepend to message
+    """
+    if not processed_media:
+        return ""
+
+    context_parts = []
+    successful = [m for m in processed_media if m.processed]
+
+    if not successful:
+        return ""
+
+    # ADHD-friendly: Summarize if multiple
+    if len(successful) > 1:
+        context_parts.append(f"[User sent {len(successful)} attachments]")
+
+    for i, media in enumerate(successful, 1):
+        prefix = f"[Attachment {i}]" if len(successful) > 1 else "[Attachment]"
+
+        if media.vision_description:
+            context_parts.append(f"{prefix} Image: {media.vision_description}")
+
+        elif media.extracted_text:
+            # Truncate long documents for context
+            text = media.extracted_text
+            if len(text) > 2000:
+                text = text[:2000] + "... [truncated]"
+
+            filename = media.attachment.filename if media.attachment else "document"
+            pages = f" ({media.page_count} pages)" if media.page_count else ""
+            context_parts.append(f"{prefix} Document '{filename}'{pages}:\n{text}")
+
+        elif media.transcription:
+            # Phase 15b placeholder
+            context_parts.append(f"{prefix} Audio transcription: {media.transcription}")
+
+    return "\n\n".join(context_parts)
+
+
+def _format_response_for_channel(response: str, channel: str) -> str:
+    """
+    Format AI response for specific channel.
+
+    Handles code block formatting and respects channel limits.
+
+    Args:
+        response: Raw AI response
+        channel: Target channel name
+
+    Returns:
+        Formatted response string
+    """
+    try:
+        from tools.channels.media_processor import (
+            parse_response_blocks,
+            format_blocks_for_channel,
+            split_for_channel,
+        )
+
+        # Parse into blocks
+        blocks = parse_response_blocks(response)
+
+        # Format for channel
+        formatted = format_blocks_for_channel(blocks, channel)
+
+        # Split if needed (return first chunk - streaming handles rest)
+        chunks = split_for_channel(formatted, channel)
+
+        return chunks[0] if chunks else response
+
+    except Exception as e:
+        logger.warning(f"Response formatting failed: {e}")
+        return response
+
+
+async def _send_generated_images(
+    message: UnifiedMessage,
+    result: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    Check for generated images in tool results and send them.
+
+    Looks for image URLs from the generate_image tool and sends them
+    via the channel adapter.
+
+    Args:
+        message: Original inbound message
+        result: SDK handler result with tool_uses
+        context: Handler context with adapter
+
+    Returns:
+        Send result dict or None if no images
+    """
+    import re
+
+    try:
+        # Check for pending image from the generate_image tool
+        # The tool stores the URL in a thread-local for us to pick up
+        from tools.agent.mcp.channel_tools import get_pending_image, clear_pending_image
+        pending_image = get_pending_image()
+        if pending_image:
+            clear_pending_image()
+            logger.info(f"Found pending image URL, sending to {message.channel}")
+            return await _send_image_to_channel(message, pending_image, context)
+
+        # Look for image URLs in tool uses (handles both dict and ToolUseBlock)
+        tool_uses = result.get("tool_uses", [])
+
+        for tool_use in tool_uses:
+            # Handle both dict and ToolUseBlock objects
+            if isinstance(tool_use, dict):
+                tool_name = tool_use.get("tool", "") or tool_use.get("name", "")
+                tool_result = tool_use.get("result", {})
+            else:
+                # ToolUseBlock object from SDK
+                tool_name = getattr(tool_use, "name", "")
+                tool_result = {}  # SDK doesn't include result in ToolUseBlock
+
+            if "generate_image" in tool_name or "image" in tool_name.lower():
+                # Check for image URL in result (if available)
+                if isinstance(tool_result, dict):
+                    image_url = tool_result.get("image_url") or tool_result.get("_dexai_image_url")
+                    if image_url:
+                        return await _send_image_to_channel(message, image_url, context)
+
+        # Check response content for DALL-E URLs (multiple possible domains)
+        content = result.get("content", "")
+        dalle_patterns = [
+            r'https://oaidalleapiprodscus\.blob\.core\.windows\.net[^\s\)\]\"\'<>]+',
+            r'https://dalleproduse\.blob\.core\.windows\.net[^\s\)\]\"\'<>]+',
+            r'https://[a-z0-9-]+\.blob\.core\.windows\.net/[^\s\)\]\"\'<>]*dalle[^\s\)\]\"\'<>]*',
+        ]
+
+        for pattern in dalle_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            if matches:
+                logger.info(f"Found DALL-E URL in content, sending to {message.channel}")
+                return await _send_image_to_channel(message, matches[0], context)
+
+        return None
+
+    except ImportError:
+        # channel_tools not available, try URL extraction only
+        pass
+    except Exception as e:
+        logger.warning(f"Failed to send generated image: {e}")
+        return {"success": False, "error": str(e)}
+
+    return None
+
+
+async def _send_image_to_channel(
+    message: UnifiedMessage,
+    image_url: str,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Send an image to the channel via the adapter.
+
+    Args:
+        message: Original message (for reply context)
+        image_url: URL of the image to send
+        context: Handler context with adapter
+
+    Returns:
+        Send result dict
+    """
+    try:
+        adapter = context.get("adapter")
+        if not adapter:
+            # Try to get adapter from router
+            from tools.channels.router import get_router
+            router = get_router()
+            adapter = router.get_adapter(message.channel)
+
+        if not adapter:
+            return {"success": False, "error": "no_adapter"}
+
+        # Check if adapter has send_image method
+        if not hasattr(adapter, "send_image"):
+            logger.warning(f"Adapter {message.channel} doesn't support send_image")
+            return {"success": False, "error": "send_image_not_supported"}
+
+        # Get chat/channel ID from message metadata
+        chat_id = message.metadata.get(f"{message.channel}_chat_id") or message.metadata.get("telegram_chat_id")
+        if not chat_id:
+            chat_id = message.channel_user_id
+
+        # Send the image
+        if message.channel == "telegram":
+            result = await adapter.send_image(
+                chat_id=chat_id,
+                image=image_url,
+                caption=None,
+            )
+        elif message.channel == "discord":
+            channel_id = message.metadata.get("discord_channel_id")
+            result = await adapter.send_image(
+                channel_id=channel_id,
+                user_id=message.channel_user_id if not channel_id else None,
+                image=image_url,
+                caption=None,
+            )
+        elif message.channel == "slack":
+            channel_id = message.metadata.get("slack_channel_id") or message.channel_user_id
+            result = await adapter.send_image(
+                channel_id=channel_id,
+                image=image_url,
+                caption=None,
+            )
+        else:
+            return {"success": False, "error": f"unsupported_channel: {message.channel}"}
+
+        logger.info(f"Sent generated image to {message.channel}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to send image to channel: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # =============================================================================

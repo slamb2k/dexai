@@ -61,15 +61,17 @@ Pluggable memory backend system supporting multiple storage providers.
 
 | Tool | Description |
 |------|-------------|
-| `models.py` | Canonical data structures for cross-platform messaging (UnifiedMessage, Attachment, ChannelUser) |
+| `models.py` | Canonical data structures for cross-platform messaging (UnifiedMessage, Attachment, ChannelUser, MediaContent, ContentBlock) |
 | `inbox.py` | Message storage, cross-channel identity linking, and user preferences |
 | `router.py` | Central message routing hub with integrated security pipeline |
 | `gateway.py` | WebSocket server for real-time communication backbone |
-| `telegram.py` | Telegram bot adapter using python-telegram-bot (polling mode) |
-| `discord.py` | Discord bot adapter using discord.py (slash commands) |
-| `slack.py` | Slack app adapter using slack-bolt (Socket Mode) |
+| `telegram.py` | Telegram bot adapter using python-telegram-bot (polling mode, attachment download) |
+| `discord.py` | Discord bot adapter using discord.py (slash commands, attachment download) |
+| `slack.py` | Slack app adapter using slack-bolt (Socket Mode, attachment download) |
 | `session_manager.py` | ClaudeSDKClient-based session manager for continuous conversations with SDK resumption support |
-| `sdk_handler.py` | Message handler using DexAIClient, session management via SessionManager, complexity hints, channel-aware truncation |
+| `sdk_handler.py` | Message handler using DexAIClient, session management via SessionManager, complexity hints, channel-aware truncation, media processing integration |
+| `media_processor.py` | Multi-modal media processing: Claude Vision for images, PyPDF2/python-docx for documents, code block detection, channel-specific formatting (Phase 15a) |
+| `image_generator.py` | Image generation via DALL-E API with cost tracking and configurable quality/size options (Phase 15a) |
 
 ---
 

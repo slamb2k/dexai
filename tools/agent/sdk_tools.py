@@ -378,6 +378,23 @@ async def channel_pair(args: dict[str, Any]) -> dict[str, Any]:
     return _format_result(result)
 
 
+@tool(
+    "generate_image",
+    "Generate an image using DALL-E. Use when user asks to create, generate, draw, or make an image/picture.",
+    {"prompt": str, "size": str, "quality": str}
+)
+async def generate_image(args: dict[str, Any]) -> dict[str, Any]:
+    """Generate an image from a text prompt."""
+    from tools.agent.mcp.channel_tools import dexai_generate_image
+
+    result = dexai_generate_image(
+        prompt=args["prompt"],
+        size=args.get("size", "1024x1024"),
+        quality=args.get("quality", "standard"),
+    )
+    return _format_result(result)
+
+
 # =============================================================================
 # Dependency Tools (Skill Package Management)
 # =============================================================================
@@ -487,6 +504,7 @@ ALL_TOOLS = [
     calendar_propose,
     # Channel
     channel_pair,
+    generate_image,
     # Dependency (Skill Package Management)
     get_skill_dependency_setting,
     verify_package,
