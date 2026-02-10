@@ -1,24 +1,27 @@
 """
-Voice API Routes (Phase 11a)
+Voice API Routes (Phase 11a/11b/11c)
 
 Provides endpoints for voice interface:
 - GET  /api/voice/status      - Check voice config and availability
 - POST /api/voice/command      - Submit transcript, parse intent, execute
+- POST /api/voice/transcribe   - Server-side audio transcription (Phase 11b)
+- POST /api/voice/tts          - Text-to-speech generation (Phase 11c)
 - GET  /api/voice/preferences  - Get user voice preferences
 - PUT  /api/voice/preferences  - Update voice preferences
 - GET  /api/voice/history      - Get voice command history
 - GET  /api/voice/commands     - List available voice commands
 """
 
+import base64
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from tools.voice.models import TranscriptionResult
-from tools.voice.parser.intent_parser import parse_command, AVAILABLE_COMMANDS
 from tools.voice.parser.command_router import create_default_router
+from tools.voice.parser.intent_parser import AVAILABLE_COMMANDS, parse_command
 from tools.voice.preferences.user_preferences import (
     get_command_history,
     get_preferences,
@@ -79,12 +82,16 @@ class VoicePreferencesUpdate(BaseModel):
     enabled: Optional[bool] = None
     preferred_source: Optional[str] = None
     language: Optional[str] = None
+    continuous_listening: Optional[bool] = None
     audio_feedback_enabled: Optional[bool] = None
     visual_feedback_enabled: Optional[bool] = None
     confirmation_verbosity: Optional[str] = None
     auto_execute_high_confidence: Optional[bool] = None
     confidence_threshold: Optional[float] = None
     repeat_on_low_confidence: Optional[bool] = None
+    tts_enabled: Optional[bool] = None
+    tts_voice: Optional[str] = None
+    tts_speed: Optional[float] = None
 
 
 class VoiceStatusResponse(BaseModel):
@@ -96,13 +103,24 @@ class VoiceStatusResponse(BaseModel):
     user_preferences: dict[str, Any]
 
 
+class TTSRequest(BaseModel):
+    """Request model for TTS generation."""
+
+    text: str = Field(..., min_length=1, max_length=4096)
+    voice: str = Field(default="alloy")
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)
+    format: str = Field(default="mp3")
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
 
 
 @router.get("/status")
-async def get_voice_status(user_id: str = Query(default="default")) -> VoiceStatusResponse:
+async def get_voice_status(
+    user_id: str = Query(default="default"),
+) -> VoiceStatusResponse:
     """Check voice interface status and configuration."""
     prefs = get_preferences(user_id)
     user_prefs = prefs.get("data", {})
@@ -111,7 +129,11 @@ async def get_voice_status(user_id: str = Query(default="default")) -> VoiceStat
         language=user_prefs.get("language", "en-US"),
     )
 
-    available_sources = ["web_speech"]
+    # Determine available sources (Phase 11b: add whisper_api if configured)
+    from tools.voice.recognition.transcriber import get_transcription_coordinator
+
+    coordinator = get_transcription_coordinator()
+    available_sources = coordinator.available_providers
 
     return VoiceStatusResponse(
         enabled=user_prefs.get("enabled", True),
@@ -128,14 +150,16 @@ async def process_voice_command(
 ) -> VoiceCommandResponse:
     """Receive a voice transcript, parse the intent, execute the command."""
     # Process the Web Speech result
-    transcription = process_web_speech_result({
-        "transcript": request.transcript,
-        "confidence": request.confidence,
-        "isFinal": True,
-        "alternatives": request.alternatives,
-        "language": request.language,
-        "durationMs": request.duration_ms,
-    })
+    transcription = process_web_speech_result(
+        {
+            "transcript": request.transcript,
+            "confidence": request.confidence,
+            "isFinal": True,
+            "alternatives": request.alternatives,
+            "language": request.language,
+            "durationMs": request.duration_ms,
+        }
+    )
 
     # Parse the command
     parsed = parse_command(transcription.transcript)
@@ -170,6 +194,100 @@ async def process_voice_command(
         error=result.error,
         parsed=parsed.to_dict(),
     )
+
+
+@router.post("/transcribe")
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    provider: Optional[str] = Query(default=None),
+    language: Optional[str] = Query(default="en-US"),
+    user_id: str = Query(default="default"),
+) -> dict[str, Any]:
+    """Transcribe uploaded audio file via server-side provider (Phase 11b).
+
+    Accepts audio files (WebM, MP3, M4A, WAV, OGG) and transcribes
+    using the TranscriptionCoordinator with automatic fallback.
+    """
+    from tools.voice.recognition.transcriber import get_transcription_coordinator
+
+    audio_bytes = await audio.read()
+
+    # Validate size (25MB Whisper limit)
+    max_size = 25 * 1024 * 1024
+    if len(audio_bytes) > max_size:
+        raise HTTPException(status_code=413, detail="Audio file too large (max 25MB)")
+
+    mime_type = audio.content_type or "audio/webm"
+    filename = audio.filename or "recording.webm"
+
+    coordinator = get_transcription_coordinator()
+    result = await coordinator.transcribe(
+        audio_data=audio_bytes,
+        source=provider,
+        language=language or "en-US",
+        user_id=user_id,
+        mime_type=mime_type,
+        filename=filename,
+    )
+
+    return {
+        "success": bool(result.transcript),
+        "transcript": result.transcript,
+        "confidence": result.confidence,
+        "source": result.source,
+        "language": result.language,
+        "duration_ms": result.duration_ms,
+    }
+
+
+@router.post("/tts")
+async def generate_tts(
+    request: TTSRequest,
+    user_id: str = Query(default="default"),
+) -> dict[str, Any]:
+    """Generate text-to-speech audio (Phase 11c).
+
+    Returns base64-encoded audio data for playback in the browser.
+    Uses the existing TTSGenerator from Phase 15b.
+    """
+    from tools.channels.tts_generator import get_tts_generator
+
+    generator = get_tts_generator()
+
+    if not generator.is_enabled():
+        # Fall back to indicating browser TTS should be used
+        return {
+            "success": True,
+            "use_browser_tts": True,
+            "text": request.text,
+            "message": "Cloud TTS disabled. Use browser speech synthesis.",
+        }
+
+    result = await generator.generate(
+        text=request.text,
+        voice=request.voice,
+        format=request.format,
+        speed=request.speed,
+    )
+
+    if not result.success:
+        return {
+            "success": False,
+            "error": result.error,
+            "use_browser_tts": True,
+            "text": request.text,
+        }
+
+    # Encode audio as base64 for JSON transport
+    audio_b64 = base64.b64encode(result.audio_bytes).decode() if result.audio_bytes else ""
+
+    return {
+        "success": True,
+        "audio_base64": audio_b64,
+        "format": result.format,
+        "duration_seconds": result.duration_seconds,
+        "cost_usd": result.cost_usd,
+    }
 
 
 @router.get("/preferences")
