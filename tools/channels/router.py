@@ -442,126 +442,126 @@ class MessageRouter:
         # Update state to thinking while processing
         _update_dex_state("thinking", f"Processing message from {message.channel}")
 
-        # Run security checks
-        allowed, reason, context = await self.security_pipeline(message)
-
-        # Log to audit
         try:
-            from tools.security import audit
+            # Run security checks
+            allowed, reason, context = await self.security_pipeline(message)
 
-            audit.log_event(
-                event_type="command",
-                action="message_inbound",
-                user_id=message.user_id,
-                channel=message.channel,
-                status="success" if allowed else "blocked",
-                details={
-                    "reason": reason,
-                    "message_id": message.id,
-                    "content_type": message.content_type,
-                },
-            )
-        except ImportError:
-            pass
-        except Exception:
-            pass
+            # Log to audit
+            try:
+                from tools.security import audit
 
-        if not allowed:
-            # Log blocked message to dashboard
+                audit.log_event(
+                    event_type="command",
+                    action="message_inbound",
+                    user_id=message.user_id,
+                    channel=message.channel,
+                    status="success" if allowed else "blocked",
+                    details={
+                        "reason": reason,
+                        "message_id": message.id,
+                        "content_type": message.content_type,
+                    },
+                )
+            except ImportError:
+                pass
+            except Exception:
+                pass
+
+            if not allowed:
+                # Log blocked message to dashboard
+                _log_to_dashboard(
+                    event_type="message",
+                    summary=f"Blocked inbound message: {reason}",
+                    channel=message.channel,
+                    user_id=message.user_id,
+                    details={"reason": reason, "message_id": message.id},
+                    severity="warning",
+                )
+
+                # Record response time for blocked messages
+                elapsed_ms = (time.time() - start_time) * 1000
+                _record_dashboard_metric(
+                    metric_name="response_time_ms",
+                    metric_value=elapsed_ms,
+                    labels={"channel": message.channel, "success": "false", "reason": reason},
+                )
+
+                return {"success": False, "reason": reason, "context": context}
+
+            # Log successful inbound message to dashboard
             _log_to_dashboard(
                 event_type="message",
-                summary=f"Blocked inbound message: {reason}",
+                summary=f"Received message from {message.channel}",
                 channel=message.channel,
                 user_id=message.user_id,
-                details={"reason": reason, "message_id": message.id},
-                severity="warning",
+                details={
+                    "message_id": message.id,
+                    "content_type": message.content_type,
+                    "content_preview": message.content[:100] if message.content else None,
+                },
+                severity="info",
             )
-            # Return to idle state after blocking
-            _update_dex_state("idle", None)
 
-            # Record response time for blocked messages
+            # Record inbound message metric
+            _record_dashboard_metric(
+                metric_name="messages_inbound",
+                metric_value=1,
+                labels={"channel": message.channel},
+            )
+
+            # Store message
+            try:
+                from tools.channels import inbox
+
+                inbox.store_message(message)
+            except Exception as e:
+                context["storage_error"] = str(e)
+
+            # Update state to working while executing handlers
+            _update_dex_state("working", f"Handling message from {message.channel}")
+
+            # Dispatch to handlers
+            handler_results = []
+            for handler in self.message_handlers:
+                try:
+                    result = await handler(message, context)
+                    handler_results.append(
+                        {"handler": handler.__name__, "success": True, "result": result}
+                    )
+                except Exception as e:
+                    handler_results.append(
+                        {"handler": handler.__name__, "success": False, "error": str(e)}
+                    )
+                    # Log handler error
+                    try:
+                        from tools.security import audit
+
+                        audit.log_event(
+                            event_type="error",
+                            action="handler_error",
+                            user_id=message.user_id,
+                            details={
+                                "error": str(e),
+                                "handler": handler.__name__,
+                                "message_id": message.id,
+                            },
+                        )
+                    except Exception:
+                        pass
+
+            # Record response time metric
             elapsed_ms = (time.time() - start_time) * 1000
             _record_dashboard_metric(
                 metric_name="response_time_ms",
                 metric_value=elapsed_ms,
-                labels={"channel": message.channel, "success": "false", "reason": reason},
+                labels={"channel": message.channel, "success": "true"},
             )
 
-            return {"success": False, "reason": reason, "context": context}
-
-        # Log successful inbound message to dashboard
-        _log_to_dashboard(
-            event_type="message",
-            summary=f"Received message from {message.channel}",
-            channel=message.channel,
-            user_id=message.user_id,
-            details={
-                "message_id": message.id,
-                "content_type": message.content_type,
-                "content_preview": message.content[:100] if message.content else None,
-            },
-            severity="info",
-        )
-
-        # Record inbound message metric
-        _record_dashboard_metric(
-            metric_name="messages_inbound",
-            metric_value=1,
-            labels={"channel": message.channel},
-        )
-
-        # Store message
-        try:
-            from tools.channels import inbox
-
-            inbox.store_message(message)
-        except Exception as e:
-            context["storage_error"] = str(e)
-
-        # Update state to working while executing handlers
-        _update_dex_state("working", f"Handling message from {message.channel}")
-
-        # Dispatch to handlers
-        handler_results = []
-        for handler in self.message_handlers:
-            try:
-                result = await handler(message, context)
-                handler_results.append(
-                    {"handler": handler.__name__, "success": True, "result": result}
-                )
-            except Exception as e:
-                handler_results.append(
-                    {"handler": handler.__name__, "success": False, "error": str(e)}
-                )
-                # Log handler error
-                try:
-                    from tools.security import audit
-
-                    audit.log_event(
-                        event_type="error",
-                        action="handler_error",
-                        user_id=message.user_id,
-                        details={
-                            "error": str(e),
-                            "handler": handler.__name__,
-                            "message_id": message.id,
-                        },
-                    )
-                except Exception:
-                    pass
-
-        # Return to idle state after processing
-        _update_dex_state("idle", None)
-
-        # Record response time metric
-        elapsed_ms = (time.time() - start_time) * 1000
-        _record_dashboard_metric(
-            metric_name="response_time_ms",
-            metric_value=elapsed_ms,
-            labels={"channel": message.channel, "success": "true"},
-        )
-
-        return {"success": True, "message_id": message.id, "handlers": handler_results}
+            return {"success": True, "message_id": message.id, "handlers": handler_results}
+        finally:
+            # Always return to idle — prevents state from getting stuck
+            # when any exception escapes the processing pipeline
+            _update_dex_state("idle", None)
 
     async def route_outbound(self, message: UnifiedMessage) -> dict[str, Any]:
         """
@@ -646,9 +646,6 @@ class MessageRouter:
                 labels={"channel": channel, "success": str(result.get("success", False))},
             )
 
-            # Return to idle after sending
-            _update_dex_state("idle", None)
-
             return result
 
         except Exception as e:
@@ -664,10 +661,10 @@ class MessageRouter:
                 )
             except Exception:
                 pass
-            # Set error state briefly, then idle
-            _update_dex_state("error", f"Failed to send to {channel}")
-            _update_dex_state("idle", None)
             return {"success": False, "error": str(e)}
+        finally:
+            # Always return to idle — prevents state from getting stuck
+            _update_dex_state("idle", None)
 
     async def broadcast(
         self, user_id: str, content: str, priority: str = "normal"
