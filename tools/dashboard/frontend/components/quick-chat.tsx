@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Paperclip, Loader2, X, Maximize2, Minimize2, MessageSquare } from 'lucide-react';
+import { ArrowUp, Paperclip, Loader2, X, Maximize2, Minimize2, MessageSquare, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
 import { ChatHistory, ChatMessage, ChatControl } from './chat-history';
@@ -48,6 +48,10 @@ export function QuickChat({
   const [error, setError] = useState<string | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const [voiceResult, setVoiceResult] = useState<{ message: string; success: boolean } | null>(null);
+  const [activeControl, setActiveControl] = useState<ChatControl | null>(null);
+  const [controlInputValue, setControlInputValue] = useState('');
+  const [showControlPassword, setShowControlPassword] = useState(false);
+  const controlInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const voiceResultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -137,6 +141,16 @@ export function QuickChat({
     }
   }, [externalConversationId]);
 
+  // Auto-trigger setup/greeting on mount.
+  // The backend checks args/user.yaml fields directly to decide whether to
+  // run the onboarding flow or emit a personalised greeting.
+  const setupCheckedRef = useRef(false);
+  useEffect(() => {
+    if (setupCheckedRef.current) return;
+    setupCheckedRef.current = true;
+    sendMessage('__setup_init__', true);
+  }, []);
+
   const loadHistory = async (convId: string) => {
     setIsLoadingHistory(true);
     try {
@@ -150,60 +164,54 @@ export function QuickChat({
     setIsLoadingHistory(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage || isProcessing || externalIsProcessing) return;
-
-    setError(null);
-    setMessage('');
-    setIsMultiline(false);
-    // Reset textarea height after clearing
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto';
+  // Focus control input and set default value when a new control appears
+  useEffect(() => {
+    if (activeControl) {
+      setControlInputValue(activeControl.default_value || '');
+      setShowControlPassword(false);
+      setTimeout(() => controlInputRef.current?.focus(), 100);
     }
+  }, [activeControl]);
+
+  // Core message-sending logic. When silent=true, no user bubble is shown (used for auto-trigger).
+  const sendMessage = async (text: string, silent = false) => {
+    setError(null);
     setIsProcessing(true);
     onStateChange?.('thinking');
 
-    // Add user message to local state immediately
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: trimmedMessage,
-      created_at: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, userMessage]);
+    if (!silent) {
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+      onSendMessage?.(text);
+    }
 
-    // Notify parent if provided
-    onSendMessage?.(trimmedMessage);
-
-    // Show typing indicator
     setIsTyping(true);
     setTypingContent('');
     streamBufferRef.current = '';
     streamDisplayedRef.current = 0;
 
     try {
-      // Use WebSocket streaming for progressive response display
       let fullContent = '';
       let metadata: Partial<ChatStreamChunk> = {};
-      const pendingControls: ChatControl[] = [];
+      let nextControl: ChatControl | null = null;
 
-      for await (const chunk of streamChatMessage(trimmedMessage, conversationId || undefined)) {
+      for await (const chunk of streamChatMessage(text, conversationId || undefined)) {
         if (chunk.type === 'chunk') {
-          // Accumulate content and feed into reveal buffer
           fullContent += chunk.content || '';
           appendToStreamBuffer(chunk.content || '');
 
-          // Update conversation ID if provided
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
             onConversationChange?.(chunk.conversation_id);
           }
         } else if (chunk.type === 'control') {
-          // Accumulate control for attaching to the assistant message
           if (chunk.control_id && chunk.field && chunk.control_type) {
-            pendingControls.push({
+            nextControl = {
               control_type: chunk.control_type,
               control_id: chunk.control_id,
               label: chunk.label,
@@ -213,15 +221,13 @@ export function QuickChat({
               placeholder: chunk.placeholder,
               required: chunk.required,
               validation: chunk.validation,
-            });
+            };
           }
-          // Update conversation ID if provided
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
             onConversationChange?.(chunk.conversation_id);
           }
         } else if (chunk.type === 'done') {
-          // Store metadata for the final message
           metadata = chunk;
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
@@ -229,19 +235,16 @@ export function QuickChat({
           }
         } else if (chunk.type === 'error') {
           setError(chunk.error || 'Unknown error');
-          // Still add what we have as the response
           if (!fullContent) {
             fullContent = chunk.error || 'An error occurred. Please try again.';
           }
         }
       }
 
-      // Flush stream buffer and hide typing indicator
       stopStreamReveal();
       setIsTyping(false);
       setTypingContent('');
 
-      // Add assistant response with accumulated content and any controls
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -249,10 +252,13 @@ export function QuickChat({
         model: metadata.model,
         complexity: metadata.complexity,
         cost_usd: metadata.cost_usd,
-        controls: pendingControls.length > 0 ? pendingControls : undefined,
         created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, assistantMessage]);
+
+      if (nextControl) {
+        setActiveControl(nextControl);
+      }
 
     } catch (e) {
       const errorText = e instanceof Error ? e.message : 'Failed to send message';
@@ -273,28 +279,35 @@ export function QuickChat({
 
     setIsProcessing(false);
     onStateChange?.('idle');
-    // Return focus to the input after re-render removes disabled
     setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage || isProcessing || externalIsProcessing) return;
+
+    setMessage('');
+    setIsMultiline(false);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+
+    await sendMessage(trimmedMessage);
   };
 
   const clearConversation = () => {
     setMessages([]);
     setConversationId(null);
     setError(null);
+    setActiveControl(null);
+    setControlInputValue('');
     onConversationChange?.('');
   };
 
   const handleControlSubmit = useCallback(async (controlId: string, field: string, value: string) => {
-    // Mark the control as submitted in the message that contains it
-    setMessages(prev => prev.map(msg => {
-      if (!msg.controls?.some(c => c.control_id === controlId)) return msg;
-      return {
-        ...msg,
-        control_values: { ...msg.control_values, [controlId]: value },
-      };
-    }));
-
-    // Send the control response as a special message via the normal stream path
+    setActiveControl(null);
+    setControlInputValue('');
     setIsProcessing(true);
     onStateChange?.('thinking');
     setIsTyping(true);
@@ -305,7 +318,7 @@ export function QuickChat({
     try {
       let fullContent = '';
       let metadata: Partial<ChatStreamChunk> = {};
-      const pendingControls: ChatControl[] = [];
+      let nextControl: ChatControl | null = null;
 
       for await (const chunk of streamChatMessage(
         '__control_response__',
@@ -321,7 +334,7 @@ export function QuickChat({
           }
         } else if (chunk.type === 'control') {
           if (chunk.control_id && chunk.field && chunk.control_type) {
-            pendingControls.push({
+            nextControl = {
               control_type: chunk.control_type,
               control_id: chunk.control_id,
               label: chunk.label,
@@ -331,7 +344,7 @@ export function QuickChat({
               placeholder: chunk.placeholder,
               required: chunk.required,
               validation: chunk.validation,
-            });
+            };
           }
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
@@ -361,10 +374,13 @@ export function QuickChat({
           model: metadata.model,
           complexity: metadata.complexity,
           cost_usd: metadata.cost_usd,
-          controls: pendingControls.length > 0 ? pendingControls : undefined,
           created_at: new Date().toISOString(),
         };
         setMessages(prev => [...prev, assistantMessage]);
+      }
+
+      if (nextControl) {
+        setActiveControl(nextControl);
       }
     } catch (e) {
       stopStreamReveal();
@@ -377,6 +393,13 @@ export function QuickChat({
     onStateChange?.('idle');
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [conversationId, onStateChange, onConversationChange]);
+
+  // Submit the active control value
+  const submitActiveControl = useCallback((value: string) => {
+    if (!activeControl || !value.trim()) return;
+    const { control_id, field } = activeControl;
+    handleControlSubmit(control_id, field, value.trim());
+  }, [activeControl, handleControlSubmit]);
 
   // Keyboard shortcut: Cmd/Ctrl + K to focus
   useEffect(() => {
@@ -524,8 +547,101 @@ export function QuickChat({
         </div>
       )}
 
-      {/* Input Form */}
+      {/* Input Area — shows either a setup control or the normal chat input */}
       <div className="flex-shrink-0 border-t border-white/[0.04] pt-3">
+
+      {/* Setup Control (select / secure_input) — replaces the normal input while active */}
+      {activeControl && !processing && (
+        <div
+          className={cn(
+            'rounded-2xl transition-all duration-200 border',
+            'bg-white/[0.02] border-white/[0.06]'
+          )}
+        >
+          <div className="px-4 py-3">
+            {activeControl.control_type === 'select' ? (
+              /* Select options as buttons + "Other" */
+              <div className="flex flex-wrap gap-2">
+                {activeControl.options?.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => submitActiveControl(option.value)}
+                    className={cn(
+                      'px-3 py-2 rounded-xl text-sm transition-all text-left',
+                      'bg-white/[0.04] border border-white/[0.08] text-white/70',
+                      'hover:bg-white/[0.08] hover:border-white/15 hover:text-white/90'
+                    )}
+                  >
+                    <div>{option.label}</div>
+                    {option.description && (
+                      <div className="text-[11px] text-white/30 mt-0.5">{option.description}</div>
+                    )}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveControl(null);
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                  }}
+                  className={cn(
+                    'px-3 py-2 rounded-xl text-sm transition-all',
+                    'bg-white/[0.04] border border-dashed border-white/[0.12] text-white/50',
+                    'hover:bg-white/[0.08] hover:border-white/20 hover:text-white/70'
+                  )}
+                >
+                  Other
+                </button>
+              </div>
+            ) : (
+              /* Secure input (API key) */
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <input
+                    ref={controlInputRef}
+                    type={!showControlPassword ? 'password' : 'text'}
+                    value={controlInputValue}
+                    onChange={(e) => setControlInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submitActiveControl(controlInputValue);
+                      }
+                    }}
+                    placeholder={activeControl.placeholder || ''}
+                    className="w-full bg-transparent outline-none text-white placeholder-white/30 min-h-[24px] leading-6 font-mono pr-8"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowControlPassword(!showControlPassword)}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 p-1 text-white/30 hover:text-white/50 transition-colors"
+                  >
+                    {showControlPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => submitActiveControl(controlInputValue)}
+                  disabled={!controlInputValue.trim()}
+                  className={cn(
+                    'w-8 h-8 rounded-full transition-all duration-200',
+                    'flex items-center justify-center',
+                    controlInputValue.trim()
+                      ? 'bg-white text-black hover:bg-white/90'
+                      : 'bg-white/10 text-white/20 cursor-not-allowed'
+                  )}
+                >
+                  <ArrowUp className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Normal chat input — hidden while a control is active */}
+      {(!activeControl || processing) && (
         <form onSubmit={handleSubmit}>
           <div
             className={cn(
@@ -743,6 +859,7 @@ export function QuickChat({
             </div>
           </div>
         </form>
+      )}
       </div>
       </div>
     </div>
