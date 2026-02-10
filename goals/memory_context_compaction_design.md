@@ -16,7 +16,52 @@ DexAI's current memory system stores and retrieves memories effectively within a
 4. **Provider-agnostic operations** — External providers (Mem0, Zep) have built-in deduplication and supersession, but the native provider lacks these capabilities. The common interface needs to support all lifecycle operations regardless of backend.
 5. **User experience impact** — Memory operations (extraction, embedding, consolidation) cannot add perceptible latency to the conversation.
 
-This document designs a unified system that addresses all five concerns while aligning with Claude Agent SDK capabilities and ADHD-first design principles.
+6. **Session continuity across channels** — The SDK's `session_id` is not consistently surfaced through a single attribute path. Without reliable session IDs, conversations lose history between messages — every turn becomes a cold start with no prior context. This affects all channels (Telegram, Discord, Slack, web dashboard).
+
+This document designs a unified system that addresses all six concerns while aligning with Claude Agent SDK capabilities and ADHD-first design principles.
+
+---
+
+## Prerequisite: Session ID Extraction Fix
+
+**Source:** Discovered via PR #71 (Telegram message history loss). Affects all channels, not just Telegram.
+
+### The Bug
+
+`SessionManager` / `DexAIClient` only checked `msg.session_id` as a direct attribute. The Claude Agent SDK returns session IDs through multiple paths depending on message type:
+
+| Location | When Used |
+|----------|-----------|
+| `msg.session_id` | Direct attribute (the only path currently checked) |
+| `msg.data['session_id']` | Nested in data dict |
+| `msg.data.session_id` | Nested as object attribute |
+| `ResultMessage.session_id` | On the response object |
+| `ClaudeSDKClient.session_id` | On the client itself |
+
+Because only the first path was checked, session IDs were silently missed. Each message created a new conversation with no history — the SDK couldn't resume prior context.
+
+### Required Fix (implement before Phase A)
+
+1. **`_extract_session_id()` helper** in `tools/agent/sdk_client.py` — Check all five locations systematically
+2. **Fallback history injection** — When SDK session resumption isn't available, prepend recent messages from the inbox as context
+3. **Orphaned message bridging** — When `session_id` is captured mid-conversation, earlier messages are re-injected so the resumed session has full context
+
+This fix must be applied to all query methods: `query()`, `query_stream()`, `query_structured()`, `stream_response()`, `stream_input()`.
+
+**This is a prerequisite for the memory system** — without reliable session continuity, the extraction pipeline will fragment memories across orphaned sessions, and the L1 memory block will be repeatedly re-injected into sessions that should already have that context.
+
+---
+
+## Lessons Learned from PR #71
+
+PR #71 attempted an early implementation of several patterns described in this design. Key takeaways that informed this document:
+
+| Lesson | Detail | Impact on This Design |
+|--------|--------|-----------------------|
+| **Don't re-inject conversation history after compaction** | PR #71 commit 4 removed post-compaction history re-injection because the SDK already injects its own summary | Our `UserPromptSubmit` handler injects only L1 memory context (user profile, commitments, relevant memories) — NOT conversation history |
+| **PreCompact must be fast** | The queue-and-process pattern (write JSON file, process async) kept PreCompact under 10ms | Our PreCompact handler follows the same pattern — flush queue + write marker, no heavy processing |
+| **Standalone compact_processor.py is premature** | A separate background processor for compaction creates a parallel architecture to the memory daemon | This design uses a unified Memory Daemon with extraction, consolidation, and cleanup all in one service |
+| **Native-only supersession schema is too narrow** | PR #71 added supersession columns directly to the native SQLite schema | This design specifies provider-agnostic `supersede()` and `classify_update()` methods that work across Native/Mem0/Zep |
 
 ---
 
@@ -1003,6 +1048,20 @@ Active commitments:
 
 ## Implementation Plan
 
+### Phase 0: Session Continuity Fix (1 day)
+
+**Goal:** Reliable session IDs across all channels — prerequisite for all memory work
+
+1. **`_extract_session_id()` helper** (`tools/agent/sdk_client.py`)
+   - Check all 5 session ID locations (direct attr, data dict, data attr, ResultMessage, client)
+   - Apply to all query methods: `query()`, `query_stream()`, `query_structured()`, `stream_response()`, `stream_input()`
+
+2. **Fallback history injection** (`tools/channels/session_manager.py`)
+   - When SDK session resumption is unavailable, prepend recent messages from inbox as context
+   - Track when SDK session starts, bridge orphaned messages on first resumption
+
+3. **Verification** — Test across Telegram, Discord, Slack, and web dashboard to confirm session continuity
+
 ### Phase A: Foundation (3-4 days)
 
 **Goal:** Heuristic gate + extraction queue + basic daemon
@@ -1059,7 +1118,7 @@ Active commitments:
 4. **Configuration** — `args/memory.yaml` updates for new settings
 5. **Dashboard integration** — Memory activity feed, consolidation status
 
-**Total estimated: 10-14 days**
+**Total estimated: 11-15 days** (including Phase 0 prerequisite)
 
 ---
 
