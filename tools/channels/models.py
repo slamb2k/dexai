@@ -380,6 +380,183 @@ class ContentBlock:
         return cls(**data)
 
 
+# =============================================================================
+# Platform Rendering Models (Phase 15c)
+# =============================================================================
+
+
+@dataclass
+class RenderContext:
+    """
+    Context for rendering decisions.
+
+    Provides information needed by platform renderers to format
+    content appropriately for the target channel and conversation.
+    """
+    channel: str
+    user_id: str
+    message_id: str
+    reply_to: str | None = None
+    thread_id: str | None = None
+    platform_config: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RenderContext":
+        """Create from dict."""
+        return cls(**data)
+
+
+@dataclass
+class RenderedMessage:
+    """
+    Platform-native message ready to send.
+
+    Produced by ChannelRenderer, consumed by channel adapters.
+    The content field may be a string (plain text) or dict
+    (platform-specific structure like Block Kit or embeds).
+    """
+    channel: str
+    content: str | dict  # Text or platform-specific structure
+    attachments: list[str] = field(default_factory=list)  # File paths or URLs
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RenderedMessage":
+        """Create from dict."""
+        return cls(**data)
+
+
+# =============================================================================
+# Interactive Element Models (Phase 15d)
+# =============================================================================
+
+
+class ButtonStyle(Enum):
+    """Button visual style."""
+    DEFAULT = "default"
+    PRIMARY = "primary"
+    DANGER = "danger"
+
+
+class InteractiveType(Enum):
+    """Interactive element types."""
+    BUTTON = "button"
+    POLL = "poll"
+    SELECT = "select"
+
+
+@dataclass
+class Button:
+    """Interactive button definition."""
+    id: str
+    label: str
+    style: ButtonStyle = ButtonStyle.DEFAULT
+    action: str | None = None      # Callback action identifier
+    url: str | None = None         # For link buttons
+    disabled: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        d = asdict(self)
+        d["style"] = self.style.value
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Button":
+        """Create from dict."""
+        data = data.copy()
+        if isinstance(data.get("style"), str):
+            data["style"] = ButtonStyle(data["style"])
+        return cls(**data)
+
+
+@dataclass
+class ButtonGroup:
+    """Group of buttons for a message."""
+    buttons: list[Button]
+    message_id: str
+    user_id: str
+    expires_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        d = {
+            "buttons": [b.to_dict() for b in self.buttons],
+            "message_id": self.message_id,
+            "user_id": self.user_id,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+        }
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ButtonGroup":
+        """Create from dict."""
+        data = data.copy()
+        if data.get("buttons"):
+            data["buttons"] = [Button.from_dict(b) for b in data["buttons"]]
+        if isinstance(data.get("expires_at"), str):
+            data["expires_at"] = datetime.fromisoformat(data["expires_at"])
+        return cls(**data)
+
+
+@dataclass
+class PollOption:
+    """Single poll option."""
+    id: str
+    text: str
+    votes: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PollOption":
+        """Create from dict."""
+        return cls(**data)
+
+
+@dataclass
+class Poll:
+    """Poll definition."""
+    id: str
+    question: str
+    options: list[PollOption]
+    multiple_choice: bool = False
+    anonymous: bool = True
+    close_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        d = {
+            "id": self.id,
+            "question": self.question,
+            "options": [o.to_dict() for o in self.options],
+            "multiple_choice": self.multiple_choice,
+            "anonymous": self.anonymous,
+            "close_at": self.close_at.isoformat() if self.close_at else None,
+        }
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Poll":
+        """Create from dict."""
+        data = data.copy()
+        if data.get("options"):
+            data["options"] = [PollOption.from_dict(o) for o in data["options"]]
+        if isinstance(data.get("close_at"), str):
+            data["close_at"] = datetime.fromisoformat(data["close_at"])
+        return cls(**data)
+
+
 # Type aliases for clarity
 ChannelName = str  # 'telegram' | 'discord' | 'slack' | 'whatsapp'
 Direction = str  # 'inbound' | 'outbound'
