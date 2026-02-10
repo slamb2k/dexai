@@ -338,6 +338,15 @@ class ChatService:
                 content=message,
             )
 
+            # Clear any pending generated images — web chat doesn't use the
+            # thread-local image delivery mechanism (that's for channel adapters).
+            try:
+                from tools.agent.mcp.channel_tools import get_pending_image, clear_pending_image
+                if get_pending_image():
+                    clear_pending_image()
+            except ImportError:
+                pass
+
             if result.get("success"):
                 # Save assistant response
                 self.save_message(
@@ -488,6 +497,14 @@ class ChatService:
                     if hasattr(msg, "total_cost_usd"):
                         cost_usd = msg.total_cost_usd or 0.0
                     break
+
+            # Clear any pending generated images (same as send_message)
+            try:
+                from tools.agent.mcp.channel_tools import get_pending_image, clear_pending_image
+                if get_pending_image():
+                    clear_pending_image()
+            except ImportError:
+                pass
 
             # Save complete response
             response_text = "".join(full_response)
