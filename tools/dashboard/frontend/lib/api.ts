@@ -372,13 +372,23 @@ export interface ChatHistoryResponse {
  * Chunk received from WebSocket chat streaming.
  */
 export interface ChatStreamChunk {
-  type: 'chunk' | 'done' | 'error';
+  type: 'chunk' | 'done' | 'error' | 'control';
   content?: string;
   conversation_id?: string;
   model?: string;
   complexity?: string;
   cost_usd?: number;
   error?: string;
+  // Inline control fields (type: 'control')
+  control_type?: 'select' | 'button_group' | 'text_input' | 'secure_input';
+  control_id?: string;
+  label?: string;
+  field?: string;
+  options?: { value: string; label: string; description?: string }[];
+  default_value?: string;
+  placeholder?: string;
+  required?: boolean;
+  validation?: string;
 }
 
 export interface ChatConversation {
@@ -1530,7 +1540,8 @@ export interface ServiceHealth {
  */
 export async function* streamChatMessage(
   message: string,
-  conversationId?: string
+  conversationId?: string,
+  controlResponse?: { control_id: string; field: string; value: string }
 ): AsyncGenerator<ChatStreamChunk, void, unknown> {
   const wsUrl = `${getWsBaseUrl()}/api/chat/stream`;
 
@@ -1575,8 +1586,12 @@ export async function* streamChatMessage(
     // Wait for connection to open
     await openPromise;
 
-    // Send the message
-    ws.send(JSON.stringify({ message, conversation_id: conversationId }));
+    // Send the message (with optional control_response)
+    const payload: Record<string, unknown> = { message, conversation_id: conversationId };
+    if (controlResponse) {
+      payload.control_response = controlResponse;
+    }
+    ws.send(JSON.stringify(payload));
 
     // Yield chunks as they arrive
     while (!done || chunks.length > 0) {

@@ -4,6 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 import { Brain, Copy, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { ChatControlRenderer } from './chat-controls';
+
+export interface ChatControl {
+  control_type: 'select' | 'button_group' | 'text_input' | 'secure_input';
+  control_id: string;
+  label?: string;
+  field: string;
+  options?: { value: string; label: string; description?: string }[];
+  default_value?: string;
+  placeholder?: string;
+  required?: boolean;
+  validation?: string;
+}
 
 export interface ChatMessage {
   id: string;
@@ -13,6 +26,8 @@ export interface ChatMessage {
   complexity?: string;
   cost_usd?: number;
   tool_uses?: { tool: string; input: unknown }[];
+  controls?: ChatControl[];
+  control_values?: Record<string, string>;
   created_at: string;
 }
 
@@ -23,6 +38,7 @@ interface ChatHistoryProps {
   typingContent?: string;
   className?: string;
   onRetry?: (messageId: string) => void;
+  onControlSubmit?: (controlId: string, field: string, value: string) => void;
   userInitials?: string;
 }
 
@@ -33,6 +49,7 @@ export function ChatHistory({
   typingContent = '',
   className,
   onRetry,
+  onControlSubmit,
   userInitials = 'U',
 }: ChatHistoryProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -98,6 +115,7 @@ export function ChatHistory({
           message={message}
           isCopied={copiedId === message.id}
           onCopy={() => handleCopy(message.content, message.id)}
+          onControlSubmit={onControlSubmit}
           formatTimestamp={formatTimestamp}
           userInitials={userInitials}
         />
@@ -138,6 +156,7 @@ interface CrystalMessageProps {
   message: ChatMessage;
   isCopied: boolean;
   onCopy: () => void;
+  onControlSubmit?: (controlId: string, field: string, value: string) => void;
   formatTimestamp: (ts: string) => string;
   userInitials: string;
 }
@@ -149,6 +168,7 @@ function CrystalMessage({
   message,
   isCopied,
   onCopy,
+  onControlSubmit,
   formatTimestamp,
   userInitials,
 }: CrystalMessageProps) {
@@ -242,6 +262,20 @@ function CrystalMessage({
               >
                 {message.content}
               </ReactMarkdown>
+              {/* Inline controls rendered after markdown content */}
+              {message.controls && message.controls.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {message.controls.map((control) => (
+                    <ChatControlRenderer
+                      key={control.control_id}
+                      control={control}
+                      submitted={!!message.control_values?.[control.control_id]}
+                      submittedValue={message.control_values?.[control.control_id]}
+                      onSubmit={onControlSubmit || (() => {})}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-[15px] leading-relaxed text-white/80">{message.content}</p>
