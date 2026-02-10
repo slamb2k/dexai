@@ -23,6 +23,7 @@ from .setup import router as setup_router
 from .skills import router as skills_router
 from .status import router as status_router
 from .tasks import router as tasks_router
+from .voice import router as voice_router
 
 
 # Create main API router
@@ -30,6 +31,7 @@ api_router = APIRouter(prefix="/api")
 
 # Include all sub-routers
 api_router.include_router(status_router, tags=["status"])
+api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
 api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
 api_router.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(activity_router, prefix="/activity", tags=["activity"])
