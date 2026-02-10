@@ -819,3 +819,176 @@ class MemoryProvider(ABC):
             Cleanup results
         """
         raise NotImplementedError(f"{self.name} does not support cleanup")
+
+    # =========================================================================
+    # Supersession Methods (Phase C)
+    # =========================================================================
+
+    async def supersede(
+        self,
+        old_id: str,
+        new_content: str,
+        reason: str = "updated",
+    ) -> str:
+        """
+        Mark old memory as superseded and create replacement.
+
+        The old memory is invalidated (not deleted) to preserve temporal queries.
+        The new memory is created with a reference to the superseded entry.
+
+        Args:
+            old_id: ID of the memory being superseded
+            new_content: Content for the replacement memory
+            reason: Why the old memory was superseded
+
+        Returns:
+            ID of the new memory
+        """
+        raise NotImplementedError(f"{self.name} does not support supersession")
+
+    async def classify_update(
+        self,
+        new_fact: str,
+        existing_memories: list["MemoryEntry"],
+    ) -> list[dict[str, Any]]:
+        """
+        Classify how new_fact relates to existing memories (AUDN).
+
+        Actions:
+            ADD       — Genuinely new, no overlap
+            UPDATE    — Augments/refines existing (merge)
+            SUPERSEDE — Contradicts existing (invalidate old)
+            NOOP      — Duplicate or irrelevant (skip)
+
+        Default implementation uses LLM-based classification.
+        External providers (Mem0, Zep) may override with built-in pipelines.
+
+        Args:
+            new_fact: The new fact to classify
+            existing_memories: Similar existing memories to compare against
+
+        Returns:
+            List of {action: str, memory_id: str, reason: str}
+        """
+        from tools.memory.extraction.classifier import classify_update
+        return await classify_update(new_fact, existing_memories)
+
+    # =========================================================================
+    # Tiered Storage Methods (Phase C)
+    # =========================================================================
+
+    async def promote(self, entry_id: str, target_tier: str) -> bool:
+        """
+        Move memory from current tier to target (e.g., L2 → L3).
+
+        Args:
+            entry_id: Memory entry ID
+            target_tier: Target tier ("L2" or "L3")
+
+        Returns:
+            True if promoted successfully
+        """
+        raise NotImplementedError(f"{self.name} does not support tier promotion")
+
+    async def consolidate(
+        self,
+        memory_ids: list[str],
+        summary: str,
+    ) -> str:
+        """
+        Merge multiple memories into a consolidated entry.
+        Original memories are marked as superseded.
+
+        Args:
+            memory_ids: IDs of memories to consolidate
+            summary: LLM-generated summary of the cluster
+
+        Returns:
+            ID of the consolidated memory
+        """
+        raise NotImplementedError(f"{self.name} does not support consolidation")
+
+    # =========================================================================
+    # Session Note Methods (Phase A)
+    # =========================================================================
+
+    async def add_session_note(
+        self,
+        content: str,
+        session_id: str,
+        importance: int = 5,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """
+        Store a session-scoped note for later consolidation.
+
+        Session notes are temporary L2 entries extracted from conversation
+        turns. They are consumed by consolidation and cleaned up after 7 days.
+
+        Args:
+            content: Note content
+            session_id: Session identifier
+            importance: Importance score (1-10)
+            metadata: Optional metadata (type, user_id, channel, etc.)
+
+        Returns:
+            ID of the stored note
+        """
+        # Default: store as a regular memory entry with session tag
+        return await self.add(
+            content=content,
+            type=MemoryType.INSIGHT,
+            importance=importance,
+            source=MemorySource.SESSION,
+            tags=["session_note", f"session:{session_id}"],
+            metadata=metadata or {},
+        )
+
+    async def get_session_notes(
+        self,
+        session_id: str,
+    ) -> list["MemoryEntry"]:
+        """
+        Retrieve all notes for a session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of MemoryEntry objects
+        """
+        # Default: search by session tag
+        return await self.search(
+            query=f"session:{session_id}",
+            limit=100,
+        )
+
+    # =========================================================================
+    # L1 Context Building (Phase B)
+    # =========================================================================
+
+    async def build_context_block(
+        self,
+        user_id: str,
+        current_query: str | None = None,
+        max_tokens: int = 1000,
+    ) -> str:
+        """
+        Build a condensed memory block for L1 injection.
+        Combines user profile, relevant memories, and active commitments.
+
+        Args:
+            user_id: User identifier
+            current_query: Optional current query for relevance
+            max_tokens: Maximum token budget
+
+        Returns:
+            Formatted memory block string
+        """
+        from tools.memory.l1_builder import build_l1_memory_block
+        return await build_l1_memory_block(
+            user_id=user_id,
+            current_query=current_query,
+            max_tokens=max_tokens,
+            provider=self,
+        )

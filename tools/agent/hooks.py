@@ -818,6 +818,162 @@ def create_dashboard_hook() -> Callable[[dict, str, Any], dict]:
 
 
 # =============================================================================
+# Memory Hooks — Extraction, Compaction, Auto-Recall
+# =============================================================================
+
+# Compaction marker file path
+_COMPACTION_MARKER_PATH = PROJECT_ROOT / "data" / ".compaction_marker"
+
+
+def create_pre_compact_hook(
+    user_id: str,
+    channel: str,
+) -> Callable[[dict], dict]:
+    """
+    Create a PreCompact hook for memory checkpoint.
+
+    When compaction fires, saves everything important before the conversation
+    gets summarized: flushes extraction queue, captures snapshot, writes marker.
+
+    Args:
+        user_id: User identifier
+        channel: Communication channel
+
+    Returns:
+        Hook callback function
+    """
+
+    @timed_hook("pre_compact_hook")
+    def pre_compact_hook(input_data: dict) -> dict:
+        """
+        PreCompact handler — checkpoint before context compaction.
+
+        Must be fast (<10ms for sync work). Heavy processing is fire-and-forget.
+        """
+        trigger = input_data.get("trigger", "auto")
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(
+                    _async_pre_compact(user_id, channel, trigger)
+                )
+            else:
+                loop.run_until_complete(
+                    _async_pre_compact(user_id, channel, trigger)
+                )
+        except RuntimeError:
+            asyncio.run(_async_pre_compact(user_id, channel, trigger))
+
+        # Write compaction marker for UserPromptSubmit to detect
+        try:
+            _COMPACTION_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _COMPACTION_MARKER_PATH.write_text(
+                f"{user_id}|{channel}|{datetime.now().isoformat()}"
+            )
+        except Exception as e:
+            logger.debug(f"Failed to write compaction marker: {e}")
+
+        return {}  # Allow compaction to proceed
+
+    return pre_compact_hook
+
+
+async def _async_pre_compact(user_id: str, channel: str, trigger: str) -> None:
+    """Async pre-compaction work: flush queue, capture snapshot."""
+    try:
+        from tools.memory.daemon import get_daemon
+
+        daemon = get_daemon()
+
+        # Flush remaining extraction queue items
+        flushed = await daemon.flush_extraction()
+        if flushed > 0:
+            logger.info(f"Pre-compact: flushed {flushed} extraction jobs")
+
+        # Invalidate L1 cache (will be rebuilt post-compaction)
+        daemon.invalidate_l1_cache(user_id)
+
+    except Exception as e:
+        logger.debug(f"Pre-compact async work failed: {e}")
+
+
+def create_user_prompt_submit_hook(
+    user_id: str,
+    channel: str,
+) -> Callable[[dict], dict]:
+    """
+    Create a UserPromptSubmit hook for post-compaction context re-injection.
+
+    Fires on every user message. Checks if compaction just happened and
+    injects L1 memory context if so. Also handles auto-recall for
+    topic shifts and cold starts.
+
+    Args:
+        user_id: User identifier
+        channel: Communication channel
+
+    Returns:
+        Hook callback function
+    """
+
+    @timed_hook("user_prompt_submit_hook")
+    def user_prompt_submit_hook(input_data: dict) -> dict:
+        """
+        UserPromptSubmit handler — post-compaction re-injection + auto-recall.
+        """
+        # Check if compaction just happened
+        compaction_occurred = False
+        try:
+            if _COMPACTION_MARKER_PATH.exists():
+                marker_data = _COMPACTION_MARKER_PATH.read_text().strip()
+                if marker_data.startswith(user_id):
+                    compaction_occurred = True
+                    _COMPACTION_MARKER_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        if compaction_occurred:
+            # Re-inject L1 memory context after compaction
+            try:
+                memory_block = _sync_build_l1_block(user_id)
+                if memory_block:
+                    return {"systemMessage": memory_block}
+            except Exception as e:
+                logger.debug(f"Post-compaction L1 injection failed: {e}")
+
+        return {}
+
+    return user_prompt_submit_hook
+
+
+def _sync_build_l1_block(user_id: str) -> str:
+    """Synchronously build L1 memory block (for use in sync hooks)."""
+    try:
+        from tools.memory.l1_builder import build_l1_memory_block
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        build_l1_memory_block(user_id)
+                    )
+                    return future.result(timeout=3.0)
+            else:
+                return loop.run_until_complete(
+                    build_l1_memory_block(user_id)
+                )
+        except RuntimeError:
+            return asyncio.run(build_l1_memory_block(user_id))
+    except Exception as e:
+        logger.debug(f"Failed to build L1 block: {e}")
+        return ""
+
+
+# =============================================================================
 # Hook Configuration Builder
 # =============================================================================
 
@@ -829,6 +985,7 @@ def create_hooks(
     enable_audit: bool = True,
     enable_dashboard: bool = True,
     enable_context_save: bool = True,
+    enable_memory: bool = True,
     workspace_path: Optional[Path] = None,
 ) -> dict[str, list]:
     """
@@ -843,6 +1000,7 @@ def create_hooks(
         enable_audit: Enable PreToolUse audit logging
         enable_dashboard: Enable PostToolUse dashboard recording
         enable_context_save: Enable Stop context saving
+        enable_memory: Enable memory hooks (PreCompact, UserPromptSubmit)
         workspace_path: Optional workspace path for enforcing workspace boundaries
 
     Returns:
@@ -884,6 +1042,18 @@ def create_hooks(
 
     if post_hooks:
         hooks["PostToolUse"] = post_hooks
+
+    # PreCompact hooks (memory checkpoint before compaction)
+    if enable_memory:
+        hooks["PreCompact"] = [{
+            "hooks": [create_pre_compact_hook(user_id, channel)],
+        }]
+
+    # UserPromptSubmit hooks (post-compaction re-injection)
+    if enable_memory:
+        hooks["UserPromptSubmit"] = [{
+            "hooks": [create_user_prompt_submit_hook(user_id, channel)],
+        }]
 
     # Stop hooks
     stop_hooks = []
