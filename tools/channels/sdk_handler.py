@@ -579,6 +579,18 @@ def _build_media_context(processed_media: list) -> str:
             # Phase 15b placeholder
             context_parts.append(f"{prefix} Audio transcription: {media.transcription}")
 
+    # Surface failed audio attachments so the AI knows a voice memo was sent
+    failed_audio = [
+        m for m in processed_media
+        if not m.processed and m.attachment and m.attachment.type == "audio"
+    ]
+    for media in failed_audio:
+        error = media.processing_error or "unknown error"
+        context_parts.append(
+            f"[Voice message] User sent a voice message but transcription failed: {error}. "
+            "Let them know you received it but couldn't understand it, and suggest they try again or type their message."
+        )
+
     return "\n\n".join(context_parts)
 
 

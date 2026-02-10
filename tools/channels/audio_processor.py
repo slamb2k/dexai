@@ -259,6 +259,12 @@ class AudioProcessor:
 
             # Extract results
             text = response.text
+            if not text or not text.strip():
+                return TranscriptionResult(
+                    success=False,
+                    error="No speech detected in audio",
+                )
+
             language = getattr(response, "language", None)
             duration = getattr(response, "duration", estimated_duration)
 

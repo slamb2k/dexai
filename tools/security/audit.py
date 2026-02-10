@@ -315,8 +315,8 @@ def get_stats() -> dict[str, Any]:
     cursor.execute("SELECT status, COUNT(*) as count FROM audit_log GROUP BY status")
     by_status = {row["status"]: row["count"] for row in cursor.fetchall()}
 
-    # Last 24 hours
-    yesterday = (datetime.now() - timedelta(hours=24)).isoformat()
+    # Last 24 hours (use strftime to match SQLite's CURRENT_TIMESTAMP format)
+    yesterday = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("SELECT COUNT(*) as count FROM audit_log WHERE timestamp >= ?", (yesterday,))
     last_24h = cursor.fetchone()["count"]
 
