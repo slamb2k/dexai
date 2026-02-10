@@ -1,0 +1,46 @@
+# Voice Interface Configuration (Phase 11a)
+# Controls voice recognition, command parsing, and feedback behavior
+
+recognition:
+  default_provider: "web_speech"   # 'web_speech' (browser), 'whisper_api' (11b), 'whisper_local' (11b)
+  web_speech:
+    language: "en-US"
+    continuous: false               # Single command mode (11c adds continuous)
+    interim_results: true           # Show text as user speaks
+    max_alternatives: 3
+
+parsing:
+  high_confidence: 0.85            # Above this: auto-execute allowed
+  medium_confidence: 0.6           # Above this: show suggestion
+  low_confidence: 0.3              # Below this: ask to repeat
+  auto_execute_intents:            # These intents execute without confirmation
+    - query_next_task
+    - query_schedule
+    - query_status
+    - query_search
+    - help
+  confirm_intents:                 # These always require confirmation
+    - complete_task
+    - skip_task
+    - undo
+    - cancel_reminder
+
+feedback:
+  visual:
+    show_transcript: true          # Show text as user speaks
+    show_confidence: true          # Color-coded confidence indicator
+    show_intent_badge: true        # Show detected command type
+    processing_spinner: true       # Spinner during command execution
+    result_display_ms: 4000        # How long to show result feedback
+
+adhd:
+  auto_execute_high_confidence: true  # Skip confirmation for confident commands
+  quick_capture_hotkey: "v"           # Keyboard shortcut for voice
+  repeat_on_low_confidence: true      # Ask "Did you mean...?" for low confidence
+  suggest_on_unknown_intent: true     # Suggest closest command for unrecognized input
+  max_retries: 2                      # Auto-retry on no-speech
+  helpful_error_messages: true        # ADHD-friendly error messages (no blame)
+
+debug:
+  log_all_transcriptions: true
+  log_parsing_details: true

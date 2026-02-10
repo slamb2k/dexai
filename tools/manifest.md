@@ -277,6 +277,8 @@ Pluggable memory backend system supporting multiple storage providers.
 | `.github/workflows/ci.yml` | GitHub Actions CI pipeline (lint, typecheck, test, frontend) |
 | `tools/dashboard/frontend/vitest.config.ts` | Frontend test configuration |
 | `tools/dashboard/frontend/__tests__/` | Frontend component tests |
+| `tests/unit/voice/test_intent_parser.py` | Voice intent parsing tests (50+ patterns) |
+| `tests/unit/voice/test_entity_extractor.py` | Voice entity extraction tests (datetime, duration, priority, energy) |
 
 ---
 
@@ -558,6 +560,74 @@ Backend APIs for native mobile features.
 | `POST /api/mobile/shortcut/{id}` | Handle Siri shortcut invocation |
 | `GET /api/mobile/shortcuts/suggested` | Get suggested shortcuts based on patterns |
 | `POST /api/mobile/quick-action/{action}` | Handle 3D Touch quick action |
+
+---
+
+## Voice Interface Tools (`tools/voice/`) — Phase 11a
+
+### Core Modules
+
+| Tool | Description |
+|------|-------------|
+| `__init__.py` | Database schema (voice_commands, preferences, templates), path constants |
+| `models.py` | Data models (IntentType, EntityType, TranscriptionResult, ParsedCommand, CommandResult) |
+
+### Recognition (`tools/voice/recognition/`)
+
+| Tool | Description |
+|------|-------------|
+| `base.py` | Abstract BaseTranscriber interface for all recognition providers |
+| `web_speech_config.py` | Web Speech API config and result processing (browser-side recognition) |
+
+### Parser (`tools/voice/parser/`)
+
+| Tool | Description |
+|------|-------------|
+| `intent_parser.py` | Pattern-matching intent detection from transcribed text (17+ patterns) |
+| `entity_extractor.py` | Entity extraction: datetime, duration, priority, energy from natural language |
+| `command_router.py` | Route parsed commands to handlers with logging and error handling |
+
+### Commands (`tools/voice/commands/`)
+
+| Tool | Description |
+|------|-------------|
+| `task_commands.py` | Task voice handlers: add, complete, skip, decompose (via tools/tasks/) |
+| `reminder_commands.py` | Reminder voice handlers: set, snooze, cancel (via tools/automation/) |
+| `query_commands.py` | Query voice handlers: next task, schedule, status, search |
+| `control_commands.py` | Control voice handlers: start/end focus, pause notifications |
+
+### Preferences (`tools/voice/preferences/`)
+
+| Tool | Description |
+|------|-------------|
+| `user_preferences.py` | Per-user voice settings CRUD, command history retrieval |
+
+### Dashboard Routes (Phase 11a)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/voice/status` | Check voice config, available sources, user preferences |
+| `POST /api/voice/command` | Submit transcript, parse intent, execute, return result |
+| `GET /api/voice/preferences` | Get user voice preferences |
+| `PUT /api/voice/preferences` | Update voice preferences |
+| `GET /api/voice/history` | Get voice command history |
+| `GET /api/voice/commands` | List all available voice commands |
+
+### Frontend Components (Phase 11a)
+
+| File | Description |
+|------|-------------|
+| `components/voice/use-voice-recognition.ts` | React hook wrapping Web Speech API (Chrome, Edge, Safari) |
+| `components/voice/voice-button.tsx` | Push-to-talk button with idle/listening/processing/unsupported states |
+| `components/voice/transcript-display.tsx` | Live transcript with confidence indicator and intent badge |
+| `components/voice/voice-input.tsx` | Composed widget: listen -> transcribe -> parse -> execute -> feedback |
+| `components/voice/voice-settings.tsx` | Voice settings panel (language, confidence, feedback toggles) |
+
+### Configuration
+
+| File | Description |
+|------|-------------|
+| `args/voice.yaml` | Recognition, parsing, feedback, ADHD settings for voice interface |
 
 ---
 

@@ -66,7 +66,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 10a | Mobile Push: Web Push + PWA | ✅ Complete |
 | Phase 10b | Mobile Push: Expo Mobile Wrapper (iOS) | ✅ Complete |
 | Phase 10c | Mobile Push: Native Enhancements (widgets, watch, shortcuts) | ✅ Complete |
-| Phase 11a | Voice Interface: Browser Voice (Web Speech API) | 📋 Planned |
+| Phase 11a | Voice Interface: Browser Voice (Web Speech API) | ✅ Complete |
 | Phase 11b | Voice Interface: Whisper Integration (API + local) | 📋 Planned |
 | Phase 11c | Voice Interface: Advanced (wake word, TTS, mobile) | 📋 Planned |
 | Phase 12a | Office Integration: Foundation (OAuth, read-only) | ✅ Complete |

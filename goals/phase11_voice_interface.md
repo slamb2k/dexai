@@ -1,6 +1,6 @@
 # Phase 11: Voice Interface — Tactical Implementation Guide
 
-**Status:** Planned
+**Status:** Phase 11a Complete
 **Depends on:** Phase 0 (Security), Phase 5 (Task Engine), Phase 7 (Dashboard), Phase 10 (Mobile Push), Phase 15b (Audio/TTS)
 **Last Updated:** 2026-02-10
 
@@ -60,7 +60,7 @@ Phase 15b (completed 2026-02-10) built the audio/TTS infrastructure that Phase 1
 
 | Sub-Phase | Focus | Status | Est. Effort |
 |-----------|-------|--------|-------------|
-| **11a** | Browser Voice + Push-to-Talk + Command Parsing | Planned | 4-5 days |
+| **11a** | Browser Voice + Push-to-Talk + Command Parsing | Complete | 4-5 days |
 | **11b** | Whisper Server Fallback + Accuracy Enhancement | Planned | 2-3 days |
 | **11c** | Wake Word + TTS Responses + Mobile Voice | Planned | 3-4 days |
 
