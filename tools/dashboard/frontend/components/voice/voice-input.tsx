@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { api, type VoiceCommandResponse } from '@/lib/api';
+import { useState, useEffect, useRef } from 'react';
+import { api, type VoiceCommandResponse, type VoicePreferences } from '@/lib/api';
 import { useVoiceRecognition } from './use-voice-recognition';
+import { useAudioRecorder } from './use-audio-recorder';
+import { useTTS } from './use-tts';
+import { useAudioFeedback } from './use-audio-feedback';
 import { VoiceButton, type VoiceButtonState } from './voice-button';
 import { TranscriptDisplay } from './transcript-display';
 
@@ -22,28 +25,73 @@ export function VoiceInput({
   userId = 'default',
   chatMode = false,
 }: VoiceInputProps) {
+  // -- Preferences (loaded on mount) --
+  const [prefs, setPrefs] = useState({
+    source: 'web_speech',
+    ttsEnabled: false,
+    ttsVoice: 'alloy',
+    ttsSpeed: 1.0,
+    audioFeedback: true,
+    continuousListening: false,
+  });
+
   const [isProcessingCommand, setIsProcessingCommand] = useState(false);
   const [commandResult, setCommandResult] = useState<VoiceCommandResponse | null>(null);
   const [detectedIntent, setDetectedIntent] = useState<string | undefined>();
-  const resultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const {
-    isSupported,
-    isListening,
-    transcript,
-    interimTranscript,
-    confidence,
-    error,
-    alternatives,
-    startListening,
-    stopListening,
-    resetTranscript,
-  } = useVoiceRecognition({
-    onResult: handleRecognitionResult,
+  // Whisper mode stores transcript/confidence from API response
+  const [whisperTranscript, setWhisperTranscript] = useState('');
+  const [whisperConfidence, setWhisperConfidence] = useState(0);
+
+  const resultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const autoRestartTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const shouldContinueRef = useRef(false);
+  // Ref to always access latest handlers from the keyboard shortcut effect
+  const handlersRef = useRef({ start: () => {}, stop: () => {} });
+
+  // -- Load preferences --
+  useEffect(() => {
+    api
+      .getVoicePreferences(userId)
+      .then((res) => {
+        if (res.success && res.data) {
+          const raw = res.data as unknown as { data?: VoicePreferences };
+          const p = raw.data ?? res.data;
+          setPrefs({
+            source: p.preferred_source || 'web_speech',
+            ttsEnabled: p.tts_enabled || false,
+            ttsVoice: p.tts_voice || 'alloy',
+            ttsSpeed: p.tts_speed || 1.0,
+            audioFeedback: p.audio_feedback_enabled ?? true,
+            continuousListening: p.continuous_listening || false,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  // -- Hooks --
+  const recognition = useVoiceRecognition({
+    continuous: prefs.continuousListening,
+    onResult: handleWebSpeechResult,
     onEnd: handleRecognitionEnd,
   });
 
-  // Clear result message after delay
+  const recorder = useAudioRecorder();
+
+  const tts = useTTS({
+    preferCloud: prefs.ttsEnabled,
+    voice: prefs.ttsVoice,
+    speed: prefs.ttsSpeed,
+    userId,
+  });
+
+  const { playTone } = useAudioFeedback(prefs.audioFeedback);
+
+  const isWhisper = prefs.source === 'whisper_api';
+  const isActive = isWhisper ? recorder.isRecording : recognition.isListening;
+
+  // -- Result auto-clear --
   useEffect(() => {
     if (commandResult) {
       resultTimeoutRef.current = setTimeout(() => {
@@ -57,49 +105,66 @@ export function VoiceInput({
     }
   }, [commandResult]);
 
-  // V key shortcut
+  // -- Cleanup on unmount --
+  useEffect(() => {
+    return () => {
+      shouldContinueRef.current = false;
+      if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
+      if (autoRestartTimeoutRef.current) clearTimeout(autoRestartTimeoutRef.current);
+    };
+  }, []);
+
+  // -- V key shortcut (uses ref to always access latest handlers) --
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Only trigger on bare 'v' key, not in input fields
       if (
         e.key === 'v' &&
-        !e.metaKey && !e.ctrlKey && !e.altKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
         !['INPUT', 'TEXTAREA', 'SELECT'].includes(
           (e.target as HTMLElement)?.tagName
         )
       ) {
         e.preventDefault();
-        if (isListening) {
-          stopListening();
+        if (isActive) {
+          handlersRef.current.stop();
         } else {
-          handleStart();
+          handlersRef.current.start();
         }
       }
     }
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isListening, stopListening]);
+  }, [isActive]);
 
-  function handleRecognitionResult(text: string, conf: number, isFinal: boolean) {
+  // -- Handlers --
+
+  function handleWebSpeechResult(text: string, conf: number, isFinal: boolean) {
     if (!isFinal) return;
 
     if (chatMode) {
-      // In chat mode, just pass text to parent
       onTranscript?.(text);
+      playTone('success');
       return;
     }
 
-    // In command mode, send to voice API
-    executeCommand(text, conf);
+    executeCommand(text, conf, 'web_speech');
   }
 
   function handleRecognitionEnd() {
-    // If we have a final transcript in command mode, it's already been sent
-    // In chat mode, we're done
+    if (shouldContinueRef.current && prefs.continuousListening && !isWhisper) {
+      // Auto-restart for continuous mode
+      setTimeout(() => {
+        if (shouldContinueRef.current) {
+          recognition.startListening();
+        }
+      }, 300);
+    }
   }
 
-  async function executeCommand(text: string, conf: number) {
+  async function executeCommand(text: string, conf: number, src: string) {
     setIsProcessingCommand(true);
     setCommandResult(null);
 
@@ -108,8 +173,8 @@ export function VoiceInput({
         {
           transcript: text,
           confidence: conf,
-          source: 'web_speech',
-          alternatives,
+          source: src,
+          alternatives: !isWhisper ? recognition.alternatives : [],
         },
         userId
       );
@@ -120,9 +185,15 @@ export function VoiceInput({
         setDetectedIntent(result.parsed?.intent);
         onCommandResult?.(result);
 
-        // If the command needs confirmation, don't auto-clear
+        playTone(result.success ? 'success' : 'error');
+
+        // Speak result via TTS if enabled
+        if (prefs.ttsEnabled && result.message) {
+          tts.speak(result.message);
+        }
+
+        // Keep confirmation visible longer
         if (result.data?.requires_confirmation) {
-          // Keep the result visible longer
           if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
         }
       } else {
@@ -132,58 +203,153 @@ export function VoiceInput({
           intent: 'unknown',
           data: {},
           undo_available: false,
-          parsed: { intent: 'unknown', confidence: 0, entities: [], requires_confirmation: false },
+          parsed: {
+            intent: 'unknown',
+            confidence: 0,
+            entities: [],
+            requires_confirmation: false,
+          },
         });
+        playTone('error');
       }
-    } catch (e) {
+    } catch {
       setCommandResult({
         success: false,
         message: 'Connection error. Try again?',
         intent: 'unknown',
         data: {},
         undo_available: false,
-        parsed: { intent: 'unknown', confidence: 0, entities: [], requires_confirmation: false },
+        parsed: {
+          intent: 'unknown',
+          confidence: 0,
+          entities: [],
+          requires_confirmation: false,
+        },
       });
+      playTone('error');
     }
 
     setIsProcessingCommand(false);
+
+    // Continuous mode auto-restart for whisper
+    if (shouldContinueRef.current && prefs.continuousListening && isWhisper) {
+      autoRestartTimeoutRef.current = setTimeout(() => {
+        if (shouldContinueRef.current) {
+          recorder.startRecording();
+          playTone('start');
+        }
+      }, 500);
+    }
+  }
+
+  async function handleWhisperStop() {
+    playTone('stop');
+    const blob = await recorder.stopRecording();
+    if (!blob) return;
+
+    setIsProcessingCommand(true);
+
+    try {
+      const res = await api.transcribeAudio(blob, 'whisper_api', undefined, userId);
+      if (res.success && res.data) {
+        const { transcript: t, confidence: c } = res.data;
+        setWhisperTranscript(t);
+        setWhisperConfidence(c);
+
+        if (chatMode) {
+          onTranscript?.(t);
+          playTone('success');
+          setIsProcessingCommand(false);
+          return;
+        }
+
+        if (t) {
+          await executeCommand(t, c, 'whisper_api');
+          return;
+        }
+      }
+    } catch {
+      // Fall through to error handling
+    }
+
+    setIsProcessingCommand(false);
+    playTone('error');
   }
 
   function handleStart() {
     setCommandResult(null);
     setDetectedIntent(undefined);
-    resetTranscript();
-    startListening();
+    setWhisperTranscript('');
+    setWhisperConfidence(0);
+    shouldContinueRef.current = true;
+
+    // Cancel any pending auto-restart
+    if (autoRestartTimeoutRef.current) clearTimeout(autoRestartTimeoutRef.current);
+
+    playTone('start');
+
+    if (isWhisper) {
+      recorder.startRecording();
+    } else {
+      recognition.resetTranscript();
+      recognition.startListening();
+    }
   }
 
+  function handleStop() {
+    shouldContinueRef.current = false;
+
+    // Cancel any pending auto-restart
+    if (autoRestartTimeoutRef.current) clearTimeout(autoRestartTimeoutRef.current);
+
+    if (isWhisper) {
+      handleWhisperStop();
+    } else {
+      recognition.stopListening();
+      playTone('stop');
+    }
+  }
+
+  // Keep ref in sync so keyboard shortcut always uses latest handlers
+  handlersRef.current.start = handleStart;
+  handlersRef.current.stop = handleStop;
+
   function handleClick() {
-    if (isListening) {
-      stopListening();
+    if (isProcessingCommand) return;
+    if (isActive) {
+      handleStop();
     } else {
       handleStart();
     }
   }
 
-  const buttonState: VoiceButtonState = !isSupported
-    ? 'unsupported'
-    : isProcessingCommand
-    ? 'processing'
-    : isListening
-    ? 'listening'
-    : 'idle';
+  // -- Render --
+  const buttonState: VoiceButtonState =
+    !(recognition.isSupported || recorder.isSupported)
+      ? 'unsupported'
+      : isProcessingCommand
+        ? 'processing'
+        : isActive
+          ? 'listening'
+          : 'idle';
+
+  const displayTranscript = isWhisper ? whisperTranscript : recognition.transcript;
+  const displayInterim = isWhisper ? '' : recognition.interimTranscript;
+  const displayConfidence = isWhisper ? whisperConfidence : recognition.confidence;
+  const displayError = isWhisper ? recorder.error : recognition.error;
 
   return (
     <div className={className}>
       <VoiceButton state={buttonState} onClick={handleClick} />
 
       <TranscriptDisplay
-        transcript={transcript}
-        interimTranscript={interimTranscript}
-        confidence={confidence}
+        transcript={displayTranscript}
+        interimTranscript={displayInterim}
+        confidence={displayConfidence}
         intent={detectedIntent}
-        isListening={isListening}
+        isListening={isActive}
         isProcessing={isProcessingCommand}
-        error={error}
+        error={displayError}
         resultMessage={commandResult?.message}
         resultSuccess={commandResult?.success}
       />
