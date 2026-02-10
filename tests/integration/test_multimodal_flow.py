@@ -6,15 +6,13 @@ Tests the wiring between components:
 - Pending image state in channel_tools.py
 """
 
-import pytest
-
-from tools.channels.models import Attachment, MediaContent
-from tools.channels.sdk_handler import _build_media_context, _format_response_for_channel
 from tools.agent.mcp.channel_tools import (
     clear_pending_image,
     get_pending_image,
     set_pending_image,
 )
+from tools.channels.models import Attachment, MediaContent
+from tools.channels.sdk_handler import _build_media_context, _format_response_for_channel
 
 
 # ─────────────────────────────────────────────────────────────────────────────

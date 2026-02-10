@@ -191,12 +191,12 @@ class TestGenerateAndDownload:
         mock_http_response.content = fake_image_bytes
         mock_http_response.raise_for_status = MagicMock()
 
-        with patch("tools.channels.image_generator.httpx.AsyncClient") as MockAsyncClient:
+        with patch("tools.channels.image_generator.httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client = AsyncMock()
             mock_async_client.get = AsyncMock(return_value=mock_http_response)
             mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            MockAsyncClient.return_value = mock_async_client
+            mock_async_client_cls.return_value = mock_async_client
 
             image_bytes, cost = await gen.generate_and_download("test prompt")
 
@@ -213,7 +213,7 @@ class TestGenerateAndDownload:
         mock_client.images.generate = AsyncMock(return_value=mock_response)
         gen._client = mock_client
 
-        with patch("tools.channels.image_generator.httpx.AsyncClient") as MockAsyncClient:
+        with patch("tools.channels.image_generator.httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client = AsyncMock()
             mock_http_resp = MagicMock()
             mock_http_resp.raise_for_status = MagicMock(
@@ -224,7 +224,7 @@ class TestGenerateAndDownload:
             mock_async_client.get = AsyncMock(return_value=mock_http_resp)
             mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            MockAsyncClient.return_value = mock_async_client
+            mock_async_client_cls.return_value = mock_async_client
 
             with pytest.raises(httpx.HTTPStatusError):
                 await gen.generate_and_download("test prompt")
@@ -239,12 +239,12 @@ class TestGenerateAndDownload:
         mock_client.images.generate = AsyncMock(return_value=mock_response)
         gen._client = mock_client
 
-        with patch("tools.channels.image_generator.httpx.AsyncClient") as MockAsyncClient:
+        with patch("tools.channels.image_generator.httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client = AsyncMock()
             mock_async_client.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
             mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            MockAsyncClient.return_value = mock_async_client
+            mock_async_client_cls.return_value = mock_async_client
 
             with pytest.raises(httpx.TimeoutException):
                 await gen.generate_and_download("test prompt")

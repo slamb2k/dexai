@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tools.channels.models import Attachment, MediaContent
 from tools.channels.media_processor import MediaProcessor
+from tools.channels.models import Attachment, MediaContent
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,10 +220,15 @@ class TestProcessImage:
         mock_adapter.download_attachment = AsyncMock(return_value=small_jpeg_bytes)
         attachment = make_attachment()
 
-        # Mock the Vision API call
+        fake_prepared = {"type": "image", "source": {"type": "base64", "data": "abc"}}
+
+        # Mock both _prepare_image_for_vision (needs Pillow) and _call_vision_api
         with patch.object(
+            processor, "_prepare_image_for_vision", new_callable=AsyncMock
+        ) as mock_prepare, patch.object(
             processor, "_call_vision_api", new_callable=AsyncMock
         ) as mock_vision:
+            mock_prepare.return_value = fake_prepared
             mock_vision.return_value = ("A red square image", 0.005)
 
             result = await processor._process_image(
@@ -288,9 +293,16 @@ class TestProcessImage:
         mock_adapter.download_attachment = AsyncMock(return_value=small_jpeg_bytes)
         attachment = make_attachment()
 
+        fake_prepared = {"type": "image", "source": {"type": "base64", "data": "abc"}}
+
+        # Mock _prepare_image_for_vision (needs Pillow) to succeed,
+        # then let _call_vision_api raise
         with patch.object(
+            processor, "_prepare_image_for_vision", new_callable=AsyncMock
+        ) as mock_prepare, patch.object(
             processor, "_call_vision_api", new_callable=AsyncMock
         ) as mock_vision:
+            mock_prepare.return_value = fake_prepared
             mock_vision.side_effect = Exception("Vision API unavailable")
 
             result = await processor._process_image(
