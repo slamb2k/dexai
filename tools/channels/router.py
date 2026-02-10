@@ -183,6 +183,54 @@ class ChannelAdapter(ABC):
         """
         ...
 
+    async def send_rich_message(self, rendered: Any) -> dict[str, Any]:
+        """
+        Send a platform-rendered message (RenderedMessage).
+
+        Override in subclasses that support rich rendering. Default
+        implementation extracts text content and delegates to send_message.
+
+        Args:
+            rendered: RenderedMessage from a ChannelRenderer
+
+        Returns:
+            Dict with success status and message ID
+        """
+        # Default: extract text content and send as plain message
+        content = rendered.content if hasattr(rendered, "content") else str(rendered)
+        if isinstance(content, dict):
+            # Platform-specific structure (e.g. Slack Block Kit) - serialize as fallback
+            content = rendered.metadata.get("text", str(content)) if hasattr(rendered, "metadata") else str(content)
+
+        message = UnifiedMessage(
+            id=str(uuid.uuid4()),
+            channel=self.name,
+            channel_message_id="",
+            channel_user_id="",
+            direction="outbound",
+            content=content,
+        )
+        return await self.send_message(message)
+
+    async def upload_file(
+        self, file_path: str, channel_id: str, caption: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Upload a file to the channel.
+
+        Override in subclasses that support file uploads. Default
+        implementation returns an unsupported error.
+
+        Args:
+            file_path: Path to the file to upload
+            channel_id: Platform-specific channel/chat ID
+            caption: Optional caption for the file
+
+        Returns:
+            Dict with success status and file details
+        """
+        return {"success": False, "error": f"upload_file not supported on {self.name}"}
+
     def set_router(self, router: "MessageRouter") -> None:
         """
         Set reference to the parent router.

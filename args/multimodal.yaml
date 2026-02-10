@@ -135,6 +135,55 @@ generation:
       hd_per_1k_chars_usd: 0.030  # tts-1-hd
 
 # =============================================================================
+# Platform Rendering Settings (Phase 15c)
+# =============================================================================
+rendering:
+  enabled: true
+
+  # Per-platform rendering configuration
+  telegram:
+    parse_mode: "HTML"          # HTML or MarkdownV2
+    max_media_group: 10         # Max images per media group
+    disable_web_preview: false  # Disable link previews
+
+  discord:
+    embed_color: 0x5865F2       # Default embed color (blurple)
+    max_embeds: 10              # Max embeds per message
+    use_embeds_for_images: true # Wrap images in embeds
+
+  slack:
+    max_blocks: 50              # Slack block limit per message
+    mrkdwn_limit: 3000          # Max chars per mrkdwn section
+    unfurl_links: false         # Disable automatic URL previews
+
+# =============================================================================
+# Interactive Elements Settings (Phase 15d)
+# =============================================================================
+interactive:
+  enabled: true
+  db_path: null  # Defaults to data/media.db
+
+  buttons:
+    max_per_message: 5          # Max buttons per group
+    default_expiry_hours: 24    # Button callback expiration
+
+  polls:
+    max_options: 10             # Max poll options
+    default_expiry_hours: 48    # Poll auto-close time
+    allow_multiple_choice: true
+
+  # Location processing
+  location:
+    geocoding_enabled: true
+    provider: "nominatim"       # Free, no API key needed
+    rate_limit_seconds: 1.0     # Nominatim requires 1 req/sec
+
+  # Contact processing
+  contacts:
+    vcard_parsing: true
+    store_contacts: false       # Don't persist by default (privacy)
+
+# =============================================================================
 # ADHD-Friendly Settings
 # =============================================================================
 adhd:
