@@ -53,6 +53,7 @@ You make smart decisions. Tools execute perfectly.
 | **ADHD subagents** | `tools/agent/subagents.py` | Task decomposer, energy matcher, friction solver |
 | **Session manager** | `tools/channels/session_manager.py` | ClaudeSDKClient session continuity |
 | **Model routing** | `args/routing.yaml` + `tools/agent/model_router/` | OpenRouter integration, complexity-based routing |
+| **Multi-modal messaging** | `args/multimodal.yaml` + `tools/channels/media_processor.py` | Image analysis, document extraction, DALL-E generation |
 | **Deployment** | `docker-compose.yml`, `Dockerfile`, `install.sh` | Docker, Caddy, Tailscale profiles |
 | **Environment vars** | `.env.example` | All configurable settings with documentation |
 
@@ -92,6 +93,10 @@ dexai  # Runs tools.cli:main
 - `fastapi` + `uvicorn` - Dashboard backend
 - `textual` + `rich` - TUI setup wizard
 - `httpx` - HTTP client
+- `pillow` - Image processing (multimodal)
+- `pypdf2` - PDF text extraction (multimodal)
+- `python-docx` - Word document parsing (multimodal)
+- `openai` - DALL-E image generation (multimodal)
 
 ---
 
@@ -178,6 +183,66 @@ User Request → Local Router (complexity classification)
 - Budget controls (per-session, per-day, per-user limits)
 
 **Documentation:** `tools/agent/model_router/ROUTING_ARCHITECTURE.md`
+
+---
+
+## **Multi-Modal Messaging (Phase 15)**
+
+DexAI supports multi-modal messaging across channels (Telegram, Discord, Slack):
+
+**Inbound Processing:**
+- **Images**: Claude Vision API for descriptions
+- **Documents**: PDF and DOCX text extraction
+- **Voice/Audio**: Whisper transcription (Phase 15b)
+
+**Outbound Generation:**
+- **Images**: DALL-E 3 generation via `generate_image` tool
+- **Code blocks**: Channel-specific formatting
+- **Rich responses**: Platform-native rendering
+
+**Architecture:**
+```
+Inbound: Channel Adapter → MediaProcessor → AI Context
+                           ↓
+                  - download_attachment()
+                  - Claude Vision (images)
+                  - PyPDF2/docx (documents)
+
+Outbound: AI Response → ContentFormatter → Channel Renderer
+                        ↓
+                  - parse_response_blocks()
+                  - format_blocks_for_channel()
+                  - send_image() / send_message()
+```
+
+**Key Components:**
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| MediaProcessor | `tools/channels/media_processor.py` | Process inbound images/documents |
+| ImageGenerator | `tools/channels/image_generator.py` | DALL-E image generation |
+| Channel Tools | `tools/agent/mcp/channel_tools.py` | `generate_image` MCP tool |
+
+**Configuration:** `args/multimodal.yaml`
+
+**ADHD Considerations:**
+- Max 3 attachments per message (prevent overwhelm)
+- Processing cost limits ($0.20/message default)
+- "Analyzing your image..." acknowledgment before processing
+
+**Channel Support:**
+
+| Feature | Telegram | Discord | Slack | Web |
+|---------|----------|---------|-------|-----|
+| Image upload | ✅ | ✅ | ✅ | ❌* |
+| Image generation | ✅ | ✅ | ✅ | ❌* |
+| Vision analysis | ✅ | ✅ | ✅ | ❌* |
+| Document extraction | ✅ | ✅ | ✅ | ❌* |
+| Code formatting | ✅ | ✅ | ✅ | ✅ |
+
+*Web chat currently supports text only. Attachment support planned.
+
+**Documentation:** `goals/multimodal_messaging.md`
 
 ---
 
@@ -746,9 +811,12 @@ Telegram/Discord/Slack → Router (security pipeline) → SessionManager → Dex
 | ModelRouter | `tools/agent/model_router/model_router.py` | Complexity-based routing via OpenRouter |
 | Permission callback | `tools/agent/permissions.py` | Maps RBAC to SDK tool access |
 | SDK Handler | `tools/channels/sdk_handler.py` | Channel message handler using SessionManager |
+| MediaProcessor | `tools/channels/media_processor.py` | Image analysis, document extraction |
+| ImageGenerator | `tools/channels/image_generator.py` | DALL-E image generation |
 | Memory MCP Tools | `tools/agent/mcp/memory_tools.py` | Hybrid search, commitments, context |
 | Task MCP Tools | `tools/agent/mcp/task_tools.py` | Decomposition, friction, current step |
 | ADHD MCP Tools | `tools/agent/mcp/adhd_tools.py` | Response formatting, language filter |
+| Channel MCP Tools | `tools/agent/mcp/channel_tools.py` | Pairing, image generation |
 
 **ADHD Subagents:**
 
@@ -786,6 +854,8 @@ Defense-in-depth via SDK hooks:
 - RSD-safe language filtering
 - ADHD-specific subagents (via SDK agents parameter)
 - Security hooks (PreToolUse blocking of dangerous commands)
+- Multi-modal messaging (image analysis, document extraction, DALL-E generation)
+- Cross-platform media handling (Telegram, Discord, Slack)
 
 **Configuration:** `args/agent.yaml` (includes `subagents:` section)
 

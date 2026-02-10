@@ -33,6 +33,8 @@ Index of all available goal workflows. Check here before creating new goals.
 | `task_orchestration.md` | Task execution patterns — sequential, parallel, fan-out, fan-in, pipeline |
 | `sdk_alignment_review.md` | SDK integration analysis and implementation roadmap (Phase 2 complete) |
 | `prd_addulting_ai_v1.md` | **Archived** — Original PRD before ADHD pivot |
+| `multimodal_messaging.md` | **Design** — Multi-modal messaging across channels (images, audio, video, code, documents) |
+| `phase15_multimodal_implementation.md` | **Implementation Plan** — Detailed task breakdown for Phases 15a-15d (18-23 days) |
 
 ---
 
@@ -72,6 +74,10 @@ Index of all available goal workflows. Check here before creating new goals.
 | Phase 12d | Office Integration: Autonomous (policy-based) | ✅ Complete |
 | Phase 13 | Collaborative Features (Accountability partners) | 📋 Planned |
 | Phase 14 | Analytics & Insights (Patterns, reports) | 📋 Planned |
+| Phase 15a | Multi-Modal: Core (images, documents, code) | ✅ Complete |
+| Phase 15b | Multi-Modal: Audio/Video (transcription, TTS) | 📋 Planned |
+| Phase 15c | Multi-Modal: Platform Rendering (embeds, Block Kit) | 📋 Planned |
+| Phase 15d | Multi-Modal: Advanced (location, contacts, interactive) | 📋 Planned |
 
 ---
 
