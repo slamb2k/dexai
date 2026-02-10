@@ -56,6 +56,44 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _extract_session_id(msg: Any, client: Any = None) -> str | None:
+    """
+    Extract session_id from SDK message or client, checking all known locations.
+
+    The Claude Agent SDK returns session IDs through multiple paths depending
+    on message type. This helper checks all five known locations systematically.
+
+    Args:
+        msg: SDK message object (SystemMessage, ResultMessage, etc.)
+        client: Optional ClaudeSDKClient instance
+
+    Returns:
+        Session ID string if found, None otherwise
+    """
+    # 1. Direct attribute on message
+    if hasattr(msg, "session_id") and msg.session_id:
+        return msg.session_id
+
+    # 2. Nested in data dict
+    if hasattr(msg, "data") and isinstance(msg.data, dict):
+        sid = msg.data.get("session_id")
+        if sid:
+            return sid
+
+    # 3. Nested as data object attribute
+    if hasattr(msg, "data") and hasattr(msg.data, "session_id"):
+        sid = msg.data.session_id
+        if sid:
+            return sid
+
+    # 4. On the client itself
+    if client is not None:
+        if hasattr(client, "session_id") and client.session_id:
+            return client.session_id
+
+    return None
+
+
 # Default configuration if file doesn't exist
 DEFAULT_CONFIG = {
     "agent": {
@@ -717,12 +755,11 @@ class DexAIClient:
         total_cost = 0.0
 
         async for msg in self._client.receive_response():
-            # Capture session_id from init message for future resumption
-            if hasattr(msg, "type") and msg.type == "system":
-                if hasattr(msg, "subtype") and msg.subtype == "init":
-                    if hasattr(msg, "session_id"):
-                        self._session_id = msg.session_id
-                        logger.debug(f"Captured session_id: {self._session_id}")
+            # Capture session_id from any message type (check all known locations)
+            extracted_sid = _extract_session_id(msg, self._client)
+            if extracted_sid and extracted_sid != self._session_id:
+                self._session_id = extracted_sid
+                logger.debug(f"Captured session_id: {self._session_id}")
 
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
@@ -736,6 +773,11 @@ class DexAIClient:
             elif isinstance(msg, ResultMessage):
                 if hasattr(msg, "total_cost_usd"):
                     total_cost = msg.total_cost_usd or 0.0
+                # Final check on ResultMessage for session_id
+                extracted_sid = _extract_session_id(msg, self._client)
+                if extracted_sid and extracted_sid != self._session_id:
+                    self._session_id = extracted_sid
+                    logger.debug(f"Captured session_id from result: {self._session_id}")
                 break
 
         self._total_cost += total_cost
@@ -861,12 +903,11 @@ class DexAIClient:
             prompt=normalized_generator(),
             options=self._client._options if hasattr(self._client, "_options") else None,
         ):
-            # Capture session_id from init message
-            if hasattr(msg, "type") and msg.type == "system":
-                if hasattr(msg, "subtype") and msg.subtype == "init":
-                    if hasattr(msg, "session_id"):
-                        self._session_id = msg.session_id
-                        logger.debug(f"Captured session_id from stream: {self._session_id}")
+            # Capture session_id from any message (check all known locations)
+            extracted_sid = _extract_session_id(msg, self._client)
+            if extracted_sid and extracted_sid != self._session_id:
+                self._session_id = extracted_sid
+                logger.debug(f"Captured session_id from stream: {self._session_id}")
 
             yield msg
 
@@ -1077,11 +1118,10 @@ class DexAIClient:
             structured_output = None
 
             async for msg in structured_client.receive_response():
-                # Capture session_id
-                if hasattr(msg, "type") and msg.type == "system":
-                    if hasattr(msg, "subtype") and msg.subtype == "init":
-                        if hasattr(msg, "session_id"):
-                            self._session_id = msg.session_id
+                # Capture session_id from any message (check all known locations)
+                extracted_sid = _extract_session_id(msg, structured_client)
+                if extracted_sid and extracted_sid != self._session_id:
+                    self._session_id = extracted_sid
 
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:

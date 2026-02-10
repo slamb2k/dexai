@@ -235,3 +235,99 @@ limits:
 
   # Maximum total entries (0 = unlimited)
   max_total_entries: 0
+
+# =============================================================================
+# Extraction Pipeline (Phase A)
+# =============================================================================
+extraction:
+  # Heuristic gate threshold (0.0-1.0)
+  # Lower = more memories extracted, higher cost
+  # Higher = fewer memories, lower cost
+  gate_threshold: 0.3
+
+  # Model for extraction (cheapest available)
+  extraction_model: "claude-haiku-4-5-20251001"
+
+  # Batch size for queue processing
+  batch_size: 5
+
+  # Seconds before flushing partial batch
+  flush_interval_seconds: 5
+
+  # Max queue depth (prevent unbounded growth)
+  max_queue_size: 1000
+
+# =============================================================================
+# Compaction Strategy (Phase B)
+# =============================================================================
+compaction:
+  # Custom compaction instructions
+  instructions: >
+    Preserve: current task state, user preferences, active commitments,
+    key technical decisions, file paths being edited.
+    Discard: routine greetings, tool output details, intermediate reasoning.
+
+  # Use server-side compaction with pause (when controlling API loop)
+  use_server_side: true
+  server_side_trigger_tokens: 80000
+  pause_after_compaction: true
+
+  # Topic shift detection threshold (embedding similarity)
+  topic_shift_threshold: 0.4
+
+# =============================================================================
+# Auto-Recall (L2 → L1 injection) (Phase D)
+# =============================================================================
+auto_recall:
+  enabled: true
+
+  # Max memories to inject per turn
+  max_memories: 5
+
+  # Max tokens for memory block
+  max_tokens: 800
+
+  # Relevance threshold for injection
+  relevance_threshold: 0.6
+
+  # Skip injection if conversation is a clear continuation
+  skip_on_continuation: true
+
+# =============================================================================
+# Consolidation (L2 → L3 promotion) (Phase C)
+# =============================================================================
+consolidation:
+  enabled: true
+
+  # Run every N hours
+  interval_hours: 24
+
+  # Preferred hour for consolidation (24h format)
+  preferred_hour: 3
+
+  # Min cluster size for consolidation
+  min_cluster_size: 3
+
+  # Similarity threshold for clustering
+  cluster_similarity: 0.85
+
+  # Min age before eligible for consolidation (days)
+  min_age_days: 7
+
+  # Model for consolidation summaries
+  consolidation_model: "claude-haiku-4-5-20251001"
+
+# =============================================================================
+# Supersession (Phase C)
+# =============================================================================
+supersession:
+  enabled: true
+
+  # Number of similar memories to check against
+  comparison_top_k: 10
+
+  # Model for classification
+  classification_model: "claude-haiku-4-5-20251001"
+
+  # Archive superseded memories (vs hard delete)
+  archive_superseded: true

@@ -544,6 +544,145 @@ class NativeProvider(MemoryProvider):
         }
 
     # =========================================================================
+    # Supersession Methods (Phase C)
+    # =========================================================================
+
+    async def supersede(
+        self,
+        old_id: str,
+        new_content: str,
+        reason: str = "updated",
+    ) -> str:
+        """Mark old memory as superseded and create replacement."""
+        import json
+        import sqlite3
+
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            # Mark old entry as superseded
+            conn.execute(
+                """UPDATE memory_entries
+                   SET active = 0,
+                       context = json_patch(COALESCE(context, '{}'),
+                           json_object('superseded_reason', ?, 'superseded_at', ?))
+                   WHERE id = ?""",
+                (reason, datetime.now().isoformat(), int(old_id)),
+            )
+
+            # Get old entry for reference
+            cursor = conn.execute(
+                "SELECT entry_type, importance, tags FROM memory_entries WHERE id = ?",
+                (int(old_id),),
+            )
+            old_row = cursor.fetchone()
+
+            entry_type = old_row[0] if old_row else "fact"
+            importance = old_row[1] if old_row else 5
+            old_tags = old_row[2] if old_row else "[]"
+
+            # Parse and update tags
+            try:
+                tags = json.loads(old_tags) if old_tags else []
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+            tags.append("supersedes")
+
+            # Insert new entry
+            metadata = json.dumps({
+                "supersedes_id": old_id,
+                "superseded_reason": reason,
+            })
+
+            cursor = conn.execute(
+                """INSERT INTO memory_entries (content, entry_type, source, importance, tags, context, active)
+                   VALUES (?, ?, 'session', ?, ?, ?, 1)""",
+                (new_content, entry_type, importance, json.dumps(tags), metadata),
+            )
+            new_id = str(cursor.lastrowid)
+
+            conn.commit()
+            logger.info(f"Superseded memory {old_id} with {new_id}: {reason}")
+            return new_id
+
+        finally:
+            conn.close()
+
+    async def consolidate(
+        self,
+        memory_ids: list[str],
+        summary: str,
+    ) -> str:
+        """Merge multiple memories into a consolidated entry."""
+        import json
+        import sqlite3
+
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            # Get max importance from source memories
+            placeholders = ",".join(["?"] * len(memory_ids))
+            cursor = conn.execute(
+                f"SELECT MAX(importance) FROM memory_entries WHERE id IN ({placeholders})",
+                [int(mid) for mid in memory_ids],
+            )
+            max_importance = cursor.fetchone()[0] or 5
+
+            # Create consolidated entry
+            metadata = json.dumps({
+                "consolidated_from": memory_ids,
+                "consolidated_at": datetime.now().isoformat(),
+                "source_count": len(memory_ids),
+            })
+
+            cursor = conn.execute(
+                """INSERT INTO memory_entries (content, entry_type, source, importance, tags, context, active)
+                   VALUES (?, 'insight', 'system', ?, '["consolidated"]', ?, 1)""",
+                (summary, max_importance, metadata),
+            )
+            consolidated_id = str(cursor.lastrowid)
+
+            # Mark originals as superseded
+            for mid in memory_ids:
+                conn.execute(
+                    """UPDATE memory_entries
+                       SET active = 0,
+                           context = json_patch(COALESCE(context, '{}'),
+                               json_object('consolidated_into', ?, 'consolidated_at', ?))
+                       WHERE id = ?""",
+                    (consolidated_id, datetime.now().isoformat(), int(mid)),
+                )
+
+            conn.commit()
+            logger.info(f"Consolidated {len(memory_ids)} memories into {consolidated_id}")
+            return consolidated_id
+
+        finally:
+            conn.close()
+
+    async def add_session_note(
+        self,
+        content: str,
+        session_id: str,
+        importance: int = 5,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """Store a session-scoped note."""
+        import json
+
+        tags = ["session_note", f"session:{session_id}"]
+        meta = metadata or {}
+        meta["session_id"] = session_id
+
+        result = await self.add(
+            content=content,
+            type=MemoryType.INSIGHT,
+            importance=importance,
+            source=MemorySource.SESSION,
+            tags=tags,
+            metadata=meta,
+        )
+        return result
+
+    # =========================================================================
     # Helper Methods
     # =========================================================================
 

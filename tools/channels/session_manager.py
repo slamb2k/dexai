@@ -163,9 +163,20 @@ class Session:
                 # Query using the persistent client
                 result = await self._client.query(content)
 
-                # Capture session ID for persistence
+                # Capture session ID for persistence (DexAIClient.session_id
+                # is now populated by _extract_session_id checking all paths)
                 if self._client.session_id:
                     self.sdk_session_id = self._client.session_id
+                # Fallback: check the underlying SDK client directly
+                elif hasattr(self._client, '_client') and self._client._client:
+                    from tools.agent.sdk_client import _extract_session_id
+                    # Create a minimal object to check client-level session_id
+                    class _Stub:
+                        pass
+                    stub = _Stub()
+                    extracted = _extract_session_id(stub, self._client._client)
+                    if extracted:
+                        self.sdk_session_id = extracted
 
                 self._total_cost += result.cost_usd
 
@@ -215,11 +226,11 @@ class Session:
                 await self._client._client.query(content)
 
                 async for msg in self._client.receive_response():
-                    # Capture session ID from init message
-                    if hasattr(msg, "type") and msg.type == "system":
-                        if hasattr(msg, "subtype") and msg.subtype == "init":
-                            if hasattr(msg, "session_id"):
-                                self.sdk_session_id = msg.session_id
+                    # Capture session_id from any message (check all known locations)
+                    from tools.agent.sdk_client import _extract_session_id
+                    extracted_sid = _extract_session_id(msg, self._client._client)
+                    if extracted_sid and extracted_sid != self.sdk_session_id:
+                        self.sdk_session_id = extracted_sid
 
                     yield msg
 
@@ -267,11 +278,11 @@ class Session:
                 await self._ensure_client()
 
                 async for msg in self._client.query_stream(message_generator):
-                    # Capture session ID from init message
-                    if hasattr(msg, "type") and msg.type == "system":
-                        if hasattr(msg, "subtype") and msg.subtype == "init":
-                            if hasattr(msg, "session_id"):
-                                self.sdk_session_id = msg.session_id
+                    # Capture session_id from any message (check all known locations)
+                    from tools.agent.sdk_client import _extract_session_id
+                    extracted_sid = _extract_session_id(msg, self._client._client)
+                    if extracted_sid and extracted_sid != self.sdk_session_id:
+                        self.sdk_session_id = extracted_sid
 
                     yield msg
 

@@ -19,6 +19,18 @@ Master list of all available tools. Check here before creating new scripts.
 | `context_resume.py` | Generate ADHD-friendly "you were here..." resumption prompts (Phase 2) |
 | `commitments.py` | Track promises from conversations to prevent relationship damage (Phase 2) |
 | `service.py` | MemoryService facade — provider-agnostic memory operations with ADHD transforms |
+| `daemon.py` | Background memory daemon — extraction queue consumer, consolidation scheduler, health monitor |
+| `l1_builder.py` | L1 memory block builder — condensed context for system prompt injection (~1000 tokens) |
+| `auto_recall.py` | Auto-recall — searches L2 for relevant memories and injects into L1 context on topic shifts |
+
+### Memory Extraction Pipeline (`tools/memory/extraction/`)
+
+| Tool | Description |
+|------|-------------|
+| `gate.py` | Heuristic gate — fast regex-based pre-filter (<1ms) to decide if a turn warrants extraction |
+| `queue.py` | Extraction queue — async background queue that decouples extraction from user response path |
+| `extractor.py` | Session note extractor — LLM-based (Haiku) structured memory extraction from conversation turns |
+| `classifier.py` | Supersession classifier — AUDN pipeline (Add/Update/Supersede/Noop) for memory lifecycle |
 
 ### Memory Providers (`tools/memory/providers/`)
 
