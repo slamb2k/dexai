@@ -446,23 +446,66 @@ class ChatService:
         self,
         message: str,
         conversation_id: str | None = None,
+        control_response: dict | None = None,
     ) -> AsyncIterator[dict]:
         """
         Stream a response from DexAI.
 
         Uses SessionManager to maintain conversation context.
+        Checks setup flow first — if the deterministic bootstrap is active,
+        it handles the message without the LLM.
 
         Args:
             message: User message to send
             conversation_id: Conversation ID to continue
+            control_response: Optional control response from inline controls
 
         Yields:
-            Dicts with type ('chunk' or 'done') and content/metadata
+            Dicts with type ('chunk', 'control', or 'done') and content/metadata
         """
         conv_id = self.get_or_create_conversation(conversation_id)
 
-        # Save user message
-        self.save_message(role="user", content=message, conversation_id=conv_id)
+        # --- Setup flow intercept ---
+        # Check if the deterministic pre-LLM setup flow should handle this message.
+        try:
+            from tools.dashboard.backend.services.setup_flow import SetupFlowService
+
+            setup_flow = SetupFlowService(conversation_id=conv_id)
+            if setup_flow.is_active():
+                # Don't save __control_response__ as user message
+                if message != "__control_response__":
+                    self.save_message(role="user", content=message, conversation_id=conv_id)
+
+                full_content = []
+                async for chunk in setup_flow.handle_message(message, control_response):
+                    if chunk.get("type") == "chunk":
+                        full_content.append(chunk.get("content", ""))
+                    yield chunk
+
+                # Save the assistant response from setup flow
+                response_text = "".join(full_content)
+                if response_text:
+                    self.save_message(
+                        role="assistant",
+                        content=response_text,
+                        conversation_id=conv_id,
+                    )
+                return
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"Setup flow check failed, falling through to LLM: {e}")
+
+        # Save user message (for normal LLM flow)
+        # For control responses, synthesize a user message with the value
+        actual_message = message
+        if message == "__control_response__" and control_response:
+            field = control_response.get("field", "setting")
+            value = control_response.get("value", "")
+            actual_message = f"My {field} is: {value}"
+
+        if actual_message != "__control_response__":
+            self.save_message(role="user", content=actual_message, conversation_id=conv_id)
 
         try:
             from tools.channels.session_manager import get_session_manager
@@ -482,7 +525,7 @@ class ChatService:
             async for msg in manager.stream_message(
                 user_id=session_user_id,
                 channel="web",
-                content=message,
+                content=actual_message,
             ):
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
@@ -503,6 +546,20 @@ class ChatService:
                 from tools.agent.mcp.channel_tools import get_pending_image, clear_pending_image
                 if get_pending_image():
                     clear_pending_image()
+            except ImportError:
+                pass
+
+            # Emit any pending controls from MCP tools (e.g. dexai_show_control)
+            try:
+                from tools.agent.mcp.setup_tools import get_pending_control, clear_pending_control
+                pending_ctrl = get_pending_control()
+                if pending_ctrl:
+                    yield {
+                        "type": "control",
+                        "conversation_id": conv_id,
+                        **pending_ctrl,
+                    }
+                    clear_pending_control()
             except ImportError:
                 pass
 
