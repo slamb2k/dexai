@@ -391,6 +391,16 @@ class MessageRouter:
         if not is_paired:
             return False, "user_not_paired", context
 
+        # 3.5 Setup gate - external channels require setup completion
+        if message.channel not in ("web", "cli", "api"):
+            try:
+                from tools.setup.wizard import is_setup_complete
+
+                if not is_setup_complete():
+                    return False, "setup_not_complete", context
+            except ImportError:
+                pass
+
         # 4. Rate limit check
         try:
             from tools.security import ratelimit
@@ -485,6 +495,23 @@ class MessageRouter:
                     metric_value=elapsed_ms,
                     labels={"channel": message.channel, "success": "false", "reason": reason},
                 )
+
+                # Send friendly redirect for setup_not_complete
+                if reason == "setup_not_complete":
+                    redirect_msg = UnifiedMessage(
+                        id=str(uuid.uuid4()),
+                        channel=message.channel,
+                        channel_user_id=message.channel_user_id,
+                        direction="outbound",
+                        content=(
+                            "Hey! I'm not fully set up yet. Head to the dashboard "
+                            "and use Direct Chat to get me configured — it only takes a minute."
+                        ),
+                    )
+                    try:
+                        await self.route_outbound(redirect_msg)
+                    except Exception as e:
+                        logger.warning(f"Failed to send setup redirect: {e}")
 
                 return {"success": False, "reason": reason, "context": context}
 

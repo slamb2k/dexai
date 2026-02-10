@@ -91,7 +91,6 @@ BOOTSTRAP_FILES = [
     "AGENTS.md",
     "ENV.md",
     "HEARTBEAT.md",
-    "BOOTSTRAP.md",
 ]
 
 # Fallback identity if no workspace files exist
@@ -467,7 +466,26 @@ class SystemPromptBuilder:
         if sections_config.get("temporal", True):
             parts.append(self._build_temporal_section(context))
 
-        # 9. Channel-specific rules (only for main sessions on messaging channels)
+        # 9. Setup context — inject missing field info for LLM-driven onboarding
+        if context.session_type == SessionType.MAIN:
+            try:
+                from tools.setup.wizard import get_missing_setup_fields
+
+                missing = get_missing_setup_fields()
+                if missing:
+                    setup_section = "## Setup Required\n\nThe following settings need to be collected from the user:\n"
+                    for fld in missing:
+                        setup_section += f"- {fld['label']} ({fld['field']}): {fld.get('description', '')}\n"
+                    setup_section += (
+                        "\nUse `dexai_show_control` to present each field with appropriate controls.\n"
+                        "Use `dexai_save_setup_value` to persist each answer.\n"
+                        "Ask for ONE field at a time to keep things simple.\n"
+                    )
+                    parts.append(setup_section)
+            except Exception:
+                pass
+
+        # 10. Channel-specific rules (only for main sessions on messaging channels)
         if sections_config.get("channel_rules", True) and context.channel != "direct":
             if context.session_type == SessionType.MAIN:
                 channel_rules = self._build_channel_rules(context.channel)

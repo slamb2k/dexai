@@ -689,7 +689,7 @@ Subagents don't get USER.md, IDENTITY.md, or ENV.md — they're task-focused and
 - `AGENTS.md` — Operational guidelines for sessions
 - `ENV.md` — Environment-specific notes (tools, platform, etc.)
 - `HEARTBEAT.md` — Proactive check-in configuration
-- `BOOTSTRAP.md` — First-run onboarding (deleted after setup)
+- ~~`BOOTSTRAP.md`~~ — Removed; onboarding is now handled via Direct Chat setup flow
 
 **Configuration:** `args/system_prompt.yaml`
 
