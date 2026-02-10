@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
         discord_token = get_env_var("DISCORD_BOT_TOKEN")
         if discord_token:
             try:
-                from tools.channels.discord_adapter import DiscordAdapter
+                from tools.channels.discord import DiscordAdapter
 
                 discord_adapter = DiscordAdapter(discord_token)
                 router.register_adapter(discord_adapter)
