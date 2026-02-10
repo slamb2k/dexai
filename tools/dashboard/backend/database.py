@@ -9,10 +9,13 @@ Handles SQLite database operations for dashboard-specific tables:
 """
 
 import json
+import logging
 import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # Database path
@@ -516,17 +519,78 @@ def aggregate_metrics(
 
 
 def get_dex_state() -> dict:
-    """Get current Dex avatar state."""
+    """Get current Dex avatar state.
+
+    Automatically expires stale active states (thinking, working, listening)
+    back to idle if they haven't been updated within the timeout window.
+    This prevents the UI from getting permanently stuck when a handler
+    crashes without resetting the state.
+    """
+    # States that should auto-expire if stale
+    ACTIVE_STATES = {"thinking", "working", "listening"}
+    STALE_TIMEOUT_SECONDS = 300  # 5 minutes
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM dex_state WHERE id = 1")
     row = cursor.fetchone()
-    conn.close()
 
-    if row:
-        return dict(row)
-    return {"id": 1, "state": "idle", "current_task": None, "updated_at": None}
+    if not row:
+        conn.close()
+        return {"id": 1, "state": "idle", "current_task": None, "updated_at": None}
+
+    state = dict(row)
+
+    # Auto-expire stale active states
+    if state.get("state") in ACTIVE_STATES and state.get("updated_at"):
+        try:
+            updated = datetime.fromisoformat(state["updated_at"])
+            age_seconds = (datetime.now() - updated).total_seconds()
+            if age_seconds > STALE_TIMEOUT_SECONDS:
+                stale_state = state["state"]
+                stale_task = state.get("current_task")
+                logger.warning(
+                    "Auto-expiring stale dex_state: state=%s, task=%s, age=%.0fs (timeout=%ds)",
+                    stale_state,
+                    stale_task,
+                    age_seconds,
+                    STALE_TIMEOUT_SECONDS,
+                )
+                # Log to dashboard_events for UI visibility
+                try:
+                    cursor.execute(
+                        """INSERT INTO dashboard_events
+                           (event_type, summary, channel, severity, details)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            "system",
+                            f"Auto-expired stale '{stale_state}' state after {int(age_seconds)}s"
+                            + (f" (task: {stale_task})" if stale_task else ""),
+                            "system",
+                            "warning",
+                            json.dumps({
+                                "expired_state": stale_state,
+                                "expired_task": stale_task,
+                                "age_seconds": int(age_seconds),
+                                "timeout_seconds": STALE_TIMEOUT_SECONDS,
+                            }),
+                        ),
+                    )
+                except Exception:
+                    pass  # Event logging is best-effort
+                cursor.execute(
+                    "UPDATE dex_state SET state = 'idle', current_task = NULL, updated_at = ? WHERE id = 1",
+                    (datetime.now().isoformat(),),
+                )
+                conn.commit()
+                state["state"] = "idle"
+                state["current_task"] = None
+        except (ValueError, TypeError):
+            pass
+
+    conn.close()
+    return state
 
 
 def set_dex_state(state: str, current_task: str | None = None) -> dict:
