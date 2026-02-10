@@ -49,6 +49,7 @@ export function useAudioFeedback(enabled: boolean = true): UseAudioFeedbackRetur
 
       // Keep volume subtle so it's informative, not intrusive
       gain.gain.setValueAtTime(0.15, now);
+      osc.start(now);
 
       switch (type) {
         case 'start':
@@ -84,8 +85,6 @@ export function useAudioFeedback(enabled: boolean = true): UseAudioFeedbackRetur
           osc.stop(now + 0.3);
           break;
       }
-
-      osc.start(now);
     },
     [enabled, getContext]
   );
