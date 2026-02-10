@@ -26,6 +26,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -232,6 +234,65 @@ class DiscordAdapter(ChannelAdapter):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    async def send_image(
+        self,
+        channel_id: str | int | None = None,
+        user_id: str | int | None = None,
+        image: bytes | str = None,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Send an image to a Discord channel or user.
+
+        Args:
+            channel_id: Discord channel ID to send to
+            user_id: Discord user ID for DM (if no channel_id)
+            image: Image bytes or URL
+            caption: Optional caption/message content
+
+        Returns:
+            Dict with success status and message ID
+        """
+        import io
+        import discord
+
+        try:
+            target = None
+
+            if channel_id:
+                target = self.client.get_channel(int(channel_id))
+
+            if not target and user_id:
+                try:
+                    user = await self.client.fetch_user(int(user_id))
+                    target = await user.create_dm()
+                except Exception:
+                    pass
+
+            if not target:
+                return {"success": False, "error": "no_target_channel"}
+
+            if isinstance(image, str) and image.startswith("http"):
+                # URL - download first then send
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(image)
+                    response.raise_for_status()
+                    image = response.content
+
+            # Send as file attachment
+            file = discord.File(io.BytesIO(image), filename="image.png")
+            result = await target.send(content=caption, file=file)
+
+            return {
+                "success": True,
+                "message_id": str(result.id),
+                "channel_id": str(result.channel.id),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to send image: {e}")
+            return {"success": False, "error": str(e)}
+
     async def update_message(
         self,
         message_obj,
@@ -345,6 +406,33 @@ class DiscordAdapter(ChannelAdapter):
             "content": message.content,
             "channel_id": message.metadata.get("discord_channel_id"),
         }
+
+    async def download_attachment(self, attachment: Attachment) -> bytes:
+        """
+        Download attachment content from Discord CDN.
+
+        Uses the URL stored in attachment.url to download the file.
+        Note: Discord CDN URLs may expire after some time.
+
+        Args:
+            attachment: Attachment with Discord CDN URL
+
+        Returns:
+            File content as bytes
+
+        Raises:
+            ValueError: If no URL available
+            Exception: On download failure
+        """
+        if not attachment.url:
+            raise ValueError("No URL in Discord attachment")
+
+        import httpx
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(attachment.url)
+            response.raise_for_status()
+            return response.content
 
     # =========================================================================
     # Message Handlers
