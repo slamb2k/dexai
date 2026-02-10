@@ -1,13 +1,28 @@
-# Voice Interface Configuration (Phase 11a)
-# Controls voice recognition, command parsing, and feedback behavior
+# Voice Interface Configuration (Phase 11a/11b/11c)
+# Controls voice recognition, command parsing, feedback, TTS, and continuous listening
 
 recognition:
-  default_provider: "web_speech"   # 'web_speech' (browser), 'whisper_api' (11b), 'whisper_local' (11b)
+  default_provider: "web_speech"   # 'web_speech' (browser), 'whisper_api' (server-side)
   web_speech:
     language: "en-US"
-    continuous: false               # Single command mode (11c adds continuous)
+    continuous: false               # Single command mode by default
     interim_results: true           # Show text as user speaks
     max_alternatives: 3
+
+# Phase 11b: Server-side transcription via Whisper API
+transcription:
+  default_provider: "whisper_api"
+  fallback_chain:
+    - "whisper_api"
+  whisper_api:
+    model: "whisper-1"
+    max_audio_size_mb: 25
+    supported_formats:
+      - "audio/webm"
+      - "audio/mp3"
+      - "audio/m4a"
+      - "audio/wav"
+      - "audio/ogg"
 
 parsing:
   high_confidence: 0.85            # Above this: auto-execute allowed
@@ -32,6 +47,48 @@ feedback:
     show_intent_badge: true        # Show detected command type
     processing_spinner: true       # Spinner during command execution
     result_display_ms: 4000        # How long to show result feedback
+  audio:
+    enabled: true                  # Web Audio API tone feedback
+    tones:
+      start: { frequencies: [523, 659], duration_ms: 200 }
+      stop: { frequencies: [659, 523], duration_ms: 200 }
+      success: { frequencies: [523, 659, 784], duration_ms: 300 }
+      error: { frequencies: [523, 554], duration_ms: 300 }
+
+# Phase 11c: Text-to-speech for command responses
+tts:
+  enabled: false                   # Opt-in (uses OpenAI TTS API when enabled)
+  browser_fallback: true           # Fall back to browser SpeechSynthesis when cloud unavailable
+  provider: "openai"
+  model: "tts-1"
+  voice: "alloy"
+  speed: 1.0
+  format: "mp3"
+  voices:
+    - id: "alloy"
+      name: "Alloy"
+      description: "Neutral and balanced"
+    - id: "echo"
+      name: "Echo"
+      description: "Warm and clear"
+    - id: "fable"
+      name: "Fable"
+      description: "Expressive and animated"
+    - id: "onyx"
+      name: "Onyx"
+      description: "Deep and authoritative"
+    - id: "nova"
+      name: "Nova"
+      description: "Friendly and upbeat"
+    - id: "shimmer"
+      name: "Shimmer"
+      description: "Soft and gentle"
+
+# Phase 11c: Continuous listening mode
+continuous_listening:
+  enabled: false                   # Off by default (user opt-in)
+  auto_restart_delay_ms: 300       # Delay before restarting after result
+  silence_timeout_ms: 5000         # Stop after this much silence
 
 adhd:
   auto_execute_high_confidence: true  # Skip confirmation for confident commands

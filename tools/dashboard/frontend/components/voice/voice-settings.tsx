@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Mic, Volume2, Globe, Sliders } from 'lucide-react';
+import { Mic, Volume2, Globe, Sliders, Radio, MessageSquare } from 'lucide-react';
 import { api, type VoicePreferences } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -102,6 +102,18 @@ export function VoiceSettings({ userId = 'default', className }: VoiceSettingsPr
         onChange={(v) => updatePreference('language', v)}
       />
 
+      {/* Transcription Source (Phase 11b) */}
+      <SettingSelect
+        label="Transcription Source"
+        icon={<Radio className="w-4 h-4" />}
+        value={preferences.preferred_source}
+        options={[
+          { value: 'web_speech', label: 'Browser (Web Speech)' },
+          { value: 'whisper_api', label: 'Server (Whisper API)' },
+        ]}
+        onChange={(v) => updatePreference('preferred_source', v)}
+      />
+
       {/* Confidence Threshold */}
       <SettingSlider
         label="Confidence Threshold"
@@ -123,10 +135,18 @@ export function VoiceSettings({ userId = 'default', className }: VoiceSettingsPr
         onChange={(v) => updatePreference('auto_execute_high_confidence', v)}
       />
 
+      {/* Continuous Listening (Phase 11c) */}
+      <SettingToggle
+        label="Continuous Listening"
+        description="Keep listening after each command (auto-restart)"
+        checked={preferences.continuous_listening}
+        onChange={(v) => updatePreference('continuous_listening', v)}
+      />
+
       {/* Audio Feedback */}
       <SettingToggle
         label="Audio Feedback"
-        description="Play sounds for voice events"
+        description="Play tones for voice events (start, stop, success, error)"
         checked={preferences.audio_feedback_enabled}
         onChange={(v) => updatePreference('audio_feedback_enabled', v)}
       />
@@ -159,6 +179,51 @@ export function VoiceSettings({ userId = 'default', className }: VoiceSettingsPr
         ]}
         onChange={(v) => updatePreference('confirmation_verbosity', v)}
       />
+
+      {/* TTS Section (Phase 11c) */}
+      <div className="pt-2 border-t border-white/[0.06]">
+        <h4 className="text-xs font-medium text-white/40 mb-3 flex items-center gap-1.5">
+          <MessageSquare className="w-3.5 h-3.5" />
+          Text-to-Speech
+        </h4>
+
+        <div className="space-y-4">
+          <SettingToggle
+            label="Speak Responses"
+            description="Read command results aloud via TTS"
+            checked={preferences.tts_enabled}
+            onChange={(v) => updatePreference('tts_enabled', v)}
+          />
+
+          {preferences.tts_enabled && (
+            <>
+              <SettingSelect
+                label="Voice"
+                value={preferences.tts_voice}
+                options={[
+                  { value: 'alloy', label: 'Alloy (Neutral)' },
+                  { value: 'echo', label: 'Echo (Warm)' },
+                  { value: 'fable', label: 'Fable (Expressive)' },
+                  { value: 'onyx', label: 'Onyx (Deep)' },
+                  { value: 'nova', label: 'Nova (Friendly)' },
+                  { value: 'shimmer', label: 'Shimmer (Soft)' },
+                ]}
+                onChange={(v) => updatePreference('tts_voice', v)}
+              />
+
+              <SettingSlider
+                label="Speed"
+                value={preferences.tts_speed}
+                min={0.5}
+                max={2.0}
+                step={0.1}
+                formatValue={(v) => `${v.toFixed(1)}x`}
+                onChange={(v) => updatePreference('tts_speed', v)}
+              />
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
