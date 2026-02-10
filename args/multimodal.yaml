@@ -1,7 +1,10 @@
 # Multi-Modal Messaging Configuration
 # Phase 15a: Images, Documents, Code Blocks
+# Phase 15b: Audio/Voice Transcription, Video Processing, TTS
 
-# Media processing settings
+# =============================================================================
+# Media Processing Settings
+# =============================================================================
 processing:
   enabled: true
   max_file_size_mb: 50
@@ -37,14 +40,50 @@ processing:
       - "txt"
       - "md"
 
-  # Audio/video (Phase 15b placeholders)
+  # Audio/Voice transcription (Phase 15b)
   transcription:
-    enabled: false
-    provider: "openai"  # Whisper
+    enabled: true
+    provider: "openai"        # Whisper API
     model: "whisper-1"
-    max_duration_seconds: 300
+    max_duration_seconds: 300  # 5 minutes max
+    language_hint: null        # Auto-detect (or set to "en", "es", etc.)
+    # Pricing (for cost tracking)
+    pricing:
+      per_minute_usd: 0.006   # Whisper pricing
+    # Supported audio formats
+    supported_formats:
+      - "mp3"
+      - "mp4"
+      - "mpeg"
+      - "mpga"
+      - "m4a"
+      - "wav"
+      - "webm"
+      - "ogg"
+      - "flac"
 
-# Content formatting settings
+  # Video processing (Phase 15b)
+  video:
+    enabled: true
+    max_file_size_mb: 100     # Larger limit for video
+    max_duration_seconds: 300  # 5 minutes max
+    transcribe_audio: true     # Extract and transcribe audio track
+    extract_frames: true       # Extract key frames for analysis
+    analyze_frames: true       # Use Vision API on frames
+    max_frames: 3              # Max frames to extract (ADHD-friendly)
+    # Supported video formats
+    supported_formats:
+      - "mp4"
+      - "webm"
+      - "avi"
+      - "mov"
+      - "mkv"
+      - "m4v"
+      - "3gp"
+
+# =============================================================================
+# Content Formatting Settings
+# =============================================================================
 formatting:
   # Code block handling
   code:
@@ -57,13 +96,18 @@ formatting:
     discord: 2000
     slack: 40000
 
-# Storage settings (Phase 15d full implementation)
+# =============================================================================
+# Storage Settings (Phase 15d full implementation)
+# =============================================================================
 storage:
   temp_retention_hours: 1
   cleanup_enabled: true
 
-# Image generation settings
+# =============================================================================
+# Generation Settings
+# =============================================================================
 generation:
+  # Image generation (DALL-E)
   enabled: true
   model: "dall-e-3"
   max_cost_per_image: 0.10
@@ -76,8 +120,28 @@ generation:
     hd_square: 0.080         # HD 1024x1024
     hd_wide: 0.120           # HD 1792x1024 or 1024x1792
 
-# ADHD-friendly settings
+  # Text-to-Speech generation (Phase 15b)
+  tts:
+    enabled: false            # Opt-in (uses API credits)
+    provider: "openai"
+    model: "tts-1"            # or "tts-1-hd" for higher quality
+    voice: "alloy"            # alloy, echo, fable, onyx, nova, shimmer
+    speed: 1.0                # 0.25 to 4.0
+    output_format: "opus"     # opus (best for voice notes), mp3, aac, flac
+    max_chars: 4096           # OpenAI limit
+    # Pricing (for cost tracking)
+    pricing:
+      per_1k_chars_usd: 0.015     # tts-1
+      hd_per_1k_chars_usd: 0.030  # tts-1-hd
+
+# =============================================================================
+# ADHD-Friendly Settings
+# =============================================================================
 adhd:
   acknowledge_processing: true  # "Analyzing your image..."
   summarize_multiple: true      # "I see 3 images: ..."
   max_attachments: 3            # Process max 3 per message
+  # Voice-specific ADHD considerations
+  voice:
+    summarize_long_transcripts: true  # Summarize transcripts > 500 words
+    max_transcript_display: 500        # Chars to show inline (rest collapsed)

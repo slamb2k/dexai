@@ -293,6 +293,62 @@ class DiscordAdapter(ChannelAdapter):
             logger.error(f"Failed to send image: {e}")
             return {"success": False, "error": str(e)}
 
+    async def send_voice(
+        self,
+        channel_id: str | int | None = None,
+        user_id: str | int | None = None,
+        audio: bytes = None,
+        caption: str | None = None,
+        filename: str = "voice.ogg",
+    ) -> dict[str, Any]:
+        """
+        Send a voice/audio file to a Discord channel or user (Phase 15b).
+
+        Args:
+            channel_id: Discord channel ID to send to
+            user_id: Discord user ID for DM (if no channel_id)
+            audio: Audio bytes (OGG/Opus format preferred)
+            caption: Optional caption/message content
+            filename: Filename for the audio file
+
+        Returns:
+            Dict with success status and message ID
+        """
+        import io
+        import discord
+
+        try:
+            target = None
+
+            if channel_id:
+                target = self.client.get_channel(int(channel_id))
+
+            if not target and user_id:
+                try:
+                    user = await self.client.fetch_user(int(user_id))
+                    target = await user.create_dm()
+                except Exception:
+                    pass
+
+            if not target:
+                return {"success": False, "error": "no_target_channel"}
+
+            # Send audio as attachment
+            audio_file = io.BytesIO(audio)
+            file = discord.File(audio_file, filename=filename)
+
+            result = await target.send(content=caption, file=file)
+
+            return {
+                "success": True,
+                "message_id": str(result.id),
+                "channel_id": str(result.channel.id),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to send voice: {e}")
+            return {"success": False, "error": str(e)}
+
     async def update_message(
         self,
         message_obj,

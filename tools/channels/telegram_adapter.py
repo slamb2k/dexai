@@ -20,12 +20,14 @@ Secrets (via vault, namespace: channels):
 import argparse
 import asyncio
 import json
+import logging
 import secrets
 import sys
 import uuid
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -44,9 +46,10 @@ class TelegramAdapter(ChannelAdapter):
     - /pair - Generate pairing code
     - /help - Show available commands
     - Text messages - Route through gateway
-    - Voice notes - Receive (transcription placeholder)
-    - Photos - Receive and route
-    - Documents - Receive and route
+    - Voice notes - Receive with Whisper transcription (Phase 15b)
+    - Photos - Receive with Vision analysis
+    - Documents - Receive with text extraction
+    - Videos - Receive with frame extraction and audio transcription (Phase 15b)
     """
 
     @property
@@ -266,6 +269,52 @@ class TelegramAdapter(ChannelAdapter):
             }
         except Exception as e:
             logger.error(f"Failed to send image: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def send_voice(
+        self,
+        chat_id: str | int,
+        audio: bytes,
+        caption: str | None = None,
+        reply_to: int | None = None,
+        duration: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        Send a voice note to a Telegram chat (Phase 15b).
+
+        Args:
+            chat_id: Telegram chat ID to send to
+            audio: Audio bytes (should be OGG/Opus format)
+            caption: Optional caption for the voice note
+            reply_to: Optional message ID to reply to
+            duration: Optional duration in seconds
+
+        Returns:
+            Dict with success status and message ID
+        """
+        if not self.bot:
+            return {"success": False, "error": "bot_not_connected"}
+
+        try:
+            import io
+            voice_file = io.BytesIO(audio)
+            voice_file.name = "voice.ogg"
+
+            result = await self.bot.send_voice(
+                chat_id=chat_id,
+                voice=voice_file,
+                caption=caption,
+                reply_to_message_id=reply_to,
+                duration=duration,
+            )
+
+            return {
+                "success": True,
+                "message_id": str(result.message_id),
+                "chat_id": str(result.chat.id),
+            }
+        except Exception as e:
+            logger.error(f"Failed to send voice: {e}")
             return {"success": False, "error": str(e)}
 
     def to_unified(self, update) -> UnifiedMessage:
@@ -564,13 +613,20 @@ class TelegramAdapter(ChannelAdapter):
             # For other errors, fail silently
 
     async def _handle_voice(self, update, context) -> None:
-        """Handle voice notes."""
-        await update.message.reply_text("Voice note received. Transcription coming soon!")
-
-        # Still route through gateway for storage
+        """Handle voice notes with transcription (Phase 15b)."""
         if self.router:
             message = self.to_unified(update)
-            await self.router.route_inbound(message)
+            result = await self.router.route_inbound(message)
+
+            if not result.get("success"):
+                reason = result.get("reason", "unknown")
+                if reason == "user_not_paired":
+                    await update.message.reply_text("Please use /pair first to link your account.")
+                elif reason == "transcription_failed":
+                    await update.message.reply_text(
+                        "I received your voice note but couldn't transcribe it. "
+                        "Try again or send a text message."
+                    )
 
     async def _handle_photo(self, update, context) -> None:
         """Handle photos."""

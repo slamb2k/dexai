@@ -65,13 +65,16 @@ Pluggable memory backend system supporting multiple storage providers.
 | `inbox.py` | Message storage, cross-channel identity linking, and user preferences |
 | `router.py` | Central message routing hub with integrated security pipeline |
 | `gateway.py` | WebSocket server for real-time communication backbone |
-| `telegram.py` | Telegram bot adapter using python-telegram-bot (polling mode, attachment download) |
-| `discord.py` | Discord bot adapter using discord.py (slash commands, attachment download) |
-| `slack.py` | Slack app adapter using slack-bolt (Socket Mode, attachment download) |
+| `telegram_adapter.py` | Telegram bot adapter using python-telegram-bot (polling mode, voice notes, attachment download) |
+| `discord.py` | Discord bot adapter using discord.py (slash commands, voice messages, attachment download) |
+| `slack.py` | Slack app adapter using slack-bolt (Socket Mode, audio files, attachment download) |
 | `session_manager.py` | ClaudeSDKClient-based session manager for continuous conversations with SDK resumption support |
 | `sdk_handler.py` | Message handler using DexAIClient, session management via SessionManager, complexity hints, channel-aware truncation, media processing integration |
-| `media_processor.py` | Multi-modal media processing: Claude Vision for images, PyPDF2/python-docx for documents, code block detection, channel-specific formatting (Phase 15a) |
+| `media_processor.py` | Multi-modal media processing: Claude Vision for images, Whisper for audio, FFmpeg for video, PyPDF2/python-docx for documents (Phase 15a/15b) |
 | `image_generator.py` | Image generation via DALL-E API with cost tracking and configurable quality/size options (Phase 15a) |
+| `audio_processor.py` | Audio/voice transcription via OpenAI Whisper API, TTS generation with cost tracking (Phase 15b) |
+| `video_processor.py` | Video processing with FFmpeg: frame extraction, audio track transcription, thumbnail generation (Phase 15b) |
+| `tts_generator.py` | Text-to-Speech generation via OpenAI TTS API with voice selection and channel-optimized formats (Phase 15b) |
 
 ---
 
