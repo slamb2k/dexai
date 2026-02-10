@@ -18,127 +18,163 @@ from tools.voice.parser.intent_parser import parse_command, parse_intent
 class TestIntentDetection:
     """Test that intents are correctly detected from voice transcripts."""
 
-    @pytest.mark.parametrize("text,expected", [
-        ("add task buy groceries", IntentType.ADD_TASK),
-        ("create a task call the dentist", IntentType.ADD_TASK),
-        ("new task file taxes", IntentType.ADD_TASK),
-        ("task: send invoice", IntentType.ADD_TASK),
-        ("I need to email John", IntentType.ADD_TASK),
-        ("remind me to call mom", IntentType.SET_REMINDER),
-        ("don't forget to buy milk", IntentType.ADD_TASK),
-        ("don't let me forget to water plants", IntentType.ADD_TASK),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("add task buy groceries", IntentType.ADD_TASK),
+            ("create a task call the dentist", IntentType.ADD_TASK),
+            ("new task file taxes", IntentType.ADD_TASK),
+            ("task: send invoice", IntentType.ADD_TASK),
+            ("I need to email John", IntentType.ADD_TASK),
+            ("remind me to call mom", IntentType.SET_REMINDER),
+            ("don't forget to buy milk", IntentType.ADD_TASK),
+            ("don't let me forget to water plants", IntentType.ADD_TASK),
+        ],
+    )
     def test_add_task_intents(self, text: str, expected: IntentType):
         intent, confidence, _ = parse_intent(text)
         assert intent == expected
         assert confidence > 0.5
 
-    @pytest.mark.parametrize("text,expected", [
-        ("done", IntentType.COMPLETE_TASK),
-        ("finished", IntentType.COMPLETE_TASK),
-        ("complete", IntentType.COMPLETE_TASK),
-        ("mark as done", IntentType.COMPLETE_TASK),
-        ("mark as complete", IntentType.COMPLETE_TASK),
-        ("completed", IntentType.COMPLETE_TASK),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("done", IntentType.COMPLETE_TASK),
+            ("finished", IntentType.COMPLETE_TASK),
+            ("complete", IntentType.COMPLETE_TASK),
+            ("mark as done", IntentType.COMPLETE_TASK),
+            ("mark as complete", IntentType.COMPLETE_TASK),
+            ("completed", IntentType.COMPLETE_TASK),
+        ],
+    )
     def test_complete_task_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("skip", IntentType.SKIP_TASK),
-        ("next task", IntentType.SKIP_TASK),
-        ("move on", IntentType.SKIP_TASK),
-        ("pass", IntentType.SKIP_TASK),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("skip", IntentType.SKIP_TASK),
+            ("next task", IntentType.SKIP_TASK),
+            ("move on", IntentType.SKIP_TASK),
+            ("pass", IntentType.SKIP_TASK),
+        ],
+    )
     def test_skip_task_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("what's my next task", IntentType.QUERY_NEXT_TASK),
-        ("what is my next task", IntentType.QUERY_NEXT_TASK),
-        ("next step", IntentType.QUERY_NEXT_TASK),
-        ("what should I do", IntentType.QUERY_NEXT_TASK),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("what's my next task", IntentType.QUERY_NEXT_TASK),
+            ("what is my next task", IntentType.QUERY_NEXT_TASK),
+            ("next step", IntentType.QUERY_NEXT_TASK),
+            ("what should I do", IntentType.QUERY_NEXT_TASK),
+        ],
+    )
     def test_query_next_task_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("what's on my calendar", IntentType.QUERY_SCHEDULE),
-        ("today's schedule", IntentType.QUERY_SCHEDULE),
-        ("what's my agenda", IntentType.QUERY_SCHEDULE),
-        ("tomorrow's calendar", IntentType.QUERY_SCHEDULE),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("what's on my calendar", IntentType.QUERY_SCHEDULE),
+            ("today's schedule", IntentType.QUERY_SCHEDULE),
+            ("what's my agenda", IntentType.QUERY_SCHEDULE),
+            ("tomorrow's calendar", IntentType.QUERY_SCHEDULE),
+        ],
+    )
     def test_query_schedule_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("how am I doing", IntentType.QUERY_STATUS),
-        ("my progress", IntentType.QUERY_STATUS),
-        ("my status", IntentType.QUERY_STATUS),
-        ("summary", IntentType.QUERY_STATUS),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("how am I doing", IntentType.QUERY_STATUS),
+            ("my progress", IntentType.QUERY_STATUS),
+            ("my status", IntentType.QUERY_STATUS),
+            ("summary", IntentType.QUERY_STATUS),
+        ],
+    )
     def test_query_status_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("search for groceries", IntentType.QUERY_SEARCH),
-        ("find project notes", IntentType.QUERY_SEARCH),
-        ("look up meeting notes", IntentType.QUERY_SEARCH),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("search for groceries", IntentType.QUERY_SEARCH),
+            ("find project notes", IntentType.QUERY_SEARCH),
+            ("look up meeting notes", IntentType.QUERY_SEARCH),
+        ],
+    )
     def test_query_search_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("start focus mode", IntentType.START_FOCUS),
-        ("enter focus", IntentType.START_FOCUS),
-        ("do not disturb", IntentType.START_FOCUS),
-        ("dnd", IntentType.START_FOCUS),
-        ("quiet mode", IntentType.START_FOCUS),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("start focus mode", IntentType.START_FOCUS),
+            ("enter focus", IntentType.START_FOCUS),
+            ("do not disturb", IntentType.START_FOCUS),
+            ("dnd", IntentType.START_FOCUS),
+            ("quiet mode", IntentType.START_FOCUS),
+        ],
+    )
     def test_start_focus_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("end focus mode", IntentType.END_FOCUS),
-        ("stop focus", IntentType.END_FOCUS),
-        ("resume", IntentType.END_FOCUS),
-        ("I'm back", IntentType.END_FOCUS),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("end focus mode", IntentType.END_FOCUS),
+            ("stop focus", IntentType.END_FOCUS),
+            ("resume", IntentType.END_FOCUS),
+            ("I'm back", IntentType.END_FOCUS),
+        ],
+    )
     def test_end_focus_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("cancel", IntentType.CANCEL),
-        ("never mind", IntentType.CANCEL),
-        ("stop", IntentType.CANCEL),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("cancel", IntentType.CANCEL),
+            ("never mind", IntentType.CANCEL),
+            ("stop", IntentType.CANCEL),
+        ],
+    )
     def test_cancel_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("undo", IntentType.UNDO),
-        ("undo that", IntentType.UNDO),
-        ("undo last", IntentType.UNDO),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("undo", IntentType.UNDO),
+            ("undo that", IntentType.UNDO),
+            ("undo last", IntentType.UNDO),
+        ],
+    )
     def test_undo_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("help", IntentType.HELP),
-        ("what can I say", IntentType.HELP),
-        ("what can you do", IntentType.HELP),
-        ("commands", IntentType.HELP),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("help", IntentType.HELP),
+            ("what can I say", IntentType.HELP),
+            ("what can you do", IntentType.HELP),
+            ("commands", IntentType.HELP),
+        ],
+    )
     def test_help_intents(self, text: str, expected: IntentType):
         intent, _, _ = parse_intent(text)
         assert intent == expected
