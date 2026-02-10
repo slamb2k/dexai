@@ -114,9 +114,7 @@ class TestProcessAttachment:
     """Tests for the top-level process_attachment routing."""
 
     @pytest.mark.asyncio
-    async def test_processing_disabled_returns_unprocessed(
-        self, disabled_config, mock_adapter
-    ):
+    async def test_processing_disabled_returns_unprocessed(self, disabled_config, mock_adapter):
         """When processing is disabled, returns processed=False with no API calls."""
         processor = MediaProcessor(config=disabled_config)
         attachment = make_attachment()
@@ -143,32 +141,22 @@ class TestProcessAttachment:
         processor = MediaProcessor(config=multimodal_config)
         attachment = make_attachment(type="image")
 
-        with patch.object(
-            processor, "_process_image", new_callable=AsyncMock
-        ) as mock_pi:
+        with patch.object(processor, "_process_image", new_callable=AsyncMock) as mock_pi:
             mock_pi.return_value = MediaContent(attachment=attachment, processed=True)
-            result = await processor.process_attachment(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor.process_attachment(attachment, "telegram", mock_adapter)
 
         mock_pi.assert_awaited_once_with(attachment, "telegram", mock_adapter)
         assert result.processed is True
 
     @pytest.mark.asyncio
-    async def test_routes_document_to_process_document(
-        self, multimodal_config, mock_adapter
-    ):
+    async def test_routes_document_to_process_document(self, multimodal_config, mock_adapter):
         """Document type routes to _process_document."""
         processor = MediaProcessor(config=multimodal_config)
         attachment = make_attachment(type="document", filename="report.pdf")
 
-        with patch.object(
-            processor, "_process_document", new_callable=AsyncMock
-        ) as mock_pd:
+        with patch.object(processor, "_process_document", new_callable=AsyncMock) as mock_pd:
             mock_pd.return_value = MediaContent(attachment=attachment, processed=True)
-            result = await processor.process_attachment(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor.process_attachment(attachment, "telegram", mock_adapter)
 
         mock_pd.assert_awaited_once_with(attachment, "telegram", mock_adapter)
         assert result.processed is True
@@ -191,13 +179,9 @@ class TestProcessAttachment:
         attachment = make_attachment(type="image")
         long_error = "X" * 300
 
-        with patch.object(
-            processor, "_process_image", new_callable=AsyncMock
-        ) as mock_pi:
+        with patch.object(processor, "_process_image", new_callable=AsyncMock) as mock_pi:
             mock_pi.side_effect = Exception(long_error)
-            result = await processor.process_attachment(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor.process_attachment(attachment, "telegram", mock_adapter)
 
         assert result.processed is False
         assert len(result.processing_error) <= 200
@@ -223,17 +207,16 @@ class TestProcessImage:
         fake_prepared = {"type": "image", "source": {"type": "base64", "data": "abc"}}
 
         # Mock both _prepare_image_for_vision (needs Pillow) and _call_vision_api
-        with patch.object(
-            processor, "_prepare_image_for_vision", new_callable=AsyncMock
-        ) as mock_prepare, patch.object(
-            processor, "_call_vision_api", new_callable=AsyncMock
-        ) as mock_vision:
+        with (
+            patch.object(
+                processor, "_prepare_image_for_vision", new_callable=AsyncMock
+            ) as mock_prepare,
+            patch.object(processor, "_call_vision_api", new_callable=AsyncMock) as mock_vision,
+        ):
             mock_prepare.return_value = fake_prepared
             mock_vision.return_value = ("A red square image", 0.005)
 
-            result = await processor._process_image(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor._process_image(attachment, "telegram", mock_adapter)
 
         assert result.processed is True
         assert result.vision_description == "A red square image"
@@ -252,14 +235,10 @@ class TestProcessImage:
         assert "empty" in result.processing_error.lower()
 
     @pytest.mark.asyncio
-    async def test_download_exception_returns_error(
-        self, multimodal_config, mock_adapter
-    ):
+    async def test_download_exception_returns_error(self, multimodal_config, mock_adapter):
         """Download exception populates processing_error."""
         processor = MediaProcessor(config=multimodal_config)
-        mock_adapter.download_attachment = AsyncMock(
-            side_effect=Exception("Network error")
-        )
+        mock_adapter.download_attachment = AsyncMock(side_effect=Exception("Network error"))
         attachment = make_attachment()
 
         result = await processor._process_image(attachment, "telegram", mock_adapter)
@@ -297,17 +276,16 @@ class TestProcessImage:
 
         # Mock _prepare_image_for_vision (needs Pillow) to succeed,
         # then let _call_vision_api raise
-        with patch.object(
-            processor, "_prepare_image_for_vision", new_callable=AsyncMock
-        ) as mock_prepare, patch.object(
-            processor, "_call_vision_api", new_callable=AsyncMock
-        ) as mock_vision:
+        with (
+            patch.object(
+                processor, "_prepare_image_for_vision", new_callable=AsyncMock
+            ) as mock_prepare,
+            patch.object(processor, "_call_vision_api", new_callable=AsyncMock) as mock_vision,
+        ):
             mock_prepare.return_value = fake_prepared
             mock_vision.side_effect = Exception("Vision API unavailable")
 
-            result = await processor._process_image(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor._process_image(attachment, "telegram", mock_adapter)
 
         assert result.processed is False
         assert "Vision API error" in result.processing_error
@@ -326,9 +304,7 @@ class TestProcessDocument:
         """TXT file: download bytes -> decode -> extracted_text."""
         processor = MediaProcessor(config=multimodal_config)
         mock_adapter.download_attachment = AsyncMock(return_value=b"Hello world")
-        attachment = make_attachment(
-            type="document", filename="notes.txt", mime_type="text/plain"
-        )
+        attachment = make_attachment(type="document", filename="notes.txt", mime_type="text/plain")
 
         result = await processor._process_document(attachment, "telegram", mock_adapter)
 
@@ -358,9 +334,7 @@ class TestProcessDocument:
         mock_pypdf2 = MagicMock()
         mock_pypdf2.PdfReader = MagicMock(return_value=mock_reader)
         with patch.dict(sys.modules, {"PyPDF2": mock_pypdf2}):
-            result = await processor._process_document(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor._process_document(attachment, "telegram", mock_adapter)
 
         assert result.processed is True
         assert "Page 1 content" in result.extracted_text
@@ -392,18 +366,14 @@ class TestProcessDocument:
         mock_docx = MagicMock()
         mock_docx.Document = MagicMock(return_value=mock_doc)
         with patch.dict(sys.modules, {"docx": mock_docx}):
-            result = await processor._process_document(
-                attachment, "telegram", mock_adapter
-            )
+            result = await processor._process_document(attachment, "telegram", mock_adapter)
 
         assert result.processed is True
         assert "First paragraph" in result.extracted_text
         assert "Second paragraph" in result.extracted_text
 
     @pytest.mark.asyncio
-    async def test_unsupported_format_returns_error(
-        self, multimodal_config, mock_adapter
-    ):
+    async def test_unsupported_format_returns_error(self, multimodal_config, mock_adapter):
         """Unsupported document format (e.g. .xlsx) returns error."""
         processor = MediaProcessor(config=multimodal_config)
         attachment = make_attachment(
@@ -420,12 +390,8 @@ class TestProcessDocument:
         """Text exceeding max_chars_per_doc is truncated."""
         processor = MediaProcessor(config=multimodal_config)
         long_text = "A" * 15000
-        mock_adapter.download_attachment = AsyncMock(
-            return_value=long_text.encode("utf-8")
-        )
-        attachment = make_attachment(
-            type="document", filename="long.txt", mime_type="text/plain"
-        )
+        mock_adapter.download_attachment = AsyncMock(return_value=long_text.encode("utf-8"))
+        attachment = make_attachment(type="document", filename="long.txt", mime_type="text/plain")
 
         result = await processor._process_document(attachment, "telegram", mock_adapter)
 
@@ -459,9 +425,7 @@ class TestProcessAttachmentsBatch:
         processor = MediaProcessor(config=multimodal_config)
         attachments = [make_attachment(id=f"att-{i}") for i in range(5)]
 
-        with patch.object(
-            processor, "process_attachment", new_callable=AsyncMock
-        ) as mock_pa:
+        with patch.object(processor, "process_attachment", new_callable=AsyncMock) as mock_pa:
             mock_pa.return_value = MediaContent(
                 attachment=attachments[0], processed=True, processing_cost_usd=0.01
             )
@@ -474,9 +438,7 @@ class TestProcessAttachmentsBatch:
         assert len(result) == 3
 
     @pytest.mark.asyncio
-    async def test_images_prioritized_over_documents(
-        self, multimodal_config, mock_adapter
-    ):
+    async def test_images_prioritized_over_documents(self, multimodal_config, mock_adapter):
         """Images are sorted before documents for processing priority."""
         processor = MediaProcessor(config=multimodal_config)
         doc = make_attachment(id="doc-1", type="document", filename="report.pdf")
@@ -486,23 +448,17 @@ class TestProcessAttachmentsBatch:
 
         async def track_processing(attachment, channel, adapter):
             processed_ids.append(attachment.id)
-            return MediaContent(
-                attachment=attachment, processed=True, processing_cost_usd=0.01
-            )
+            return MediaContent(attachment=attachment, processed=True, processing_cost_usd=0.01)
 
         with patch.object(processor, "process_attachment", side_effect=track_processing):
-            await processor.process_attachments_batch(
-                [doc, img], "telegram", mock_adapter
-            )
+            await processor.process_attachments_batch([doc, img], "telegram", mock_adapter)
 
         # Image should be processed first
         assert processed_ids[0] == "img-1"
         assert processed_ids[1] == "doc-1"
 
     @pytest.mark.asyncio
-    async def test_budget_enforcement_stops_processing(
-        self, multimodal_config, mock_adapter
-    ):
+    async def test_budget_enforcement_stops_processing(self, multimodal_config, mock_adapter):
         """Processing stops when budget is exceeded."""
         # Set a very low budget
         multimodal_config["processing"]["max_processing_cost_usd"] = 0.01
@@ -520,9 +476,7 @@ class TestProcessAttachmentsBatch:
                 processing_cost_usd=0.02,  # Exceeds budget after first
             )
 
-        with patch.object(
-            processor, "process_attachment", side_effect=expensive_processing
-        ):
+        with patch.object(processor, "process_attachment", side_effect=expensive_processing):
             result = await processor.process_attachments_batch(
                 attachments, "telegram", mock_adapter
             )
@@ -535,9 +489,7 @@ class TestProcessAttachmentsBatch:
         assert result[2].processing_error == "Processing budget exceeded"
 
     @pytest.mark.asyncio
-    async def test_all_results_returned_with_costs(
-        self, multimodal_config, mock_adapter
-    ):
+    async def test_all_results_returned_with_costs(self, multimodal_config, mock_adapter):
         """All results are returned with correct costs tracked."""
         processor = MediaProcessor(config=multimodal_config)
         attachments = [make_attachment(id=f"att-{i}") for i in range(2)]

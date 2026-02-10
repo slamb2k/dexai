@@ -217,9 +217,7 @@ class TestGenerateAndDownload:
             mock_async_client = AsyncMock()
             mock_http_resp = MagicMock()
             mock_http_resp.raise_for_status = MagicMock(
-                side_effect=httpx.HTTPStatusError(
-                    "404", request=MagicMock(), response=MagicMock()
-                )
+                side_effect=httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock())
             )
             mock_async_client.get = AsyncMock(return_value=mock_http_resp)
             mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
