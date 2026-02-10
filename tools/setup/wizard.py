@@ -611,7 +611,7 @@ def apply_configuration(state: SetupState) -> dict[str, Any]:
     # 1. Create args/user.yaml
     try:
         user_config = {
-            "user": {"name": state.user_name or "User", "timezone": state.timezone},
+            "user": {"name": state.user_name or "", "timezone": state.timezone or ""},
             "active_hours": {
                 "start": state.active_hours_start,
                 "end": state.active_hours_end,
@@ -706,8 +706,12 @@ def apply_configuration(state: SetupState) -> dict[str, Any]:
 
 
 def is_setup_complete() -> bool:
-    """Check if setup has been completed."""
-    return SETUP_COMPLETE_FLAG.exists()
+    """Check if setup has been completed.
+
+    Setup is complete when all required fields are populated
+    (API key, user name, timezone).
+    """
+    return len(get_missing_setup_fields()) == 0
 
 
 def reset_setup() -> dict[str, Any]:
@@ -805,7 +809,7 @@ def get_missing_setup_fields() -> list[dict[str, Any]]:
 
     # 2. User name
     user_name = _get_user_yaml_value("user", "name")
-    if not user_name or user_name == "User":
+    if not user_name:
         missing.append(
             {
                 "field": "user_name",
@@ -819,7 +823,7 @@ def get_missing_setup_fields() -> list[dict[str, Any]]:
 
     # 3. Timezone
     timezone = _get_user_yaml_value("user", "timezone")
-    if not timezone or timezone == "UTC":
+    if not timezone:
         # Detect as default
         detected_tz = detect_timezone()
         common_timezones = [

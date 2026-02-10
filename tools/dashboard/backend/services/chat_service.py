@@ -465,15 +465,18 @@ class ChatService:
         """
         conv_id = self.get_or_create_conversation(conversation_id)
 
-        # --- Setup flow intercept ---
-        # Check if the deterministic pre-LLM setup flow should handle this message.
+        # --- Setup / greeting intercept ---
+        # Routes __setup_init__ and __control_response__ through the
+        # deterministic pre-LLM setup flow. Decisions are based entirely
+        # on which fields are populated in args/user.yaml.
         try:
             from tools.dashboard.backend.services.setup_flow import SetupFlowService
 
             setup_flow = SetupFlowService(conversation_id=conv_id)
+
             if setup_flow.is_active():
-                # Don't save __control_response__ as user message
-                if message != "__control_response__":
+                # Fields are missing — run the onboarding flow
+                if message not in ("__control_response__", "__setup_init__"):
                     self.save_message(role="user", content=message, conversation_id=conv_id)
 
                 full_content = []
@@ -482,7 +485,6 @@ class ChatService:
                         full_content.append(chunk.get("content", ""))
                     yield chunk
 
-                # Save the assistant response from setup flow
                 response_text = "".join(full_content)
                 if response_text:
                     self.save_message(
@@ -491,6 +493,30 @@ class ChatService:
                         conversation_id=conv_id,
                     )
                 return
+
+            elif message == "__setup_init__":
+                # All fields populated — emit personalised greeting
+                known_name = setup_flow._get_known_user_name()
+                hey = f"Hey {known_name}!" if known_name else "Hey!"
+                greeting = (
+                    f"{hey} I'm Dex, your ADHD-friendly AI assistant. "
+                    "How can I help?"
+                )
+                yield {
+                    "type": "chunk",
+                    "content": greeting,
+                    "conversation_id": conv_id,
+                }
+                yield {"type": "done", "conversation_id": conv_id}
+                self.save_message(
+                    role="assistant",
+                    content=greeting,
+                    conversation_id=conv_id,
+                )
+                # Ensure workspace files are up-to-date
+                setup_flow._finalize_workspace_files()
+                return
+
         except ImportError:
             pass
         except Exception as e:

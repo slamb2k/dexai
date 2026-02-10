@@ -1,6 +1,6 @@
 user:
-  name: User
-  timezone: UTC
+  name: Lamb Dog
+  timezone: Australia/Melbourne
 active_hours:
   start: 09:00
   end: '22:00'

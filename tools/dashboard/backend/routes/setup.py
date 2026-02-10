@@ -361,6 +361,9 @@ async def complete_setup(request: CompleteSetupRequest):
     state.mark_step_complete(SetupStep.TEST)
     state.mark_step_complete(SetupStep.COMPLETE)
 
+    # Persist state to disk before applying configuration
+    state.save()
+
     # Apply configuration to files
     result = apply_configuration(state)
 
