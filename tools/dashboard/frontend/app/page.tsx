@@ -350,7 +350,6 @@ export default function HomePage() {
                 conversationId={conversationId}
                 onConversationChange={setConversationId}
                 onStateChange={handleChatStateChange}
-                isProcessing={avatarState === 'thinking' || avatarState === 'working'}
                 placeholder="Type a message..."
                 userInitials={userInitials}
               />
