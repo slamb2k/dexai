@@ -280,6 +280,51 @@ class SlackAdapter(ChannelAdapter):
             logger.error(f"Failed to send image: {e}")
             return {"success": False, "error": str(e)}
 
+    async def send_voice(
+        self,
+        channel_id: str,
+        audio: bytes,
+        caption: str | None = None,
+        thread_ts: str | None = None,
+        filename: str = "voice.mp3",
+    ) -> dict[str, Any]:
+        """
+        Send a voice/audio file to a Slack channel (Phase 15b).
+
+        Args:
+            channel_id: Slack channel ID to send to
+            audio: Audio bytes (MP3 format for Slack compatibility)
+            caption: Optional caption/initial comment
+            thread_ts: Optional thread timestamp to reply in
+            filename: Filename for the audio file
+
+        Returns:
+            Dict with success status and file ID
+        """
+        try:
+            from slack_sdk.web.async_client import AsyncWebClient
+
+            client = AsyncWebClient(token=self.bot_token)
+
+            # Upload audio file to Slack
+            result = await client.files_upload_v2(
+                channel=channel_id,
+                file=audio,
+                filename=filename,
+                initial_comment=caption,
+                thread_ts=thread_ts,
+            )
+
+            return {
+                "success": True,
+                "file_id": result.get("file", {}).get("id"),
+                "channel_id": channel_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to send voice: {e}")
+            return {"success": False, "error": str(e)}
+
     async def update_message(
         self,
         channel_id: str,
