@@ -13,6 +13,7 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 
@@ -270,6 +271,108 @@ class PairingCode:
         return not self.used and not self.is_expired()
 
 
+# =============================================================================
+# Multi-Modal Messaging Models (Phase 15a)
+# =============================================================================
+
+
+class MediaType(Enum):
+    """Media content types for multimodal processing."""
+    IMAGE = "image"
+    AUDIO = "audio"
+    VIDEO = "video"
+    DOCUMENT = "document"
+    VOICE = "voice"
+    STICKER = "sticker"
+    CODE = "code"
+
+
+class BlockType(Enum):
+    """Content block types for rich responses."""
+    TEXT = "text"
+    CODE = "code"
+    IMAGE = "image"
+    FILE = "file"
+    DIVIDER = "divider"
+    QUOTE = "quote"
+    LIST = "list"
+
+
+@dataclass
+class MediaContent:
+    """
+    Enhanced attachment with processing results.
+
+    Created by MediaProcessor when analyzing images, documents, etc.
+    Contains extracted text, vision descriptions, and cost tracking.
+    """
+    # Original attachment reference
+    attachment: Attachment
+
+    # Processing status
+    processed: bool = False
+    processing_error: str | None = None
+
+    # Vision API results (for images)
+    vision_description: str | None = None
+    ocr_text: str | None = None
+
+    # Document extraction results
+    extracted_text: str | None = None
+    page_count: int | None = None
+
+    # Audio/video results (Phase 15b placeholders)
+    transcription: str | None = None
+    duration_seconds: float | None = None
+
+    # Cost tracking
+    processing_cost_usd: float = 0.0
+
+    # Additional metadata
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        d = asdict(self)
+        d["attachment"] = self.attachment.to_dict() if self.attachment else None
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MediaContent":
+        """Create from dict."""
+        data = data.copy()
+        if data.get("attachment"):
+            data["attachment"] = Attachment.from_dict(data["attachment"])
+        return cls(**data)
+
+
+@dataclass
+class ContentBlock:
+    """
+    Structured content block for rich responses.
+
+    Used for parsing AI responses into formatted blocks
+    (code blocks, text, images, etc.) for channel-specific rendering.
+    """
+    type: BlockType
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        d = asdict(self)
+        d["type"] = self.type.value
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ContentBlock":
+        """Create from dict."""
+        data = data.copy()
+        if isinstance(data.get("type"), str):
+            data["type"] = BlockType(data["type"])
+        return cls(**data)
+
+
 # Type aliases for clarity
 ChannelName = str  # 'telegram' | 'discord' | 'slack' | 'whatsapp'
 Direction = str  # 'inbound' | 'outbound'
@@ -277,7 +380,7 @@ ContentType = str  # 'text' | 'voice' | 'image' | 'document'
 ConversationType = str  # 'dm' | 'group' | 'channel' | 'thread'
 
 # Valid values
-VALID_CHANNELS = {"telegram", "discord", "slack", "whatsapp", "api", "cli"}
+VALID_CHANNELS = {"telegram", "discord", "slack", "whatsapp", "api", "cli", "web"}
 VALID_DIRECTIONS = {"inbound", "outbound"}
 VALID_CONTENT_TYPES = {"text", "voice", "image", "document", "video"}
 VALID_CONVERSATION_TYPES = {"dm", "group", "channel", "thread"}

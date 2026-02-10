@@ -1,0 +1,83 @@
+# Multi-Modal Messaging Configuration
+# Phase 15a: Images, Documents, Code Blocks
+
+# Media processing settings
+processing:
+  enabled: true
+  max_file_size_mb: 50
+  max_processing_cost_usd: 0.20  # Per message limit
+
+  # Vision API for images
+  vision:
+    enabled: true
+    provider: "anthropic"  # Direct Claude Vision
+    max_images_per_message: 3  # ADHD: don't overwhelm
+    max_cost_per_image: 0.05
+    # Pricing per million tokens (for cost tracking)
+    pricing:
+      input_per_mtok: 3.0    # Sonnet input
+      output_per_mtok: 15.0  # Sonnet output
+    auto_analyze_triggers:
+      - "what is"
+      - "can you see"
+      - "look at"
+      - "screenshot"
+      - "in the image"
+      - "in the picture"
+
+  # Document text extraction
+  documents:
+    enabled: true
+    extract_text: true
+    max_pages: 20
+    max_chars_per_doc: 10000
+    supported_formats:
+      - "pdf"
+      - "docx"
+      - "txt"
+      - "md"
+
+  # Audio/video (Phase 15b placeholders)
+  transcription:
+    enabled: false
+    provider: "openai"  # Whisper
+    model: "whisper-1"
+    max_duration_seconds: 300
+
+# Content formatting settings
+formatting:
+  # Code block handling
+  code:
+    detect_language: true
+    max_inline_lines: 20  # ADHD: collapse longer blocks
+
+  # Message splitting
+  channel_limits:
+    telegram: 4096
+    discord: 2000
+    slack: 40000
+
+# Storage settings (Phase 15d full implementation)
+storage:
+  temp_retention_hours: 1
+  cleanup_enabled: true
+
+# Image generation settings
+generation:
+  enabled: true
+  model: "dall-e-3"
+  max_cost_per_image: 0.10
+  default_size: "1024x1024"
+  default_quality: "standard"
+  # Pricing per image (for cost tracking)
+  pricing:
+    standard_square: 0.040   # 1024x1024
+    standard_wide: 0.080     # 1792x1024 or 1024x1792
+    hd_square: 0.080         # HD 1024x1024
+    hd_wide: 0.120           # HD 1792x1024 or 1024x1792
+
+# ADHD-friendly settings
+adhd:
+  acknowledge_processing: true  # "Analyzing your image..."
+  summarize_multiple: true      # "I see 3 images: ..."
+  max_attachments: 3            # Process max 3 per message
