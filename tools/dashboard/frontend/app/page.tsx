@@ -1,13 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Activity, Zap, Cpu, Database, MessageSquare, AlertCircle } from 'lucide-react';
+import { Activity, Zap, Cpu, Database, AlertCircle } from 'lucide-react';
 
 // Crystal Dark components
 import {
   CrystalCard,
-  CrystalCardHeader,
-  CrystalCardContent,
   ExpandableMetricsRow,
   CurrentStepPanel,
   EnergyWidgetCompact,
@@ -323,37 +321,16 @@ export default function HomePage() {
         {/* Left Column - Chat Panel */}
         <div className="lg:col-span-7 flex flex-col min-h-0 overflow-hidden">
           <CrystalCard padding="none" className="h-full flex flex-col overflow-hidden">
-            {/* Chat Header */}
-            <div className="flex-shrink-0 px-5 py-4 border-b border-white/[0.04]">
-              <CrystalCardHeader
-                icon={<MessageSquare className="w-5 h-5" />}
-                title="Direct Chat"
-                border={false}
-                action={
-                  <div className="flex items-center gap-2 text-sm text-white/40">
-                    <div
-                      className={cn(
-                        'w-1.5 h-1.5 rounded-full',
-                        isConnected ? 'bg-emerald-400' : 'bg-red-400'
-                      )}
-                    />
-                    {isConnected ? 'Active' : 'Offline'}
-                  </div>
-                }
-              />
-            </div>
-
-            {/* Chat Area - Scrollable */}
-            <CrystalCardContent className="flex-1 p-4 flex flex-col min-h-0 overflow-hidden">
-              <QuickChat
-                showHistory={true}
-                conversationId={conversationId}
-                onConversationChange={setConversationId}
-                onStateChange={handleChatStateChange}
-                placeholder="Type a message..."
-                userInitials={userInitials}
-              />
-            </CrystalCardContent>
+            <QuickChat
+              showHistory={true}
+              conversationId={conversationId}
+              onConversationChange={setConversationId}
+              onStateChange={handleChatStateChange}
+              placeholder="Type a message..."
+              userInitials={userInitials}
+              isConnected={isConnected}
+              className="h-full"
+            />
           </CrystalCard>
         </div>
 

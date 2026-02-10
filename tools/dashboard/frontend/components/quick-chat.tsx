@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Paperclip, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowUp, Paperclip, Loader2, X, Maximize2, Minimize2, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
 import { ChatHistory, ChatMessage, ChatControl } from './chat-history';
@@ -18,6 +19,7 @@ interface QuickChatProps {
   conversationId?: string | null;
   onConversationChange?: (id: string) => void;
   userInitials?: string;
+  isConnected?: boolean;
 }
 
 export function QuickChat({
@@ -30,6 +32,7 @@ export function QuickChat({
   conversationId: externalConversationId = null,
   onConversationChange,
   userInitials = 'U',
+  isConnected = false,
 }: QuickChatProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -40,14 +43,89 @@ export function QuickChat({
   const [isTyping, setIsTyping] = useState(false);
   const [typingContent, setTypingContent] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [expandPhase, setExpandPhase] = useState<'collapsed' | 'expanding' | 'expanded' | 'collapsing'>('collapsed');
+  const [originRect, setOriginRect] = useState<DOMRect | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isMultiline, setIsMultiline] = useState(false);
   const [voiceResult, setVoiceResult] = useState<{ message: string; success: boolean } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const voiceResultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Load conversation history when conversationId changes
+  const toggleExpand = useCallback(() => {
+    if (expandPhase === 'collapsed') {
+      // Capture current position and start expanding
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) setOriginRect(rect);
+      setIsExpanded(true);
+      setExpandPhase('expanding');
+      // Animate to full screen on next frame
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandPhase('expanded');
+        });
+      });
+    } else if (expandPhase === 'expanded') {
+      // Capture origin rect again in case layout changed
+      setExpandPhase('collapsing');
+      // Wait for animation to finish, then unmount portal
+      setTimeout(() => {
+        setIsExpanded(false);
+        setExpandPhase('collapsed');
+      }, 300);
+    }
+  }, [expandPhase]);
+
+  // Streaming text reveal buffer
+  const streamBufferRef = useRef('');
+  const streamDisplayedRef = useRef(0);
+  const streamRafRef = useRef<number>();
+
+  const startStreamReveal = useCallback(() => {
+    const reveal = () => {
+      const buffer = streamBufferRef.current;
+      const displayed = streamDisplayedRef.current;
+      if (displayed < buffer.length) {
+        // Reveal 2-4 characters per frame for a natural typing feel
+        const charsPerFrame = Math.min(3, buffer.length - displayed);
+        streamDisplayedRef.current = displayed + charsPerFrame;
+        setTypingContent(buffer.slice(0, streamDisplayedRef.current));
+        streamRafRef.current = requestAnimationFrame(reveal);
+      }
+    };
+    if (!streamRafRef.current) {
+      streamRafRef.current = requestAnimationFrame(reveal);
+    }
+  }, []);
+
+  const stopStreamReveal = useCallback(() => {
+    if (streamRafRef.current) {
+      cancelAnimationFrame(streamRafRef.current);
+      streamRafRef.current = undefined;
+    }
+    // Flush remaining content
+    setTypingContent(streamBufferRef.current);
+    streamBufferRef.current = '';
+    streamDisplayedRef.current = 0;
+  }, []);
+
+  const appendToStreamBuffer = useCallback((content: string) => {
+    streamBufferRef.current += content;
+    startStreamReveal();
+  }, [startStreamReveal]);
+
+  // Recalculate textarea height after layout changes (icons move between inline/toolbar)
   useEffect(() => {
-    if (conversationId && showHistory) {
+    if (inputRef.current) {
+      const el = inputRef.current;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    }
+  }, [isMultiline]);
+
+  // Load conversation history when conversationId changes (but not during active streaming)
+  useEffect(() => {
+    if (conversationId && showHistory && !isProcessing) {
       loadHistory(conversationId);
     }
   }, [conversationId, showHistory]);
@@ -79,6 +157,7 @@ export function QuickChat({
 
     setError(null);
     setMessage('');
+    setIsMultiline(false);
     // Reset textarea height after clearing
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
@@ -101,6 +180,8 @@ export function QuickChat({
     // Show typing indicator
     setIsTyping(true);
     setTypingContent('');
+    streamBufferRef.current = '';
+    streamDisplayedRef.current = 0;
 
     try {
       // Use WebSocket streaming for progressive response display
@@ -110,9 +191,9 @@ export function QuickChat({
 
       for await (const chunk of streamChatMessage(trimmedMessage, conversationId || undefined)) {
         if (chunk.type === 'chunk') {
-          // Accumulate content and update typing indicator
+          // Accumulate content and feed into reveal buffer
           fullContent += chunk.content || '';
-          setTypingContent(fullContent);
+          appendToStreamBuffer(chunk.content || '');
 
           // Update conversation ID if provided
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
@@ -155,7 +236,8 @@ export function QuickChat({
         }
       }
 
-      // Hide typing indicator
+      // Flush stream buffer and hide typing indicator
+      stopStreamReveal();
       setIsTyping(false);
       setTypingContent('');
 
@@ -176,6 +258,7 @@ export function QuickChat({
       const errorText = e instanceof Error ? e.message : 'Failed to send message';
       setError(errorText);
 
+      stopStreamReveal();
       setIsTyping(false);
       setTypingContent('');
 
@@ -190,8 +273,8 @@ export function QuickChat({
 
     setIsProcessing(false);
     onStateChange?.('idle');
-    // Return focus to the input after sending
-    inputRef.current?.focus();
+    // Return focus to the input after re-render removes disabled
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const clearConversation = () => {
@@ -216,6 +299,8 @@ export function QuickChat({
     onStateChange?.('thinking');
     setIsTyping(true);
     setTypingContent('');
+    streamBufferRef.current = '';
+    streamDisplayedRef.current = 0;
 
     try {
       let fullContent = '';
@@ -229,7 +314,7 @@ export function QuickChat({
       )) {
         if (chunk.type === 'chunk') {
           fullContent += chunk.content || '';
-          setTypingContent(fullContent);
+          appendToStreamBuffer(chunk.content || '');
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
             onConversationChange?.(chunk.conversation_id);
@@ -264,6 +349,7 @@ export function QuickChat({
         }
       }
 
+      stopStreamReveal();
       setIsTyping(false);
       setTypingContent('');
 
@@ -281,6 +367,7 @@ export function QuickChat({
         setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (e) {
+      stopStreamReveal();
       setIsTyping(false);
       setTypingContent('');
       setError(e instanceof Error ? e.message : 'Failed to submit control response');
@@ -288,6 +375,7 @@ export function QuickChat({
 
     setIsProcessing(false);
     onStateChange?.('idle');
+    setTimeout(() => inputRef.current?.focus(), 0);
   }, [conversationId, onStateChange, onConversationChange]);
 
   // Keyboard shortcut: Cmd/Ctrl + K to focus
@@ -305,14 +393,86 @@ export function QuickChat({
 
   const processing = isProcessing || externalIsProcessing;
 
-  return (
+  // Compute animated styles for expand/collapse
+  const getExpandStyle = (): React.CSSProperties => {
+    if (!isExpanded) return {};
+    if (expandPhase === 'expanding' && originRect) {
+      // Start at the card's position
+      return {
+        position: 'fixed',
+        top: originRect.top,
+        left: originRect.left,
+        width: originRect.width,
+        height: originRect.height,
+        zIndex: 9999,
+        transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+      };
+    }
+    if (expandPhase === 'expanded') {
+      // Animate to full screen
+      return {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 9999,
+        transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+      };
+    }
+    if (expandPhase === 'collapsing' && originRect) {
+      // Animate back to card position
+      return {
+        position: 'fixed',
+        top: originRect.top,
+        left: originRect.left,
+        width: originRect.width,
+        height: originRect.height,
+        zIndex: 9999,
+        transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+      };
+    }
+    return {
+      position: 'fixed',
+      inset: 0,
+      zIndex: 9999,
+    };
+  };
+
+  const chatContent = (
     <div
+      ref={!isExpanded ? containerRef : undefined}
       className={cn(
-        'flex flex-col h-full transition-all duration-300',
-        isExpanded && 'fixed inset-4 z-50 bg-black rounded-2xl border border-white/[0.06]',
-        className
+        'flex flex-col h-full',
+        isExpanded ? 'bg-black' : '',
+        !isExpanded && className
       )}
+      style={isExpanded ? getExpandStyle() : undefined}
     >
+      {/* Chat Header — always rendered, expands with the panel */}
+      <div className={cn(
+        'flex-shrink-0 border-b border-white/[0.04] px-5 py-4'
+      )}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-white/40"><MessageSquare className="w-5 h-5" /></div>
+            <h3 className="font-medium text-white/90">Direct Chat</h3>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-white/40">
+            <div
+              className={cn(
+                'w-1.5 h-1.5 rounded-full',
+                isConnected ? 'bg-emerald-400' : 'bg-red-400'
+              )}
+            />
+            {isConnected ? 'Active' : 'Offline'}
+          </div>
+        </div>
+      </div>
+
+      {/* Chat content area with padding */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-4">
+
       {/* Chat History (when enabled) */}
       {showHistory && (
         <div
@@ -364,36 +524,64 @@ export function QuickChat({
         </div>
       )}
 
-      {/* Input Form - Design7 styling */}
+      {/* Input Form */}
       <div className="flex-shrink-0 border-t border-white/[0.04] pt-3">
         <form onSubmit={handleSubmit}>
-          <div className="flex gap-3 items-end">
-            {/* Input container - panel changes bg on focus, no border change */}
-            <div
-              className={cn(
-                'flex-1 flex items-end gap-2',
-                'rounded-xl px-4 py-3',
-                'transition-all duration-200',
-                isFocused
-                  ? 'bg-white/[0.06]'
-                  : 'bg-white/[0.02] border border-white/[0.06]'
+          <div
+            className={cn(
+              'rounded-2xl transition-all duration-200',
+              'border',
+              isFocused
+                ? 'bg-white/[0.06] border-transparent'
+                : 'bg-white/[0.02] border-white/[0.06]'
+            )}
+            onClick={() => inputRef.current?.focus()}
+          >
+            {/* Input row */}
+            <div className="flex items-center gap-3 px-4 py-3">
+              {/* Expand/collapse - left side, collapses when multiline */}
+              {showHistory && (
+                <div className={cn(
+                  'flex-shrink-0 overflow-hidden transition-opacity duration-200',
+                  isMultiline ? 'w-0 opacity-0' : 'w-7 opacity-100'
+                )}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpand();
+                    }}
+                    className="w-7 h-7 flex items-center justify-center text-white/30 hover:text-white/60 transition-colors rounded-lg"
+                    title={isExpanded ? 'Collapse' : 'Expand'}
+                  >
+                    {isExpanded ? (
+                      <Minimize2 className="w-5 h-5" />
+                    ) : (
+                      <Maximize2 className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
               )}
-              onClick={() => inputRef.current?.focus()}
-            >
+
               <textarea
                 ref={inputRef}
                 value={message}
                 onChange={(e) => {
-                  setMessage(e.target.value);
-                  // Auto-resize textarea
+                  const val = e.target.value;
+                  setMessage(val);
                   const el = e.target;
                   el.style.height = 'auto';
-                  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+                  const scrollH = el.scrollHeight;
+                  el.style.height = Math.min(scrollH, 160) + 'px';
+                  const shouldBeMultiline = scrollH > 32;
+                  requestAnimationFrame(() => {
+                    if (shouldBeMultiline) setIsMultiline(true);
+                    if (!val) setIsMultiline(false);
+                  });
                 }}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
                 onKeyDown={(e) => {
-                  // Submit on Enter (without Shift)
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     if (message.trim() && !processing) {
@@ -405,8 +593,8 @@ export function QuickChat({
                 disabled={processing}
                 rows={1}
                 className={cn(
-                  'flex-1 bg-transparent outline-none resize-none',
-                  'text-white placeholder-white/20',
+                  'flex-1 bg-transparent outline-none focus-visible:outline-none resize-none p-0',
+                  'text-white placeholder-white/30',
                   'disabled:opacity-50',
                   'max-h-40 overflow-y-auto',
                   'scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent',
@@ -414,49 +602,24 @@ export function QuickChat({
                 )}
               />
 
-              {/* Action buttons - aligned to bottom */}
-              <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
-                {/* Clear button (when there are messages) */}
-                {messages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearConversation}
-                    className="text-white/20 hover:text-white/40 transition-colors p-1"
-                    title="Clear conversation"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-
-                {/* Expand/collapse (when showing history) */}
-                {showHistory && (
-                  <button
-                    type="button"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="text-white/20 hover:text-white/40 transition-colors p-1"
-                    title={isExpanded ? 'Collapse' : 'Expand'}
-                  >
-                    {isExpanded ? (
-                      <Minimize2 className="w-4 h-4" />
-                    ) : (
-                      <Maximize2 className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
-
-                {/* Attachment button */}
+              {/* Inline icons — collapse instantly, fade opacity */}
+              <div className={cn(
+                'flex items-center gap-1 flex-shrink-0 overflow-hidden transition-opacity duration-200',
+                isMultiline ? 'w-0 opacity-0' : 'opacity-100'
+              )}>
                 <button
                   type="button"
                   disabled
-                  className="text-white/20 hover:text-white/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50 p-1"
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-8 h-8 flex items-center justify-center text-white/20 hover:text-white/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50 rounded-lg"
                   title="Attachments coming soon"
                 >
-                  <Paperclip className="w-4 h-4" />
+                  <Paperclip className="w-5 h-5" />
                 </button>
 
-                {/* Voice input */}
                 <VoiceInput
                   chatMode={false}
+                  className="h-8 flex items-center"
                   onTranscript={(text) => {
                     setMessage(text);
                     inputRef.current?.focus();
@@ -467,33 +630,134 @@ export function QuickChat({
                     voiceResultTimeoutRef.current = setTimeout(() => setVoiceResult(null), 4000);
                   }}
                 />
+
+                <button
+                  type="submit"
+                  disabled={!message.trim() || processing}
+                  onClick={(e) => e.stopPropagation()}
+                  className={cn(
+                    'w-8 h-8 rounded-full transition-all duration-200',
+                    'flex items-center justify-center ml-1',
+                    message.trim() && !processing
+                      ? 'bg-white text-black hover:bg-white/90'
+                      : 'bg-white/10 text-white/20 cursor-not-allowed'
+                  )}
+                >
+                  {processing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ArrowUp className="w-5 h-5" />
+                  )}
+                </button>
               </div>
             </div>
 
-            {/* Send button - Design7 style */}
-            <button
-              type="submit"
-              disabled={!message.trim() || processing}
-              className={cn(
-                'px-6 py-3 rounded-xl transition-all duration-200',
-                'flex items-center justify-center self-end',
-                message.trim() && !processing
-                  ? 'bg-white/10 hover:bg-white/15'
-                  : 'bg-white/[0.02] border border-white/[0.04] cursor-not-allowed'
-              )}
-            >
-              {processing ? (
-                <Loader2 className="w-5 h-5 text-white/40 animate-spin" />
-              ) : (
-                <Send className={cn(
-                  'w-5 h-5 transition-colors',
-                  message.trim() ? 'text-white/70' : 'text-white/20'
-                )} />
-              )}
-            </button>
+            {/* Toolbar row — slides in when multiline */}
+            <div className={cn(
+              'overflow-hidden transition-all duration-200',
+              isMultiline
+                ? 'max-h-12 opacity-100 pb-2'
+                : 'max-h-0 opacity-0'
+            )}>
+              <div className="flex items-center justify-between px-3 pt-1">
+                {/* Left side - expand + clear */}
+                <div className="flex items-center gap-1">
+                  {showHistory && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand();
+                      }}
+                      className="w-8 h-8 flex items-center justify-center text-white/30 hover:text-white/60 transition-colors rounded-lg"
+                      title={isExpanded ? 'Collapse' : 'Expand'}
+                    >
+                      {isExpanded ? (
+                        <Minimize2 className="w-5 h-5" />
+                      ) : (
+                        <Maximize2 className="w-5 h-5" />
+                      )}
+                    </button>
+                  )}
+                  {messages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearConversation();
+                      }}
+                      className="w-8 h-8 flex items-center justify-center text-white/20 hover:text-white/40 transition-colors rounded-lg"
+                      title="Clear conversation"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Right side - attachments, voice, send */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-8 h-8 flex items-center justify-center text-white/20 hover:text-white/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50 rounded-lg"
+                    title="Attachments coming soon"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+
+                  <VoiceInput
+                    chatMode={false}
+                    className="h-8 flex items-center"
+                    onTranscript={(text) => {
+                      setMessage(text);
+                      inputRef.current?.focus();
+                    }}
+                    onCommandResult={(result) => {
+                      setVoiceResult({ message: result.message, success: result.success });
+                      if (voiceResultTimeoutRef.current) clearTimeout(voiceResultTimeoutRef.current);
+                      voiceResultTimeoutRef.current = setTimeout(() => setVoiceResult(null), 4000);
+                    }}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={!message.trim() || processing}
+                    onClick={(e) => e.stopPropagation()}
+                    className={cn(
+                      'w-8 h-8 rounded-full transition-all duration-200',
+                      'flex items-center justify-center ml-1',
+                      message.trim() && !processing
+                        ? 'bg-white text-black hover:bg-white/90'
+                        : 'bg-white/10 text-white/20 cursor-not-allowed'
+                    )}
+                  >
+                    {processing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ArrowUp className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </form>
       </div>
+      </div>
     </div>
   );
+
+  // When expanded, render via portal to escape all parent containers
+  // Keep a placeholder in the original position so the card doesn't collapse
+  if (isExpanded && typeof document !== 'undefined') {
+    return (
+      <>
+        <div ref={containerRef} className={cn('flex flex-col h-full', className)} />
+        {createPortal(chatContent, document.body)}
+      </>
+    );
+  }
+
+  return chatContent;
 }
