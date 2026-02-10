@@ -6,6 +6,7 @@ import { cn, formatDuration } from '@/lib/utils';
 import { CrystalCard, CrystalCardHeader, CrystalCardContent } from '@/components/crystal';
 import {
   Server,
+  Radio,
   RefreshCw,
   Play,
   Square,
@@ -174,7 +175,7 @@ export default function ChannelsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Error banner */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex items-center gap-3">
@@ -217,9 +218,12 @@ export default function ChannelsPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Server className="text-emerald-400" size={24} />
-          <h1 className="text-3xl font-light tracking-wide text-white/90">Channels</h1>
+        <div>
+          <div className="flex items-center gap-3">
+            <Radio className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Channels</h1>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">Manage messaging platform connections</p>
         </div>
         <button
           onClick={loadChannels}

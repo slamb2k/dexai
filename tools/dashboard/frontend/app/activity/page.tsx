@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { socketClient } from '@/lib/socket';
 import { cn, formatDate } from '@/lib/utils';
 import {
+  Activity,
   Search,
   Filter,
   RefreshCw,
@@ -244,7 +245,7 @@ export default function ActivityPage() {
   }, [displayItems]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Error banner */}
       {error && !isDemo && (
         <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
@@ -255,20 +256,24 @@ export default function ActivityPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-page-title text-text-primary">Activity</h1>
-          {/* Live indicator */}
-          <span
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2 py-1 rounded text-caption',
-              isConnected
-                ? 'bg-status-success/10 text-status-success'
-                : 'bg-status-error/10 text-status-error'
-            )}
-          >
-            {isConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
-            {isConnected ? 'Live' : 'Disconnected'}
-          </span>
+        <div>
+          <div className="flex items-center gap-3">
+            <Activity className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Activity</h1>
+            {/* Live indicator */}
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs',
+                isConnected
+                  ? 'bg-emerald-500/10 text-emerald-400'
+                  : 'bg-red-500/10 text-red-400'
+              )}
+            >
+              {isConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
+              {isConnected ? 'Live' : 'Disconnected'}
+            </span>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">Real-time event stream</p>
         </div>
 
         <div className="flex items-center gap-2">

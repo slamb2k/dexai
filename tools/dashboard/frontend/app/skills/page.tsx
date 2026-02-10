@@ -146,12 +146,15 @@ export default function SkillsPage() {
   const activeCount = skills.filter((s) => s.status === 'running').length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pt-4">
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-light tracking-wide text-white/90">Skills</h1>
-          <p className="text-sm text-white/40 mt-1 tracking-wide">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Skills</h1>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">
             Manage Claude Code skills
           </p>
         </div>

@@ -195,7 +195,7 @@ export default function AuditPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Error banner */}
       {error && !isDemo && (
         <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
@@ -206,9 +206,12 @@ export default function AuditPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Shield className="text-accent-primary" size={24} />
-          <h1 className="text-page-title text-text-primary">Audit Log</h1>
+        <div>
+          <div className="flex items-center gap-3">
+            <Shield className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Audit Log</h1>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">Security events and access history</p>
         </div>
         <button onClick={handleExport} className="btn btn-secondary">
           <Download size={16} className="mr-2" />
