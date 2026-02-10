@@ -131,7 +131,46 @@ export function ChatHistory({
             <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
               {typingContent ? (
                 <div className="prose prose-sm prose-invert max-w-none">
-                  <ReactMarkdown>{typingContent}</ReactMarkdown>
+                  <ReactMarkdown
+                    components={{
+                      p({ children }) {
+                        return (
+                          <p className="text-[15px] leading-relaxed text-white/80 mb-3 last:mb-0">
+                            {children}
+                          </p>
+                        );
+                      },
+                      code({ node, className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || '');
+                        const isInline = !match && !className;
+                        if (isInline) {
+                          return (
+                            <code className="bg-white/[0.06] px-1.5 py-0.5 rounded text-sm font-mono text-white/70" {...props}>
+                              {children}
+                            </code>
+                          );
+                        }
+                        return (
+                          <pre className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-4 overflow-x-auto my-3">
+                            <code className={cn('text-sm font-mono text-white/70', className)} {...props}>
+                              {children}
+                            </code>
+                          </pre>
+                        );
+                      },
+                      ul({ children }) {
+                        return <ul className="list-disc list-inside space-y-1 my-2 text-white/80">{children}</ul>;
+                      },
+                      ol({ children }) {
+                        return <ol className="list-decimal list-inside space-y-1 my-2 text-white/80">{children}</ol>;
+                      },
+                      li({ children }) {
+                        return <li className="text-[15px] leading-relaxed">{children}</li>;
+                      },
+                    }}
+                  >
+                    {typingContent}
+                  </ReactMarkdown>
                   {/* Blinking cursor animation */}
                   <span className="inline-block w-[2px] h-[1.1em] bg-white/60 ml-0.5 align-middle animate-pulse" />
                 </div>
@@ -176,24 +215,15 @@ function CrystalMessage({
 
   return (
     <div className={cn('flex gap-4', !isAi && 'flex-row-reverse')}>
-      {/* Avatar - Design7 style */}
-      <div
-        className={cn(
-          'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border',
-          isAi
-            ? 'bg-white/[0.04] border-white/[0.08]'
-            : 'bg-white/[0.06] border-white/10'
-        )}
-      >
-        {isAi ? (
+      {/* Avatar - only for AI messages */}
+      {isAi && (
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border bg-white/[0.04] border-white/[0.08]">
           <Brain className="w-5 h-5 text-white/50" />
-        ) : (
-          <span className="text-sm font-medium text-white/60">{userInitials}</span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Content */}
-      <div className={cn('max-w-[75%]', !isAi && 'text-right')}>
+      <div className={cn('max-w-[75%]', !isAi && 'text-right ml-auto')}>
         {/* Message bubble - Design7 style */}
         <div
           className={cn(
@@ -209,7 +239,7 @@ function CrystalMessage({
                 components={{
                   p({ children }) {
                     return (
-                      <p className="text-[15px] leading-relaxed text-white/80 m-0">
+                      <p className="text-[15px] leading-relaxed text-white/80 mb-3 last:mb-0">
                         {children}
                       </p>
                     );

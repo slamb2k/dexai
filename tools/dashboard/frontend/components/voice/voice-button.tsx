@@ -21,7 +21,7 @@ export function VoiceButton({
   const isDisabled = state === 'processing' || state === 'unsupported';
 
   const sizeClasses = {
-    sm: 'w-5 h-5',
+    sm: 'w-8 h-8 flex items-center justify-center',
     md: 'w-8 h-8 p-1.5',
     lg: 'w-11 h-11 p-2.5',
   };
