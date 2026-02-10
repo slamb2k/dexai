@@ -6,8 +6,8 @@ from natural language voice transcripts.
 
 import pytest
 
-from tools.voice.models import IntentType, EntityType
-from tools.voice.parser.intent_parser import parse_intent, parse_command
+from tools.voice.models import EntityType, IntentType
+from tools.voice.parser.intent_parser import parse_command, parse_intent
 
 
 # =============================================================================

@@ -4,7 +4,6 @@ Verifies datetime, duration, priority, and energy extraction from
 natural language voice input.
 """
 
-import pytest
 from datetime import datetime, timedelta
 
 from tools.voice.models import EntityType
