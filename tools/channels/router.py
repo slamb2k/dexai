@@ -231,6 +231,18 @@ class MessageRouter:
         if name in self.adapters:
             del self.adapters[name]
 
+    def get_adapter(self, name: str) -> ChannelAdapter | None:
+        """
+        Get a registered channel adapter by name.
+
+        Args:
+            name: Name of the adapter (e.g., 'telegram', 'discord')
+
+        Returns:
+            ChannelAdapter instance or None if not found
+        """
+        return self.adapters.get(name)
+
     def add_message_handler(self, handler: Callable) -> None:
         """
         Add handler for incoming messages.
