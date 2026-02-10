@@ -272,7 +272,7 @@ class PairingCode:
 
 
 # =============================================================================
-# Multi-Modal Messaging Models (Phase 15a)
+# Multi-Modal Messaging Models (Phase 15a/15b)
 # =============================================================================
 
 
@@ -285,6 +285,7 @@ class MediaType(Enum):
     VOICE = "voice"
     STICKER = "sticker"
     CODE = "code"
+    ANIMATION = "animation"  # GIFs, animated stickers
 
 
 class BlockType(Enum):
@@ -293,6 +294,8 @@ class BlockType(Enum):
     CODE = "code"
     IMAGE = "image"
     FILE = "file"
+    AUDIO = "audio"     # Voice note / audio response (Phase 15b)
+    VIDEO = "video"     # Video response
     DIVIDER = "divider"
     QUOTE = "quote"
     LIST = "list"
@@ -303,8 +306,11 @@ class MediaContent:
     """
     Enhanced attachment with processing results.
 
-    Created by MediaProcessor when analyzing images, documents, etc.
-    Contains extracted text, vision descriptions, and cost tracking.
+    Created by MediaProcessor when analyzing images, documents, audio, video.
+    Contains extracted text, vision descriptions, transcriptions, and cost tracking.
+
+    Phase 15a: Images, documents
+    Phase 15b: Audio/voice transcription, video processing
     """
     # Original attachment reference
     attachment: Attachment
@@ -313,7 +319,7 @@ class MediaContent:
     processed: bool = False
     processing_error: str | None = None
 
-    # Vision API results (for images)
+    # Vision API results (for images and video frames)
     vision_description: str | None = None
     ocr_text: str | None = None
 
@@ -321,14 +327,15 @@ class MediaContent:
     extracted_text: str | None = None
     page_count: int | None = None
 
-    # Audio/video results (Phase 15b placeholders)
-    transcription: str | None = None
-    duration_seconds: float | None = None
+    # Audio/video results (Phase 15b)
+    transcription: str | None = None          # Whisper transcription
+    duration_seconds: float | None = None     # Audio/video duration
+    audio_language: str | None = None         # Detected language
 
     # Cost tracking
     processing_cost_usd: float = 0.0
 
-    # Additional metadata
+    # Additional metadata (language, segments, frame descriptions, etc.)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
