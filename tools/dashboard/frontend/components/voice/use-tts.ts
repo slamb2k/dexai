@@ -36,15 +36,19 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
     userId = 'default',
   } = options;
 
-  const [isSupported] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      (typeof speechSynthesis !== 'undefined' || preferCloud)
-  );
+  // Defer browser check to useEffect to avoid SSR hydration mismatch
+  const [isSupported, setIsSupported] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mountedRef = useRef(true);
+
+  // Check browser support after mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    setIsSupported(
+      typeof speechSynthesis !== 'undefined' || preferCloud
+    );
+  }, [preferCloud]);
 
   // Cleanup on unmount
   useEffect(() => {

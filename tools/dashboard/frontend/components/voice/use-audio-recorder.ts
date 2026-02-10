@@ -17,18 +17,22 @@ export interface UseAudioRecorderReturn {
  * Returns a Blob on stop that can be uploaded to /api/voice/transcribe.
  */
 export function useAudioRecorder(): UseAudioRecorderReturn {
-  const [isSupported] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      typeof navigator?.mediaDevices?.getUserMedia === 'function' &&
-      typeof MediaRecorder !== 'undefined'
-  );
+  // Defer browser check to useEffect to avoid SSR hydration mismatch
+  const [isSupported, setIsSupported] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const resolveRef = useRef<((blob: Blob | null) => void) | null>(null);
+
+  // Check browser support after mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    setIsSupported(
+      typeof navigator?.mediaDevices?.getUserMedia === 'function' &&
+      typeof MediaRecorder !== 'undefined'
+    );
+  }, []);
 
   // Cleanup on unmount: stop recording and release media stream
   useEffect(() => {

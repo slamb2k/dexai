@@ -92,7 +92,8 @@ export function useVoiceRecognition(
     onEnd,
   } = options;
 
-  const [isSupported] = useState(() => getSpeechRecognition() !== null);
+  // Defer browser check to useEffect to avoid SSR hydration mismatch
+  const [isSupported, setIsSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -102,6 +103,11 @@ export function useVoiceRecognition(
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const startTimeRef = useRef<number>(0);
+
+  // Check browser support after mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    setIsSupported(getSpeechRecognition() !== null);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
