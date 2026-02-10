@@ -267,6 +267,7 @@ async def websocket_chat_stream(websocket: WebSocket):
 
             message = payload.get("message", "").strip()
             conversation_id = payload.get("conversation_id")
+            control_response = payload.get("control_response")
 
             if not message:
                 await websocket.send_json({"type": "error", "error": "No message provided"})
@@ -277,6 +278,7 @@ async def websocket_chat_stream(websocket: WebSocket):
                 async for chunk in service.stream_message(
                     message=message,
                     conversation_id=conversation_id,
+                    control_response=control_response,
                 ):
                     await websocket.send_json(chunk)
             except Exception as e:

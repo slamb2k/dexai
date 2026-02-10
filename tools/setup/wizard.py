@@ -760,6 +760,153 @@ def get_setup_status() -> dict[str, Any]:
 
 
 # =============================================================================
+# Dynamic Missing Fields Detection
+# =============================================================================
+
+
+def get_missing_setup_fields() -> list[dict[str, Any]]:
+    """
+    Check which setup fields are still missing or using defaults.
+
+    Inspects args/user.yaml, vault secrets, and environment to determine
+    what configuration is incomplete. Returns field definitions that can
+    be injected into the system prompt or used by the setup flow.
+
+    Returns:
+        List of field dicts: [{"field": str, "label": str, "type": str, ...}]
+    """
+    missing: list[dict[str, Any]] = []
+
+    # --- Required fields ---
+
+    # 1. API key (most critical)
+    import os
+
+    has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    if not has_api_key:
+        try:
+            from tools.security import vault
+
+            has_api_key = bool(vault.get_secret("ANTHROPIC_API_KEY", namespace="default"))
+        except Exception:
+            pass
+
+    if not has_api_key:
+        missing.append(
+            {
+                "field": "anthropic_api_key",
+                "label": "Anthropic API Key",
+                "type": "secure_input",
+                "required": True,
+                "description": "Required to power all AI features",
+                "placeholder": "sk-ant-...",
+            }
+        )
+
+    # 2. User name
+    user_name = _get_user_yaml_value("user", "name")
+    if not user_name or user_name == "User":
+        missing.append(
+            {
+                "field": "user_name",
+                "label": "Your Name",
+                "type": "text_input",
+                "required": True,
+                "description": "So I know what to call you",
+                "placeholder": "e.g. Alex",
+            }
+        )
+
+    # 3. Timezone
+    timezone = _get_user_yaml_value("user", "timezone")
+    if not timezone or timezone == "UTC":
+        # Detect as default
+        detected_tz = detect_timezone()
+        common_timezones = [
+            {"value": "America/New_York", "label": "Eastern (US)", "description": "UTC-5"},
+            {"value": "America/Chicago", "label": "Central (US)", "description": "UTC-6"},
+            {"value": "America/Denver", "label": "Mountain (US)", "description": "UTC-7"},
+            {"value": "America/Los_Angeles", "label": "Pacific (US)", "description": "UTC-8"},
+            {"value": "Europe/London", "label": "London", "description": "UTC+0"},
+            {"value": "Europe/Paris", "label": "Paris / Berlin", "description": "UTC+1"},
+            {"value": "Asia/Tokyo", "label": "Tokyo", "description": "UTC+9"},
+            {"value": "Australia/Sydney", "label": "Sydney", "description": "UTC+11"},
+        ]
+        missing.append(
+            {
+                "field": "timezone",
+                "label": "Your Timezone",
+                "type": "select",
+                "required": True,
+                "description": "For scheduling and time-aware features",
+                "default_value": detected_tz if detected_tz != "UTC" else "",
+                "options": common_timezones,
+            }
+        )
+
+    return missing
+
+
+def _get_user_yaml_value(*keys: str) -> Any:
+    """Read a nested value from args/user.yaml."""
+    try:
+        import yaml
+
+        user_yaml_path = CONFIG_PATH / "user.yaml"
+        if not user_yaml_path.exists():
+            return None
+        with open(user_yaml_path) as f:
+            data = yaml.safe_load(f) or {}
+        for key in keys:
+            if not isinstance(data, dict):
+                return None
+            data = data.get(key)
+        return data
+    except Exception:
+        return None
+
+
+def populate_workspace_files(workspace_path: Path, field: str, value: str) -> None:
+    """
+    Update workspace file templates with a setup value.
+
+    Called by dexai_save_setup_value when values are persisted.
+
+    Args:
+        workspace_path: Path to workspace (usually .claude/)
+        field: Field name (e.g. "user_name", "timezone")
+        value: Value to write
+    """
+    field_to_file: dict[str, tuple[str, str, str]] = {
+        "user_name": ("USER.md", "- **Name:**", f"- **Name:** {value}"),
+        "timezone": ("USER.md", "- **Timezone:**", f"- **Timezone:** {value}"),
+    }
+
+    if field not in field_to_file:
+        return
+
+    filename, old_pattern, new_line = field_to_file[field]
+    filepath = workspace_path / filename
+
+    if not filepath.exists():
+        return
+
+    try:
+        content = filepath.read_text()
+        # Replace the line that starts with old_pattern
+        lines = content.splitlines()
+        new_lines = []
+        for line in lines:
+            if line.strip().startswith(old_pattern.strip()):
+                new_lines.append(new_line)
+            else:
+                new_lines.append(line)
+        filepath.write_text("\n".join(new_lines) + "\n")
+    except Exception:
+        pass
+
+
+# =============================================================================
 # Timezone Detection
 # =============================================================================
 

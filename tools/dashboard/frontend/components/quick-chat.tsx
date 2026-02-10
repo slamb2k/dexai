@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Paperclip, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
-import { ChatHistory, ChatMessage } from './chat-history';
+import { ChatHistory, ChatMessage, ChatControl } from './chat-history';
 import { VoiceInput } from './voice/voice-input';
 import { TranscriptDisplay } from './voice/transcript-display';
 
@@ -42,7 +42,7 @@ export function QuickChat({
   const [isExpanded, setIsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceResult, setVoiceResult] = useState<{ message: string; success: boolean } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const voiceResultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Load conversation history when conversationId changes
@@ -79,6 +79,10 @@ export function QuickChat({
 
     setError(null);
     setMessage('');
+    // Reset textarea height after clearing
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     setIsProcessing(true);
     onStateChange?.('thinking');
 
@@ -102,6 +106,7 @@ export function QuickChat({
       // Use WebSocket streaming for progressive response display
       let fullContent = '';
       let metadata: Partial<ChatStreamChunk> = {};
+      const pendingControls: ChatControl[] = [];
 
       for await (const chunk of streamChatMessage(trimmedMessage, conversationId || undefined)) {
         if (chunk.type === 'chunk') {
@@ -109,6 +114,26 @@ export function QuickChat({
           fullContent += chunk.content || '';
           setTypingContent(fullContent);
 
+          // Update conversation ID if provided
+          if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
+            setConversationId(chunk.conversation_id);
+            onConversationChange?.(chunk.conversation_id);
+          }
+        } else if (chunk.type === 'control') {
+          // Accumulate control for attaching to the assistant message
+          if (chunk.control_id && chunk.field && chunk.control_type) {
+            pendingControls.push({
+              control_type: chunk.control_type,
+              control_id: chunk.control_id,
+              label: chunk.label,
+              field: chunk.field,
+              options: chunk.options,
+              default_value: chunk.default_value,
+              placeholder: chunk.placeholder,
+              required: chunk.required,
+              validation: chunk.validation,
+            });
+          }
           // Update conversation ID if provided
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
@@ -134,7 +159,7 @@ export function QuickChat({
       setIsTyping(false);
       setTypingContent('');
 
-      // Add assistant response with accumulated content
+      // Add assistant response with accumulated content and any controls
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -142,6 +167,7 @@ export function QuickChat({
         model: metadata.model,
         complexity: metadata.complexity,
         cost_usd: metadata.cost_usd,
+        controls: pendingControls.length > 0 ? pendingControls : undefined,
         created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, assistantMessage]);
@@ -164,6 +190,8 @@ export function QuickChat({
 
     setIsProcessing(false);
     onStateChange?.('idle');
+    // Return focus to the input after sending
+    inputRef.current?.focus();
   };
 
   const clearConversation = () => {
@@ -172,6 +200,95 @@ export function QuickChat({
     setError(null);
     onConversationChange?.('');
   };
+
+  const handleControlSubmit = useCallback(async (controlId: string, field: string, value: string) => {
+    // Mark the control as submitted in the message that contains it
+    setMessages(prev => prev.map(msg => {
+      if (!msg.controls?.some(c => c.control_id === controlId)) return msg;
+      return {
+        ...msg,
+        control_values: { ...msg.control_values, [controlId]: value },
+      };
+    }));
+
+    // Send the control response as a special message via the normal stream path
+    setIsProcessing(true);
+    onStateChange?.('thinking');
+    setIsTyping(true);
+    setTypingContent('');
+
+    try {
+      let fullContent = '';
+      let metadata: Partial<ChatStreamChunk> = {};
+      const pendingControls: ChatControl[] = [];
+
+      for await (const chunk of streamChatMessage(
+        '__control_response__',
+        conversationId || undefined,
+        { control_id: controlId, field, value }
+      )) {
+        if (chunk.type === 'chunk') {
+          fullContent += chunk.content || '';
+          setTypingContent(fullContent);
+          if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
+            setConversationId(chunk.conversation_id);
+            onConversationChange?.(chunk.conversation_id);
+          }
+        } else if (chunk.type === 'control') {
+          if (chunk.control_id && chunk.field && chunk.control_type) {
+            pendingControls.push({
+              control_type: chunk.control_type,
+              control_id: chunk.control_id,
+              label: chunk.label,
+              field: chunk.field,
+              options: chunk.options,
+              default_value: chunk.default_value,
+              placeholder: chunk.placeholder,
+              required: chunk.required,
+              validation: chunk.validation,
+            });
+          }
+          if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
+            setConversationId(chunk.conversation_id);
+            onConversationChange?.(chunk.conversation_id);
+          }
+        } else if (chunk.type === 'done') {
+          metadata = chunk;
+          if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
+            setConversationId(chunk.conversation_id);
+            onConversationChange?.(chunk.conversation_id);
+          }
+        } else if (chunk.type === 'error') {
+          setError(chunk.error || 'Unknown error');
+          if (!fullContent) fullContent = chunk.error || 'An error occurred.';
+        }
+      }
+
+      setIsTyping(false);
+      setTypingContent('');
+
+      if (fullContent) {
+        const assistantMessage: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: fullContent,
+          model: metadata.model,
+          complexity: metadata.complexity,
+          cost_usd: metadata.cost_usd,
+          controls: pendingControls.length > 0 ? pendingControls : undefined,
+          created_at: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      }
+    } catch (e) {
+      setIsTyping(false);
+      setTypingContent('');
+      setError(e instanceof Error ? e.message : 'Failed to submit control response');
+    }
+
+    setIsProcessing(false);
+    onStateChange?.('idle');
+  }, [conversationId, onStateChange, onConversationChange]);
 
   // Keyboard shortcut: Cmd/Ctrl + K to focus
   useEffect(() => {
@@ -209,6 +326,7 @@ export function QuickChat({
             isLoading={isLoadingHistory}
             isTyping={isTyping}
             typingContent={typingContent}
+            onControlSubmit={handleControlSubmit}
             userInitials={userInitials}
             className="h-full p-2"
           />
@@ -249,85 +367,107 @@ export function QuickChat({
       {/* Input Form - Design7 styling */}
       <div className="flex-shrink-0 border-t border-white/[0.04] pt-3">
         <form onSubmit={handleSubmit}>
-          <div className="flex gap-3">
-            {/* Input container - Design7 style */}
+          <div className="flex gap-3 items-end">
+            {/* Input container - panel changes bg on focus, no border change */}
             <div
               className={cn(
-                'flex-1 flex items-center gap-2',
-                'bg-white/[0.02] border rounded-xl px-4 py-3',
+                'flex-1 flex items-end gap-2',
+                'rounded-xl px-4 py-3',
                 'transition-all duration-200',
-                isFocused ? 'border-white/20' : 'border-white/[0.06]'
+                isFocused
+                  ? 'bg-white/[0.06]'
+                  : 'bg-white/[0.02] border border-white/[0.06]'
               )}
+              onClick={() => inputRef.current?.focus()}
             >
-              <input
+              <textarea
                 ref={inputRef}
-                type="text"
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={(e) => {
+                  setMessage(e.target.value);
+                  // Auto-resize textarea
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+                }}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
+                onKeyDown={(e) => {
+                  // Submit on Enter (without Shift)
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (message.trim() && !processing) {
+                      handleSubmit(e as unknown as React.FormEvent);
+                    }
+                  }
+                }}
                 placeholder={placeholder}
                 disabled={processing}
+                rows={1}
                 className={cn(
-                  'flex-1 bg-transparent outline-none',
+                  'flex-1 bg-transparent outline-none resize-none',
                   'text-white placeholder-white/20',
-                  'disabled:opacity-50'
+                  'disabled:opacity-50',
+                  'max-h-40 overflow-y-auto',
+                  'scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent',
+                  'min-h-[24px] leading-6'
                 )}
               />
 
-              {/* Clear button (when there are messages) */}
-              {messages.length > 0 && (
+              {/* Action buttons - aligned to bottom */}
+              <div className="flex items-center gap-1 flex-shrink-0 pb-0.5">
+                {/* Clear button (when there are messages) */}
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearConversation}
+                    className="text-white/20 hover:text-white/40 transition-colors p-1"
+                    title="Clear conversation"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Expand/collapse (when showing history) */}
+                {showHistory && (
+                  <button
+                    type="button"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="text-white/20 hover:text-white/40 transition-colors p-1"
+                    title={isExpanded ? 'Collapse' : 'Expand'}
+                  >
+                    {isExpanded ? (
+                      <Minimize2 className="w-4 h-4" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
+
+                {/* Attachment button */}
                 <button
                   type="button"
-                  onClick={clearConversation}
-                  className="text-white/20 hover:text-white/40 transition-colors"
-                  title="Clear conversation"
+                  disabled
+                  className="text-white/20 hover:text-white/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50 p-1"
+                  title="Attachments coming soon"
                 >
-                  <X className="w-5 h-5" />
+                  <Paperclip className="w-4 h-4" />
                 </button>
-              )}
 
-              {/* Expand/collapse (when showing history) */}
-              {showHistory && (
-                <button
-                  type="button"
-                  onClick={() => setIsExpanded(!isExpanded)}
-                  className="text-white/20 hover:text-white/40 transition-colors"
-                  title={isExpanded ? 'Collapse' : 'Expand'}
-                >
-                  {isExpanded ? (
-                    <Minimize2 className="w-5 h-5" />
-                  ) : (
-                    <Maximize2 className="w-5 h-5" />
-                  )}
-                </button>
-              )}
-
-              {/* Attachment button */}
-              <button
-                type="button"
-                disabled
-                className="text-white/20 hover:text-white/40 cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                title="Attachments coming soon"
-              >
-                <Paperclip className="w-5 h-5" />
-              </button>
-
-              {/* Voice input */}
-              <VoiceInput
-                chatMode={false}
-                onTranscript={(text) => {
-                  // Insert transcribed text into chat input
-                  setMessage(text);
-                  inputRef.current?.focus();
-                }}
-                onCommandResult={(result) => {
-                  // Show voice command result feedback
-                  setVoiceResult({ message: result.message, success: result.success });
-                  if (voiceResultTimeoutRef.current) clearTimeout(voiceResultTimeoutRef.current);
-                  voiceResultTimeoutRef.current = setTimeout(() => setVoiceResult(null), 4000);
-                }}
-              />
+                {/* Voice input */}
+                <VoiceInput
+                  chatMode={false}
+                  onTranscript={(text) => {
+                    setMessage(text);
+                    inputRef.current?.focus();
+                  }}
+                  onCommandResult={(result) => {
+                    setVoiceResult({ message: result.message, success: result.success });
+                    if (voiceResultTimeoutRef.current) clearTimeout(voiceResultTimeoutRef.current);
+                    voiceResultTimeoutRef.current = setTimeout(() => setVoiceResult(null), 4000);
+                  }}
+                />
+              </div>
             </div>
 
             {/* Send button - Design7 style */}
@@ -335,11 +475,11 @@ export function QuickChat({
               type="submit"
               disabled={!message.trim() || processing}
               className={cn(
-                'px-6 rounded-xl transition-all duration-200',
-                'border flex items-center justify-center',
+                'px-6 py-3 rounded-xl transition-all duration-200',
+                'flex items-center justify-center self-end',
                 message.trim() && !processing
-                  ? 'bg-white/10 hover:bg-white/15 border-white/10'
-                  : 'bg-white/[0.02] border-white/[0.04] cursor-not-allowed'
+                  ? 'bg-white/10 hover:bg-white/15'
+                  : 'bg-white/[0.02] border border-white/[0.04] cursor-not-allowed'
               )}
             >
               {processing ? (

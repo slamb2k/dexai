@@ -42,7 +42,6 @@ workspace:
       - "AGENTS.md"
       - "ENV.md"
       - "HEARTBEAT.md"
-      - "BOOTSTRAP.md"
 
   # Access control settings
   access:

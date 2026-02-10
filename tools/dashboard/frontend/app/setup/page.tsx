@@ -279,6 +279,21 @@ export default function SetupPage() {
 
   return (
     <div className="min-h-screen bg-bg-primary flex flex-col">
+      {/* Deprecation banner */}
+      <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-3">
+        <div className="max-w-3xl mx-auto flex items-center gap-3">
+          <span className="text-amber-400 text-sm">
+            Setup has moved to Direct Chat. You can configure Dex by chatting on the main dashboard.
+          </span>
+          <button
+            onClick={() => router.push('/')}
+            className="ml-auto px-4 py-1.5 rounded-lg text-sm bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition-colors whitespace-nowrap"
+          >
+            Go to Direct Chat
+          </button>
+        </div>
+      </div>
+
       {/* Progress indicator */}
       <div className="bg-bg-surface border-b border-border-default">
         <div className="max-w-3xl mx-auto px-6 py-4">
