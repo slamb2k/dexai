@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useToastStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
+  Building2,
   Mail,
   Calendar,
   Link2,
@@ -138,11 +139,14 @@ export default function OfficePage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-page-title text-text-primary">Services</h1>
-        <p className="text-body text-text-secondary mt-1">
+        <div className="flex items-center gap-3">
+          <Building2 className="w-6 h-6 text-white/40" />
+          <h1 className="text-2xl font-light tracking-wide text-white/90">Services</h1>
+        </div>
+        <p className="text-xs text-white/40 mt-1 tracking-wide">
           Manage email drafts and meeting schedules with ADHD-safe confirmation flows
         </p>
       </div>

@@ -24,6 +24,7 @@ import {
   AlertCircle,
   Sparkles,
   Package,
+  Settings2,
 } from 'lucide-react';
 
 // Default settings
@@ -473,10 +474,13 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-3xl">
+    <div className="space-y-8 pt-4 animate-fade-in max-w-3xl">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-page-title text-text-primary">Settings</h1>
+        <div className="flex items-center gap-3">
+          <Settings2 className="w-6 h-6 text-white/40" />
+          <h1 className="text-2xl font-light tracking-wide text-white/90">Settings</h1>
+        </div>
         <button
           onClick={handleSave}
           disabled={isSaving}

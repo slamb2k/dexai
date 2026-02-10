@@ -45,7 +45,6 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<CurrentStep | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [userInitials, setUserInitials] = useState<string>('U');
 
   // Metrics state
   const [uptime, setUptime] = useState<string>('--');
@@ -154,20 +153,6 @@ export default function HomePage() {
           const active = providersRes.data.active_count || 0;
           const total = providersRes.data.providers?.length || 0;
           setProvidersActive(`${active}/${total}`);
-        }
-
-        // Fetch user settings for initials
-        const setupRes = await api.getSetupState();
-        if (setupRes.success && setupRes.data?.user_name) {
-          const name = setupRes.data.user_name;
-          const parts = name.trim().split(/\s+/);
-          if (parts.length === 1) {
-            setUserInitials(parts[0].charAt(0).toUpperCase());
-          } else {
-            setUserInitials(
-              (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
-            );
-          }
         }
 
         // Use demo data in demo mode if no real data
@@ -327,7 +312,6 @@ export default function HomePage() {
               onConversationChange={setConversationId}
               onStateChange={handleChatStateChange}
               placeholder="Type a message..."
-              userInitials={userInitials}
               isConnected={isConnected}
               className="h-full"
             />

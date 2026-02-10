@@ -223,15 +223,16 @@ export default function PushSettingsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-3xl">
+    <div className="space-y-8 pt-4 animate-fade-in max-w-3xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-page-title text-text-primary">Notification Settings</h1>
-          <p className="text-caption text-text-muted mt-1">
-            Configure how and when DexAI can reach you
-          </p>
+      <div>
+        <div className="flex items-center gap-3">
+          <Bell className="w-6 h-6 text-white/40" />
+          <h1 className="text-2xl font-light tracking-wide text-white/90">Notification Settings</h1>
         </div>
+        <p className="text-xs text-white/40 mt-1 tracking-wide">
+          Configure how and when DexAI can reach you
+        </p>
       </div>
 
       {/* Subscription Section */}

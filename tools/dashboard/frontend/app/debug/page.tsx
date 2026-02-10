@@ -281,12 +281,15 @@ export default function DebugPage() {
   }, [activeTab, loadSystemInfo, loadHealthChecks, loadLogs, loadTableData]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Bug className="text-accent-primary" size={24} />
-          <h1 className="text-page-title text-text-primary">Debug Tools</h1>
+        <div>
+          <div className="flex items-center gap-3">
+            <Bug className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Debug Tools</h1>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">System diagnostics and testing</p>
         </div>
         <span className="badge badge-warning">
           <AlertTriangle size={12} className="mr-1" />

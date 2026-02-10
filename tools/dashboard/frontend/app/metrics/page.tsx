@@ -347,7 +347,7 @@ export default function MetricsPage() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Error banner */}
       {error && (
         <div className="bg-status-error/10 border border-status-error/30 rounded-card px-4 py-3 flex items-center gap-3">
@@ -358,9 +358,13 @@ export default function MetricsPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-page-title text-text-primary">Metrics</h1>
-          {isLoading && <Loader2 className="w-5 h-5 animate-spin text-text-muted" />}
+        <div>
+          <div className="flex items-center gap-3">
+            <TrendingUp className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Metrics</h1>
+            {isLoading && <Loader2 className="w-5 h-5 animate-spin text-white/40" />}
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">Usage analytics and performance data</p>
         </div>
         <div className="relative">
           <select

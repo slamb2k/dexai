@@ -378,15 +378,18 @@ export default function DraftsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/office" className="btn btn-ghost p-2">
           <ArrowLeft size={20} />
         </Link>
         <div>
-          <h1 className="text-page-title text-text-primary">Email Drafts</h1>
-          <p className="text-body text-text-secondary">
+          <div className="flex items-center gap-3">
+            <Mail className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Email Drafts</h1>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">
             Review and approve drafts before they can be sent
           </p>
         </div>

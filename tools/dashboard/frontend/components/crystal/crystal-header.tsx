@@ -73,7 +73,7 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
         className
       )}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+      <div className="px-8 py-4 sm:py-5">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-3 sm:gap-5">
@@ -194,7 +194,7 @@ export function CrystalHeader({ className }: CrystalHeaderProps) {
       {mobileMenuOpen && (
         <div className="md:hidden">
           <nav className="border-t border-white/[0.06] bg-black/80 backdrop-blur-xl">
-            <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
+            <div className="px-8 py-4 space-y-2">
               {NAV_ITEMS.map((item) => {
                 const isActive =
                   item.href === '/'

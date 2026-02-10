@@ -268,7 +268,7 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Error banner */}
       {error && !isDemo && (
         <div className="bg-status-error/10 border border-status-error/30 rounded-2xl px-4 py-3 flex items-center gap-3">
@@ -280,8 +280,11 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-page-title text-text-primary">Tasks</h1>
-          <p className="text-body text-text-secondary mt-1">
+          <div className="flex items-center gap-3">
+            <Target className="w-6 h-6 text-white/40" />
+            <h1 className="text-2xl font-light tracking-wide text-white/90">Tasks</h1>
+          </div>
+          <p className="text-xs text-white/40 mt-1 tracking-wide">
             {pendingTasks.length} pending, {completedTasks.length} completed today
           </p>
         </div>

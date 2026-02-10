@@ -199,11 +199,14 @@ export default function MemoryPage() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+    <div className="space-y-8 pt-4 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-light tracking-wide text-white/90">Memory</h1>
-        <p className="text-sm text-white/60 mt-1">
+        <div className="flex items-center gap-3">
+          <Database className="w-6 h-6 text-white/40" />
+          <h1 className="text-2xl font-light tracking-wide text-white/90">Memory</h1>
+        </div>
+        <p className="text-xs text-white/40 mt-1 tracking-wide">
           Search your memories and track commitments
         </p>
       </div>

@@ -89,7 +89,7 @@ export function CrystalLayout({ children, className }: CrystalLayoutProps) {
 
       {/* Main Content - scrollable container for all pages except home */}
       <main className="relative z-10 h-[calc(100vh-80px)] overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-8 pt-4 pb-6">
+        <div className="px-16 pt-4 pb-6">
           <div className="animate-fade-in">{children}</div>
         </div>
       </main>
