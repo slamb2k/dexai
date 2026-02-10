@@ -11,6 +11,7 @@ Index of all available goal workflows. Check here before creating new goals.
 | `prd_dexai_v1.md` | **Active PRD** — DexAI: Personal Assistant for Neuro-Divergent Users (ADHD focus) |
 | `future_roadmap.md` | **Roadmap** — Phases 10-14 future development plans (mobile, voice, office, collaboration, analytics) |
 | `memory_providers_design.md` | **Design Doc** — Pluggable memory provider architecture (native, Mem0, Zep, SimpleMem, ClaudeMem) |
+| `memory_context_compaction_design.md` | **Design Doc** — Memory lifecycle, context compaction, L1/L2/L3 tiered memory, extraction pipeline, auto-recall |
 | `phase9_ci_testing.md` | Phase 9 tactical implementation guide — CI/CD, pytest, Vitest, GitHub Actions |
 | `phase10_mobile_push.md` | Phase 10 tactical implementation guide — Mobile push notifications (Web Push, PWA, Expo) |
 | `phase11_voice_interface.md` | Phase 11 tactical implementation guide — Voice interface (Web Speech, Whisper, wake word, TTS) |
