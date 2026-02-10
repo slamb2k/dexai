@@ -1263,6 +1263,65 @@ class ApiClient {
   async getSkillsSummary(): Promise<ApiResponse<SkillsSummary>> {
     return this.request<SkillsSummary>('/api/skills-summary');
   }
+
+  // ==========================================================================
+  // Voice Interface endpoints (Phase 11a)
+  // ==========================================================================
+
+  async getVoiceStatus(
+    userId: string = 'default'
+  ): Promise<ApiResponse<VoiceStatus>> {
+    const query = this.buildQuery({ user_id: userId });
+    return this.request<VoiceStatus>(`/api/voice/status${query}`);
+  }
+
+  async sendVoiceCommand(
+    command: VoiceCommandRequest,
+    userId: string = 'default'
+  ): Promise<ApiResponse<VoiceCommandResponse>> {
+    const query = this.buildQuery({ user_id: userId });
+    return this.request<VoiceCommandResponse>(`/api/voice/command${query}`, {
+      method: 'POST',
+      body: JSON.stringify(command),
+    });
+  }
+
+  async getVoicePreferences(
+    userId: string = 'default'
+  ): Promise<ApiResponse<VoicePreferences>> {
+    const query = this.buildQuery({ user_id: userId });
+    return this.request<VoicePreferences>(`/api/voice/preferences${query}`);
+  }
+
+  async updateVoicePreferences(
+    preferences: Partial<VoicePreferences>,
+    userId: string = 'default'
+  ): Promise<ApiResponse<VoicePreferences>> {
+    const query = this.buildQuery({ user_id: userId });
+    return this.request<VoicePreferences>(`/api/voice/preferences${query}`, {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    });
+  }
+
+  async getVoiceHistory(
+    userId: string = 'default',
+    limit?: number,
+    intent?: string
+  ): Promise<ApiResponse<{ commands: VoiceHistoryEntry[]; count: number }>> {
+    const query = this.buildQuery({ user_id: userId, limit, intent });
+    return this.request<{ commands: VoiceHistoryEntry[]; count: number }>(
+      `/api/voice/history${query}`
+    );
+  }
+
+  async getVoiceCommands(): Promise<
+    ApiResponse<{ commands: Record<string, VoiceCommandInfo[]>; total: number }>
+  > {
+    return this.request<{ commands: Record<string, VoiceCommandInfo[]>; total: number }>(
+      '/api/voice/commands'
+    );
+  }
 }
 
 // Push notification types
@@ -1486,6 +1545,77 @@ export async function* streamChatMessage(
       ws.close();
     }
   }
+}
+
+// Voice Interface types (Phase 11a)
+export interface VoiceStatus {
+  enabled: boolean;
+  web_speech_config: {
+    language: string;
+    continuous: boolean;
+    interimResults: boolean;
+    maxAlternatives: number;
+  };
+  available_sources: string[];
+  user_preferences: VoicePreferences;
+}
+
+export interface VoiceCommandRequest {
+  transcript: string;
+  confidence: number;
+  source?: string;
+  language?: string;
+  duration_ms?: number;
+  alternatives?: string[];
+}
+
+export interface VoiceCommandResponse {
+  success: boolean;
+  message: string;
+  intent: string;
+  data: Record<string, unknown>;
+  follow_up_prompt?: string;
+  undo_available: boolean;
+  error?: string;
+  parsed: {
+    intent: string;
+    confidence: number;
+    entities: { type: string; value: string; raw_text: string }[];
+    requires_confirmation: boolean;
+    suggestion?: string;
+  };
+}
+
+export interface VoicePreferences {
+  user_id?: string;
+  enabled: boolean;
+  preferred_source: string;
+  language: string;
+  continuous_listening: boolean;
+  wake_word_enabled: boolean;
+  audio_feedback_enabled: boolean;
+  visual_feedback_enabled: boolean;
+  confirmation_verbosity: 'silent' | 'brief' | 'verbose';
+  tts_enabled: boolean;
+  tts_voice: string;
+  tts_speed: number;
+  auto_execute_high_confidence: boolean;
+  confidence_threshold: number;
+  repeat_on_low_confidence: boolean;
+}
+
+export interface VoiceHistoryEntry {
+  id: string;
+  transcript: string;
+  confidence: number;
+  intent: string;
+  executed_successfully: boolean;
+  created_at: string;
+}
+
+export interface VoiceCommandInfo {
+  command: string;
+  example: string;
 }
 
 // Export singleton instance

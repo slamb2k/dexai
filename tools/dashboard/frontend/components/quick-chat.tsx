@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Paperclip, Mic, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
+import { Send, Paperclip, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
 import { ChatHistory, ChatMessage } from './chat-history';
+import { VoiceInput } from './voice/voice-input';
+import { TranscriptDisplay } from './voice/transcript-display';
 
 interface QuickChatProps {
   onSendMessage?: (message: string) => void;
@@ -39,7 +41,9 @@ export function QuickChat({
   const [typingContent, setTypingContent] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [voiceResult, setVoiceResult] = useState<{ message: string; success: boolean } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const voiceResultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Load conversation history when conversationId changes
   useEffect(() => {
@@ -224,6 +228,24 @@ export function QuickChat({
         </div>
       )}
 
+      {/* Voice Result Banner */}
+      {voiceResult && (
+        <div className={cn(
+          'px-4 py-2 border-t flex items-center justify-between text-xs',
+          voiceResult.success
+            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+            : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+        )}>
+          <span>{voiceResult.message}</span>
+          <button
+            onClick={() => setVoiceResult(null)}
+            className="p-0.5 hover:bg-white/10 rounded"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
       {/* Input Form - Design7 styling */}
       <div className="flex-shrink-0 border-t border-white/[0.04] pt-3">
         <form onSubmit={handleSubmit}>
@@ -291,15 +313,21 @@ export function QuickChat({
                 <Paperclip className="w-5 h-5" />
               </button>
 
-              {/* Voice button */}
-              <button
-                type="button"
-                disabled
-                className="text-white/20 hover:text-white/40 cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                title="Voice input coming soon"
-              >
-                <Mic className="w-5 h-5" />
-              </button>
+              {/* Voice input */}
+              <VoiceInput
+                chatMode={false}
+                onTranscript={(text) => {
+                  // Insert transcribed text into chat input
+                  setMessage(text);
+                  inputRef.current?.focus();
+                }}
+                onCommandResult={(result) => {
+                  // Show voice command result feedback
+                  setVoiceResult({ message: result.message, success: result.success });
+                  if (voiceResultTimeoutRef.current) clearTimeout(voiceResultTimeoutRef.current);
+                  voiceResultTimeoutRef.current = setTimeout(() => setVoiceResult(null), 4000);
+                }}
+              />
             </div>
 
             {/* Send button - Design7 style */}
