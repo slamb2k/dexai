@@ -586,7 +586,8 @@ def _format_response_for_channel(response: str, channel: str) -> str:
     """
     Format AI response for specific channel.
 
-    Handles code block formatting and respects channel limits.
+    Uses Phase 15c renderers when available, falling back to basic
+    formatting from media_processor.
 
     Args:
         response: Raw AI response
@@ -595,6 +596,48 @@ def _format_response_for_channel(response: str, channel: str) -> str:
     Returns:
         Formatted response string
     """
+    # Try Phase 15c renderer pipeline first
+    try:
+        from tools.channels.renderers import get_renderer
+        from tools.channels.media_processor import parse_response_blocks
+        from tools.channels.models import ContentBlock, RenderContext
+
+        renderer = get_renderer(channel)
+        if renderer:
+            raw_blocks = parse_response_blocks(response)
+            if raw_blocks:
+                # Convert dicts to ContentBlock objects
+                content_blocks = [
+                    ContentBlock.from_dict(b) if isinstance(b, dict) else b
+                    for b in raw_blocks
+                ]
+
+                context = RenderContext(
+                    channel=channel,
+                    user_id="",
+                    message_id="",
+                )
+
+                # Run async render synchronously
+                rendered_msgs = asyncio.run(renderer.render_blocks(content_blocks, context))
+
+                if rendered_msgs:
+                    # Extract text content from rendered messages
+                    parts = []
+                    for msg in rendered_msgs:
+                        if isinstance(msg.content, str) and msg.content.strip():
+                            parts.append(msg.content)
+                        elif isinstance(msg.content, dict):
+                            # For dict content (Slack Block Kit), use text fallback
+                            fallback = msg.metadata.get("text", "")
+                            if fallback:
+                                parts.append(fallback)
+                    if parts:
+                        return "\n\n".join(parts)
+    except Exception as e:
+        logger.debug(f"Renderer pipeline not available, using fallback: {e}")
+
+    # Fallback: basic formatting from media_processor
     try:
         from tools.channels.media_processor import (
             parse_response_blocks,
@@ -602,15 +645,9 @@ def _format_response_for_channel(response: str, channel: str) -> str:
             split_for_channel,
         )
 
-        # Parse into blocks
         blocks = parse_response_blocks(response)
-
-        # Format for channel
         formatted = format_blocks_for_channel(blocks, channel)
-
-        # Split if needed (return first chunk - streaming handles rest)
         chunks = split_for_channel(formatted, channel)
-
         return chunks[0] if chunks else response
 
     except Exception as e:
