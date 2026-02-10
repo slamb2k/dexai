@@ -1265,8 +1265,62 @@ class ApiClient {
   }
 
   // ==========================================================================
-  // Voice Interface endpoints (Phase 11a)
+  // Voice Interface endpoints (Phase 11a/11b/11c)
   // ==========================================================================
+
+  /**
+   * Upload audio for server-side transcription (Phase 11b).
+   * Uses FormData (multipart) instead of JSON.
+   */
+  async transcribeAudio(
+    audioBlob: Blob,
+    provider?: string,
+    language?: string,
+    userId: string = 'default'
+  ): Promise<ApiResponse<TranscriptionResponse>> {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+
+    const queryParts = Object.entries({ provider, language, user_id: userId })
+      .filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+    const query = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+
+    try {
+      const url = `${this.baseUrl}/api/voice/transcribe${query}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        // Do NOT set Content-Type — browser sets multipart boundary automatically
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        return { success: false, error: error || `HTTP ${response.status}` };
+      }
+
+      const data = await response.json();
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /** Generate text-to-speech audio (Phase 11c). */
+  async generateTTS(
+    request: TTSRequest,
+    userId: string = 'default'
+  ): Promise<ApiResponse<TTSResponse>> {
+    const query = this.buildQuery({ user_id: userId });
+    return this.request<TTSResponse>(`/api/voice/tts${query}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
 
   async getVoiceStatus(
     userId: string = 'default'
@@ -1547,7 +1601,7 @@ export async function* streamChatMessage(
   }
 }
 
-// Voice Interface types (Phase 11a)
+// Voice Interface types (Phase 11a/11b/11c)
 export interface VoiceStatus {
   enabled: boolean;
   web_speech_config: {
@@ -1616,6 +1670,33 @@ export interface VoiceHistoryEntry {
 export interface VoiceCommandInfo {
   command: string;
   example: string;
+}
+
+export interface TranscriptionResponse {
+  success: boolean;
+  transcript: string;
+  confidence: number;
+  source: string;
+  language: string;
+  duration_ms: number;
+}
+
+export interface TTSRequest {
+  text: string;
+  voice?: string;
+  speed?: number;
+  format?: string;
+}
+
+export interface TTSResponse {
+  success: boolean;
+  audio_base64?: string;
+  format?: string;
+  duration_seconds?: number;
+  cost_usd?: number;
+  use_browser_tts?: boolean;
+  text?: string;
+  error?: string;
 }
 
 // Export singleton instance
