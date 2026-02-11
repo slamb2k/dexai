@@ -180,7 +180,27 @@ def _save_user_yaml(field: str, value: str) -> None:
     field_map = {
         "user_name": ("user", "name"),
         "timezone": ("user", "timezone"),
+        "active_hours_start": ("active_hours", "start"),
+        "active_hours_end": ("active_hours", "end"),
+        "active_days": ("active_hours", "days"),
+        "notification_style": ("preferences", "notification_style"),
+        "brevity_preference": ("preferences", "brevity_default"),
+        "work_focus_areas": ("preferences", "work_focus_areas"),
+        "energy_pattern": ("preferences", "energy_pattern"),
+        "adhd_challenges": ("preferences", "adhd_challenges"),
+        "encouragement_level": ("preferences", "encouragement_level"),
+        "primary_channel": ("channels", "primary"),
     }
+
+    # Parse JSON arrays for multi-select values
+    import json as _json
+    parsed_value: str | list = value
+    try:
+        maybe_list = _json.loads(value)
+        if isinstance(maybe_list, list):
+            parsed_value = maybe_list
+    except (_json.JSONDecodeError, TypeError):
+        pass
 
     keys = field_map.get(field)
     if keys:
@@ -190,12 +210,12 @@ def _save_user_yaml(field: str, value: str) -> None:
             if key not in current or not isinstance(current.get(key), dict):
                 current[key] = {}
             current = current[key]
-        current[keys[-1]] = value
+        current[keys[-1]] = parsed_value
     else:
         # Store at top level under a 'setup' key
         if "setup" not in data:
             data["setup"] = {}
-        data["setup"][field] = value
+        data["setup"][field] = parsed_value
 
     with open(user_yaml, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
