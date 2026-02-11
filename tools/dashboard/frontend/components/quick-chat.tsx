@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Paperclip, Loader2, X, Maximize2, Minimize2, MessageSquare, Eye, EyeOff } from 'lucide-react';
+import { ArrowUp, Paperclip, Loader2, X, Maximize2, Minimize2, MessageSquare, Eye, EyeOff, Check, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
 import { ChatHistory, ChatMessage, ChatControl } from './chat-history';
@@ -51,7 +51,10 @@ export function QuickChat({
   const [activeControl, setActiveControl] = useState<ChatControl | null>(null);
   const [controlInputValue, setControlInputValue] = useState('');
   const [showControlPassword, setShowControlPassword] = useState(false);
+  const [multiSelectValues, setMultiSelectValues] = useState<string[]>([]);
+  const [customAddValue, setCustomAddValue] = useState('');
   const controlInputRef = useRef<HTMLInputElement>(null);
+  const customInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const voiceResultTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -169,6 +172,8 @@ export function QuickChat({
     if (activeControl) {
       setControlInputValue(activeControl.default_value || '');
       setShowControlPassword(false);
+      setMultiSelectValues([]);
+      setCustomAddValue('');
       setTimeout(() => controlInputRef.current?.focus(), 100);
     }
   }, [activeControl]);
@@ -221,6 +226,9 @@ export function QuickChat({
               placeholder: chunk.placeholder,
               required: chunk.required,
               validation: chunk.validation,
+              multi_select: chunk.multi_select,
+              allow_custom: chunk.allow_custom,
+              skippable: chunk.skippable,
             };
           }
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
@@ -305,7 +313,16 @@ export function QuickChat({
     onConversationChange?.('');
   };
 
-  const handleControlSubmit = useCallback(async (controlId: string, field: string, value: string) => {
+  const handleControlSubmit = useCallback(async (controlId: string, field: string, value: string, displayLabel?: string) => {
+    // Show the user's choice as a chat message bubble
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: displayLabel || value,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     setActiveControl(null);
     setControlInputValue('');
     setIsProcessing(true);
@@ -344,6 +361,9 @@ export function QuickChat({
               placeholder: chunk.placeholder,
               required: chunk.required,
               validation: chunk.validation,
+              multi_select: chunk.multi_select,
+              allow_custom: chunk.allow_custom,
+              skippable: chunk.skippable,
             };
           }
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
@@ -395,10 +415,10 @@ export function QuickChat({
   }, [conversationId, onStateChange, onConversationChange]);
 
   // Submit the active control value
-  const submitActiveControl = useCallback((value: string) => {
-    if (!activeControl || !value.trim()) return;
+  const submitActiveControl = useCallback((value: string, displayLabel?: string) => {
+    if (!activeControl || (!value.trim() && value !== '__skip__')) return;
     const { control_id, field } = activeControl;
-    handleControlSubmit(control_id, field, value.trim());
+    handleControlSubmit(control_id, field, value.trim() || value, displayLabel);
   }, [activeControl, handleControlSubmit]);
 
   // Keyboard shortcut: Cmd/Ctrl + K to focus
@@ -559,14 +579,131 @@ export function QuickChat({
           )}
         >
           <div className="px-4 py-3">
-            {activeControl.control_type === 'select' ? (
-              /* Select options as buttons + "Other" */
+            {activeControl.control_type === 'select' && activeControl.multi_select ? (
+              /* Multi-select: toggleable options + optional custom input + confirm */
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {activeControl.options?.map(option => {
+                    const isSelected = multiSelectValues.includes(option.value);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setMultiSelectValues(prev =>
+                            isSelected
+                              ? prev.filter(v => v !== option.value)
+                              : [...prev, option.value]
+                          );
+                        }}
+                        className={cn(
+                          'px-3 py-2 rounded-xl text-sm transition-all text-left flex items-center gap-2',
+                          isSelected
+                            ? 'bg-white/[0.12] border border-white/25 text-white'
+                            : 'bg-white/[0.04] border border-white/[0.08] text-white/70',
+                          'hover:bg-white/[0.10] hover:border-white/20'
+                        )}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+                        <div>
+                          <div>{option.label}</div>
+                          {option.description && (
+                            <div className="text-[11px] text-white/30 mt-0.5">{option.description}</div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {/* Custom items appear as removable chips */}
+                  {multiSelectValues
+                    .filter(v => !activeControl.options?.some(o => o.value === v))
+                    .map(custom => (
+                      <span
+                        key={custom}
+                        className="px-3 py-2 rounded-xl text-sm bg-white/[0.12] border border-white/25 text-white flex items-center gap-2"
+                      >
+                        <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                        {custom}
+                        <button
+                          type="button"
+                          onClick={() => setMultiSelectValues(prev => prev.filter(v => v !== custom))}
+                          className="p-0.5 text-white/40 hover:text-white/70 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                </div>
+                {/* Custom input for flexible multi-select (Type 4) */}
+                {activeControl.allow_custom && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={customInputRef}
+                      type="text"
+                      value={customAddValue}
+                      onChange={(e) => setCustomAddValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && customAddValue.trim()) {
+                          e.preventDefault();
+                          const items = customAddValue.split(',').map(s => s.trim()).filter(Boolean);
+                          setMultiSelectValues(prev => Array.from(new Set([...prev, ...items])));
+                          setCustomAddValue('');
+                        }
+                      }}
+                      placeholder={activeControl.placeholder || 'Add custom item (comma-separated)'}
+                      className="flex-1 bg-transparent outline-none text-white placeholder-white/30 min-h-[24px] leading-6 text-sm"
+                    />
+                    <button
+                      type="button"
+                      disabled={!customAddValue.trim()}
+                      onClick={() => {
+                        const items = customAddValue.split(',').map(s => s.trim()).filter(Boolean);
+                        setMultiSelectValues(prev => Array.from(new Set([...prev, ...items])));
+                        setCustomAddValue('');
+                        customInputRef.current?.focus();
+                      }}
+                      className={cn(
+                        'w-7 h-7 rounded-lg transition-all flex items-center justify-center flex-shrink-0',
+                        customAddValue.trim()
+                          ? 'bg-white/[0.08] text-white/70 hover:bg-white/15'
+                          : 'bg-white/[0.03] text-white/20 cursor-not-allowed'
+                      )}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+                {/* Confirm button */}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={multiSelectValues.length === 0}
+                    onClick={() => {
+                      const label = multiSelectValues.length === 1
+                        ? multiSelectValues[0]
+                        : `${multiSelectValues.length} selected`;
+                      submitActiveControl(JSON.stringify(multiSelectValues), label);
+                    }}
+                    className={cn(
+                      'px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-2',
+                      multiSelectValues.length > 0
+                        ? 'bg-white text-black hover:bg-white/90'
+                        : 'bg-white/10 text-white/20 cursor-not-allowed'
+                    )}
+                  >
+                    Confirm{multiSelectValues.length > 0 && ` (${multiSelectValues.length})`}
+                    <ArrowUp className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : activeControl.control_type === 'select' ? (
+              /* Single select: options + "Something else" */
               <div className="flex flex-wrap gap-2">
                 {activeControl.options?.map(option => (
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => submitActiveControl(option.value)}
+                    onClick={() => submitActiveControl(option.value, option.label)}
                     className={cn(
                       'px-3 py-2 rounded-xl text-sm transition-all text-left',
                       'bg-white/[0.04] border border-white/[0.08] text-white/70',
@@ -581,17 +718,14 @@ export function QuickChat({
                 ))}
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveControl(null);
-                    setTimeout(() => inputRef.current?.focus(), 100);
-                  }}
+                  onClick={() => submitActiveControl('__other__', 'Something else')}
                   className={cn(
                     'px-3 py-2 rounded-xl text-sm transition-all',
                     'bg-white/[0.04] border border-dashed border-white/[0.12] text-white/50',
                     'hover:bg-white/[0.08] hover:border-white/20 hover:text-white/70'
                   )}
                 >
-                  Other
+                  Something else
                 </button>
               </div>
             ) : (
@@ -637,6 +771,17 @@ export function QuickChat({
               </div>
             )}
           </div>
+          {activeControl.skippable && (
+            <div className="px-4 pb-3">
+              <button
+                type="button"
+                onClick={() => submitActiveControl('__skip__', 'Skipped')}
+                className="text-sm text-white/40 hover:text-white/60 transition-colors"
+              >
+                Skip for now
+              </button>
+            </div>
+          )}
         </div>
       )}
 
