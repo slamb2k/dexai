@@ -222,36 +222,6 @@ export interface SetupState {
   detected_timezone: string;
 }
 
-export interface ChannelValidateRequest {
-  channel: string;
-  token?: string;
-  bot_token?: string;
-  app_token?: string;
-}
-
-export interface ChannelValidateResponse {
-  success: boolean;
-  bot_id?: string;
-  bot_username?: string;
-  bot_name?: string;
-  team_name?: string;
-  error?: string;
-}
-
-export interface SetupPreferences {
-  user_name?: string;
-  timezone: string;
-  active_hours_start: string;
-  active_hours_end: string;
-}
-
-export interface CompleteSetupRequest {
-  channel?: string;
-  channel_config?: Record<string, string>;
-  preferences?: SetupPreferences;
-  api_key?: string;
-  skip_api_key?: boolean;
-}
 
 // Office Integration types (Phase 12b)
 export interface OfficeAccount {
@@ -389,6 +359,9 @@ export interface ChatStreamChunk {
   placeholder?: string;
   required?: boolean;
   validation?: string;
+  multi_select?: boolean;
+  allow_custom?: boolean;
+  skippable?: boolean;
 }
 
 export interface ChatConversation {
@@ -907,18 +880,9 @@ class ApiClient {
     }>('/api/debug/metrics');
   }
 
-  // Setup wizard endpoints
+  // Setup state (used by header for user name)
   async getSetupState(): Promise<ApiResponse<SetupState>> {
     return this.request<SetupState>('/api/setup/state');
-  }
-
-  async validateChannel(
-    request: ChannelValidateRequest
-  ): Promise<ApiResponse<ChannelValidateResponse>> {
-    return this.request<ChannelValidateResponse>('/api/setup/channel/validate', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
   }
 
   async validateApiKey(
@@ -928,24 +892,6 @@ class ApiClient {
     return this.request<{ success: boolean; error?: string }>('/api/setup/apikey/validate', {
       method: 'POST',
       body: JSON.stringify({ api_key, provider }),
-    });
-  }
-
-  async completeSetup(
-    request: CompleteSetupRequest
-  ): Promise<ApiResponse<{ success: boolean; message?: string; error?: string }>> {
-    return this.request<{ success: boolean; message?: string; error?: string }>(
-      '/api/setup/complete',
-      {
-        method: 'POST',
-        body: JSON.stringify(request),
-      }
-    );
-  }
-
-  async resetSetup(): Promise<ApiResponse<{ success: boolean; message?: string }>> {
-    return this.request<{ success: boolean; message?: string }>('/api/setup/reset', {
-      method: 'POST',
     });
   }
 

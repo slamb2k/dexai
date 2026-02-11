@@ -881,9 +881,38 @@ def populate_workspace_files(workspace_path: Path, field: str, value: str) -> No
         field: Field name (e.g. "user_name", "timezone")
         value: Value to write
     """
+    # Normalize list values to comma-separated strings for markdown
+    display_value = value
+    if isinstance(value, list):
+        display_value = ", ".join(str(v) for v in value)
+    else:
+        # Try parsing JSON arrays (from multi-select controls)
+        try:
+            import json
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                display_value = ", ".join(str(v) for v in parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     field_to_file: dict[str, tuple[str, str, str]] = {
-        "user_name": ("USER.md", "- **Name:**", f"- **Name:** {value}"),
-        "timezone": ("USER.md", "- **Timezone:**", f"- **Timezone:** {value}"),
+        "user_name": ("USER.md", "- **Name:**", f"- **Name:** {display_value}"),
+        "timezone": ("USER.md", "- **Timezone:**", f"- **Timezone:** {display_value}"),
+        "energy_pattern": (
+            "USER.md",
+            "- **Peak focus times:**",
+            f"- **Peak focus times:** {display_value}",
+        ),
+        "adhd_challenges": (
+            "USER.md",
+            "- **Common friction points:**",
+            f"- **Common friction points:** {display_value}",
+        ),
+        "work_focus_areas": (
+            "USER.md",
+            "- **Work focus:**",
+            f"- **Work focus:** {display_value}",
+        ),
     }
 
     if field not in field_to_file:
@@ -900,12 +929,24 @@ def populate_workspace_files(workspace_path: Path, field: str, value: str) -> No
         # Replace the line that starts with old_pattern
         lines = content.splitlines()
         new_lines = []
+        replaced = False
         for line in lines:
             if line.strip().startswith(old_pattern.strip()):
                 new_lines.append(new_line)
+                replaced = True
             else:
                 new_lines.append(line)
-        filepath.write_text("\n".join(new_lines) + "\n")
+
+        # If the pattern wasn't found, try to append under ADHD Context section
+        if not replaced and field in ("energy_pattern", "adhd_challenges", "work_focus_areas"):
+            for i, line in enumerate(new_lines):
+                if "## ADHD Context" in line or "## Projects & Interests" in line:
+                    new_lines.insert(i + 1, new_line)
+                    replaced = True
+                    break
+
+        if replaced:
+            filepath.write_text("\n".join(new_lines) + "\n")
     except Exception:
         pass
 

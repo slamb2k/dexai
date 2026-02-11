@@ -959,38 +959,34 @@ open_browser() {
     return 1
 }
 
-# Function to launch the setup wizard
+# Function to launch the setup dashboard
 launch_wizard() {
     echo ""
-    log_info "Launching setup wizard..."
+    log_info "Launching dashboard (setup is chat-based)..."
     echo ""
 
-    # Check if running in Docker - wizard runs differently
+    # Check if running in Docker
     if [ "${DOCKER_DEPLOYMENT:-false}" = true ]; then
-        # Use SETUP_URL if set, otherwise default
-        local wizard_url="${SETUP_URL:-http://localhost:3000/setup}"
+        local dashboard_url="${SETUP_URL:-http://localhost:3000}"
 
-        echo "Opening setup wizard in your browser..."
+        echo "Opening dashboard in your browser..."
         echo ""
-        echo -e "  ${CYAN}$wizard_url${NC}"
+        echo -e "  ${CYAN}$dashboard_url${NC}"
         echo ""
 
-        # Give services a moment to be fully ready
         sleep 2
 
-        # Try to open browser
-        if open_browser "$wizard_url"; then
+        if open_browser "$dashboard_url"; then
             log_success "Browser opened"
         else
             log_warn "Could not open browser automatically"
-            echo "Please open this URL manually: $wizard_url"
+            echo "Please open this URL manually: $dashboard_url"
         fi
 
         echo ""
-        echo "Complete the setup wizard to configure your channels and API keys."
+        echo "Complete setup through the dashboard chat."
     else
-        # Run TUI wizard for local install
-        python3 -m tools.setup.tui.main
+        dexai dashboard
     fi
 }
 
@@ -1047,8 +1043,8 @@ if [ "$INTERACTIVE" = true ]; then
             echo "  Docker with both Caddy + Tailscale:"
             echo -e "    ${BLUE}docker compose --profile proxy --profile tailscale up -d${NC}"
             echo ""
-            echo "  Setup wizard:"
-            echo -e "    ${BLUE}python -m tools.setup.tui.main${NC}"
+            echo "  Dashboard (setup is chat-based):"
+            echo -e "    ${BLUE}dexai dashboard${NC}"
             echo ""
             break
             ;;
@@ -1073,7 +1069,7 @@ else
         if install_local; then
             DOCKER_DEPLOYMENT=false
             # Skip wizard in non-interactive mode
-            log_info "Run 'python -m tools.setup.tui.main' to complete setup"
+            log_info "Run 'dexai dashboard' to complete setup"
         fi
     fi
 fi

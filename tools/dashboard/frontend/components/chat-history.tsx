@@ -16,6 +16,9 @@ export interface ChatControl {
   placeholder?: string;
   required?: boolean;
   validation?: string;
+  multi_select?: boolean;
+  allow_custom?: boolean;
+  skippable?: boolean;
 }
 
 export interface ChatMessage {

@@ -363,6 +363,9 @@ Document Claude-specific mistakes here (not script bugs—those go in goals):
 * When a workflow fails mid-execution, preserve intermediate outputs before retrying
 * Read the full goal before starting a task—don't skim
 * **NEVER DELETE YOUTUBE VIDEOS** — Video deletion is irreversible. The MCP server blocks this intentionally. If deletion is ever truly needed, ask the user 3 times and get 3 confirmations before proceeding. Direct user to YouTube Studio instead.
+* **NEVER run `npx next build` while the Next.js dev server is running** — Both write to `.next/`, corrupting the cache and breaking CSS/assets. To check for TypeScript errors, use `npx tsc --noEmit` instead. If a full build is needed, stop the dev server first, delete `.next/`, build, then restart.
+* **Always use `uv` and `uv pip` instead of `pip` or `pip3`** — This project uses `uv` as its package manager. Never install packages with bare `pip`/`pip3`.
+* **Always activate the venv before running Python** — Run `source /home/slamb2k/work/dexai/.venv/bin/activate` before any `python` command. Bare `python` outside the venv will be missing project dependencies (e.g. playwright, fastapi, etc.). Use `python` not `python3`.
 
 *(Add new guardrails as mistakes happen. Keep this under 15 items.)*
 

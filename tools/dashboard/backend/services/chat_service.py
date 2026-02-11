@@ -7,6 +7,7 @@ streaming responses, and ADHD-aware formatting.
 
 import json
 import logging
+import re
 import sqlite3
 import uuid
 from datetime import datetime
@@ -76,6 +77,42 @@ def init_chat_tables():
 
 # Initialize tables on module load
 init_chat_tables()
+
+
+# =============================================================================
+# Setup trigger detection
+# =============================================================================
+
+_SETUP_TRIGGERS = [
+    r"\brun\s+setup\b",
+    r"\bsetup\s+again\b",
+    r"\bredo\s+setup\b",
+    r"\breconfigure\b",
+    r"\bupdate\s+(my\s+)?preferences?\b",
+    r"\bbootstrap\s+dex\b",
+    r"\binitiali[sz]e\s+dex\b",
+    r"\bconfigure\s+channels?\b",
+    r"\bchange\s+my\s+(timezone|name)\b",
+    r"\bupdate\s+active\s+hours\b",
+    r"\bpersonali[sz]e\b",
+]
+
+
+def _detect_setup_trigger(message: str) -> str | None:
+    """Return scope if message is a setup trigger, else None."""
+    normalized = message.strip().lower()
+    if not any(re.search(p, normalized) for p in _SETUP_TRIGGERS):
+        return None
+    # Detect scope from message
+    if "channel" in normalized:
+        return "channels"
+    if "preference" in normalized or "active hour" in normalized:
+        return "preferences"
+    if "adhd" in normalized or "energy" in normalized:
+        return "adhd"
+    if "timezone" in normalized or "name" in normalized:
+        return "core"
+    return "all"
 
 
 class ChatService:
@@ -516,6 +553,28 @@ class ChatService:
                 # Ensure workspace files are up-to-date
                 setup_flow._finalize_workspace_files()
                 return
+
+            else:
+                # Setup not active and not __setup_init__ — check for re-run triggers
+                scope = _detect_setup_trigger(message)
+                if scope:
+                    self.save_message(role="user", content=message, conversation_id=conv_id)
+                    setup_flow._start_optional_rerun(scope)
+
+                    full_content = []
+                    async for chunk in setup_flow.handle_message(message, control_response):
+                        if chunk.get("type") == "chunk":
+                            full_content.append(chunk.get("content", ""))
+                        yield chunk
+
+                    response_text = "".join(full_content)
+                    if response_text:
+                        self.save_message(
+                            role="assistant",
+                            content=response_text,
+                            conversation_id=conv_id,
+                        )
+                    return
 
         except ImportError:
             pass

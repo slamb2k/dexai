@@ -143,9 +143,9 @@ cd tools/dashboard/frontend
 npm run dev
 ```
 
-**Run the TUI setup wizard:**
+**Run the dashboard (setup is chat-based):**
 ```bash
-python -m tools.setup.tui.main
+dexai dashboard
 ```
 
 ### Running with Docker

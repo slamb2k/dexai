@@ -89,9 +89,9 @@ channels: ## Start all channel adapters
 	@echo "$(BLUE)Starting channel adapters...$(NC)"
 	python tools/channels/router.py --start
 
-wizard: ## Run the setup wizard
-	@echo "$(BLUE)Starting setup wizard...$(NC)"
-	python -m tools.setup.tui.main
+wizard: ## Run the dashboard for setup
+	@echo "$(BLUE)Starting dashboard (setup is chat-based)...$(NC)"
+	dexai dashboard
 
 # ==============================================================================
 # Testing & Linting
