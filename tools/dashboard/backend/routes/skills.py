@@ -78,6 +78,7 @@ BUILTIN_SKILL_PATTERNS = [
     "adhd-decomposition",
     "energy-matching",
     "rsd-safe-communication",
+    "setup",
 ]
 
 
