@@ -5,8 +5,6 @@ DexAI Command Line Interface
 Main entry point for the `dexai` command.
 
 Usage:
-    dexai setup              # Launch setup wizard (TUI)
-    dexai setup --web        # Open web-based setup wizard
     dexai setup --status     # Show setup status
     dexai setup --reset      # Reset setup state
     dexai dashboard          # Start the dashboard server
@@ -25,20 +23,19 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 def cmd_setup(args):
     """Handle setup subcommand."""
-    from tools.setup.tui.main import main as tui_main
-
-    # Build args for the TUI main
-    sys.argv = ["dexai-setup"]
-    if args.resume:
-        sys.argv.append("--resume")
-    if args.reset:
-        sys.argv.append("--reset")
-    if args.web:
-        sys.argv.append("--web")
     if args.status:
-        sys.argv.append("--status")
+        from tools.setup.wizard import get_setup_status
+        import json
 
-    tui_main()
+        print(json.dumps(get_setup_status(), indent=2))
+    elif args.reset:
+        from tools.setup.wizard import reset_setup
+
+        result = reset_setup()
+        print("Setup state reset." if result.get("success") else f"Error: {result}")
+    else:
+        print("Setup is handled through the dashboard chat.")
+        print("Start the dashboard: dexai dashboard")
 
 
 def cmd_dashboard(args):
@@ -312,13 +309,7 @@ def main():
 
     # Setup subcommand
     setup_parser = subparsers.add_parser(
-        "setup", help="Launch the setup wizard"
-    )
-    setup_parser.add_argument(
-        "--web", action="store_true", help="Open web-based wizard instead of TUI"
-    )
-    setup_parser.add_argument(
-        "--resume", action="store_true", help="Resume previous setup"
+        "setup", help="Show setup status or reset setup state"
     )
     setup_parser.add_argument(
         "--reset", action="store_true", help="Reset setup state and start fresh"

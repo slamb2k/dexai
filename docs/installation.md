@@ -103,10 +103,12 @@ python -c "from tools.memory.memory_db import get_connection; get_connection().c
 python -c "from tools.security.vault import init_vault; init_vault()"
 ```
 
-### Step 6: Run Setup Wizard
+### Step 6: Run the Dashboard
+
+Setup is handled through the dashboard chat:
 
 ```bash
-python -m tools.setup.tui.main
+dexai dashboard
 ```
 
 ---
