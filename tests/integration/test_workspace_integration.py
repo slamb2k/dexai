@@ -317,7 +317,7 @@ class TestDexAIClientWorkspace:
         }
 
         # Patch SystemPromptBuilder to use workspace
-        with patch("tools.agent.sdk_client.SystemPromptBuilder") as mock_builder_class:
+        with patch("tools.agent.client_factory.SystemPromptBuilder") as mock_builder_class:
             mock_builder = MagicMock()
             mock_builder.build.return_value = "Built prompt"
             mock_builder_class.return_value = mock_builder
