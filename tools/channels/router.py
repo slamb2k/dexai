@@ -260,6 +260,12 @@ class MessageRouter:
         self.response_queue: asyncio.Queue = asyncio.Queue()
         self._started = False
         self._start_time: datetime | None = None
+        self._channel_locks: dict[str, asyncio.Lock] = {}
+
+    def _get_channel_lock(self, channel: str) -> asyncio.Lock:
+        if channel not in self._channel_locks:
+            self._channel_locks[channel] = asyncio.Lock()
+        return self._channel_locks[channel]
 
     def register_adapter(self, adapter: ChannelAdapter) -> None:
         """
@@ -543,35 +549,44 @@ class MessageRouter:
             # Update state to working while executing handlers
             _update_dex_state("working", f"Handling message from {message.channel}")
 
-            # Dispatch to handlers
+            # Dispatch to handlers (per-channel lock prevents concurrent execution)
+            lock = self._get_channel_lock(message.channel)
             handler_results = []
-            for handler in self.message_handlers:
-                try:
-                    result = await handler(message, context)
-                    handler_results.append(
-                        {"handler": handler.__name__, "success": True, "result": result}
-                    )
-                except Exception as e:
-                    handler_results.append(
-                        {"handler": handler.__name__, "success": False, "error": str(e)}
-                    )
-                    # Log handler error
-                    try:
-                        from tools.security import audit
+            try:
+                async with asyncio.timeout(300):  # 5 minute handler timeout
+                    async with lock:
+                        for handler in self.message_handlers:
+                            try:
+                                result = await handler(message, context)
+                                handler_results.append(
+                                    {"handler": handler.__name__, "success": True, "result": result}
+                                )
+                            except Exception as e:
+                                handler_results.append(
+                                    {"handler": handler.__name__, "success": False, "error": str(e)}
+                                )
+                                # Log handler error
+                                try:
+                                    from tools.security import audit
 
-                        audit.log_event(
-                            event_type="error",
-                            action="handler_error",
-                            user_id=message.user_id,
-                            details={
-                                "trace_id": trace_id,
-                                "error": str(e),
-                                "handler": handler.__name__,
-                                "message_id": message.id,
-                            },
-                        )
-                    except Exception:
-                        pass
+                                    audit.log_event(
+                                        event_type="error",
+                                        action="handler_error",
+                                        user_id=message.user_id,
+                                        details={
+                                            "trace_id": trace_id,
+                                            "error": str(e),
+                                            "handler": handler.__name__,
+                                            "message_id": message.id,
+                                        },
+                                    )
+                                except Exception:
+                                    pass
+            except asyncio.TimeoutError:
+                logger.error(f"Handler timeout for channel {message.channel}, releasing lock")
+                handler_results.append(
+                    {"handler": "timeout", "success": False, "error": "Handler timed out after 300s"}
+                )
 
             # Record response time metric
             elapsed_ms = (time.time() - start_time) * 1000

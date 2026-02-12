@@ -27,12 +27,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import json
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional, Callable, AsyncGenerator, Union
 
-# Project root for paths
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+from tools.agent import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,78 @@ logger = logging.getLogger(__name__)
 # Default session timeout
 SESSION_TIMEOUT_MINUTES = 60
 
-# Path for persisting session IDs
+# Path for persisting session IDs (legacy JSON, migrated to SQLite)
 SESSION_STORE_PATH = PROJECT_ROOT / "data" / "sessions.json"
+
+# SQLite database path
+_DB_PATH = PROJECT_ROOT / "data" / "sessions.db"
+
+
+def get_connection() -> sqlite3.Connection:
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(_DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("""CREATE TABLE IF NOT EXISTS sessions (
+        session_key TEXT PRIMARY KEY,
+        channel TEXT NOT NULL,
+        session_type TEXT NOT NULL DEFAULT 'main',
+        sdk_session_id TEXT,
+        workspace_path TEXT,
+        created_at TEXT NOT NULL,
+        last_active TEXT NOT NULL,
+        message_count INTEGER DEFAULT 0,
+        total_cost REAL DEFAULT 0.0,
+        is_active INTEGER DEFAULT 1
+    )""")
+    conn.commit()
+    return conn
+
+
+def _migrate_json_to_sqlite() -> None:
+    if not SESSION_STORE_PATH.exists():
+        return
+    try:
+        with open(SESSION_STORE_PATH) as f:
+            data = json.load(f)
+
+        if not data:
+            SESSION_STORE_PATH.rename(SESSION_STORE_PATH.with_suffix(".json.migrated"))
+            return
+
+        conn = get_connection()
+        try:
+            for key, session_data in data.items():
+                try:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO sessions
+                        (session_key, channel, session_type, sdk_session_id,
+                         workspace_path, created_at, last_active, message_count, total_cost)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            key,
+                            session_data.get("channel", key),
+                            session_data.get("session_type", "main"),
+                            session_data.get("sdk_session_id"),
+                            session_data.get("workspace_path"),
+                            session_data.get("created_at", datetime.now().isoformat()),
+                            session_data.get("last_activity", datetime.now().isoformat()),
+                            session_data.get("message_count", 0),
+                            session_data.get("total_cost", 0.0),
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to migrate session {key}: {e}")
+
+            conn.commit()
+        finally:
+            conn.close()
+
+        SESSION_STORE_PATH.rename(SESSION_STORE_PATH.with_suffix(".json.migrated"))
+        logger.info(f"Migrated {len(data)} sessions from JSON to SQLite")
+    except Exception as e:
+        logger.warning(f"Failed to migrate sessions from JSON: {e}")
 
 
 class Session:
@@ -610,40 +680,67 @@ class SessionManager:
         }
 
     def _save_sessions(self) -> None:
-        """Persist sessions to disk."""
         try:
-            SESSION_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-            data = {
-                key: session.to_dict()
-                for key, session in self._sessions.items()
-                if not session.is_stale
-            }
-
-            with open(SESSION_STORE_PATH, "w") as f:
-                json.dump(data, f, indent=2)
-
+            conn = get_connection()
+            try:
+                for key, session in self._sessions.items():
+                    if session.is_stale:
+                        conn.execute("DELETE FROM sessions WHERE session_key = ?", (key,))
+                        continue
+                    data = session.to_dict()
+                    conn.execute(
+                        """INSERT OR REPLACE INTO sessions
+                        (session_key, channel, session_type, sdk_session_id,
+                         workspace_path, created_at, last_active, message_count, total_cost)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            key,
+                            data["channel"],
+                            data.get("session_type", "main"),
+                            data.get("sdk_session_id"),
+                            data.get("workspace_path"),
+                            data["created_at"],
+                            data["last_activity"],
+                            data.get("message_count", 0),
+                            data.get("total_cost", 0.0),
+                        ),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
         except Exception as e:
             logger.warning(f"Failed to save sessions: {e}")
 
     def _load_sessions(self) -> None:
-        """Load persisted sessions from disk."""
-        if not SESSION_STORE_PATH.exists():
-            return
+        _migrate_json_to_sqlite()
 
         try:
-            with open(SESSION_STORE_PATH) as f:
-                data = json.load(f)
+            conn = get_connection()
+            try:
+                cursor = conn.execute("SELECT * FROM sessions WHERE is_active = 1")
+                rows = cursor.fetchall()
+            finally:
+                conn.close()
 
-            for key, session_data in data.items():
+            for row in rows:
                 try:
+                    session_data = {
+                        "channel": row["channel"],
+                        "session_type": row["session_type"],
+                        "sdk_session_id": row["sdk_session_id"],
+                        "workspace_path": row["workspace_path"],
+                        "created_at": row["created_at"],
+                        "last_activity": row["last_active"],
+                        "message_count": row["message_count"],
+                        "total_cost": row["total_cost"],
+                    }
                     session = Session.from_dict(session_data)
                     if not session.is_stale:
-                        self._sessions[key] = session
+                        self._sessions[row["session_key"]] = session
                 except Exception as e:
-                    logger.warning(f"Failed to restore session {key}: {e}")
+                    logger.warning(f"Failed to restore session {row['session_key']}: {e}")
 
-            logger.info(f"Loaded {len(self._sessions)} sessions from disk")
+            logger.info(f"Loaded {len(self._sessions)} sessions from SQLite")
 
         except Exception as e:
             logger.warning(f"Failed to load sessions: {e}")
