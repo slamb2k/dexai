@@ -51,6 +51,7 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "types-PyYAML>=6.0.0",
+    "bashlex>=0.18",
 ]
 
 # Individual channel adapters
