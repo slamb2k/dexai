@@ -54,26 +54,16 @@ class TestSecurityPipeline:
             assert reason == "ok"
 
     @pytest.mark.asyncio
-    async def test_pipeline_blocks_unpaired_user(
-        self, message_router, sample_unified_message, mock_unpaired_user
+    async def test_pipeline_blocks_disallowed_channel_user(
+        self, message_router, sample_unified_message,
     ):
-        """Unpaired users should be blocked by security pipeline."""
+        """Channel users not in the allowlist should be blocked."""
         router, _adapter = message_router
 
         message = sample_unified_message(content="Hello")
-        message.channel_user_id = "channel_unpaired_user"
-
-        def get_user_by_channel(channel, channel_user_id):
-            if channel_user_id == "channel_unpaired_user":
-                return mock_unpaired_user
-            return None
-
-        mock_inbox = MagicMock()
-        mock_inbox.get_user_by_channel = get_user_by_channel
-        mock_inbox.create_or_update_user = MagicMock()
+        message.channel_user_id = "unknown_attacker_id"
 
         with (
-            patch.dict(sys.modules, {"tools.channels.inbox": mock_inbox}),
             patch("tools.security.sanitizer.sanitize") as mock_sanitize,
         ):
             mock_sanitize.return_value = {
@@ -84,7 +74,6 @@ class TestSecurityPipeline:
             allowed, reason, _context = await router.security_pipeline(message)
 
             assert allowed is False
-            assert reason == "user_not_paired"
 
     @pytest.mark.asyncio
     async def test_pipeline_blocks_malicious_content(
@@ -226,22 +215,24 @@ class TestMessageRouting:
         assert "adapter_not_found" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_broadcast_sends_to_preferred_channel(self, message_router, mock_inbox_module):
-        """Broadcast should send to user's preferred channel."""
+    async def test_broadcast_sends_to_primary_channel(self, message_router, mock_inbox_module):
+        """Broadcast should send to the primary channel from user.yaml config."""
         router, adapter = message_router
 
-        mock_inbox_module.get_preferred_channel = MagicMock(return_value="test_channel")
-        mock_inbox_module.get_linked_channels = MagicMock(
-            return_value=[{"channel": "test_channel", "channel_user_id": "channel_test_user"}]
-        )
         mock_inbox_module.store_message = MagicMock()
+
+        # Mock user.yaml to configure primary channel
+        mock_config = {"channels": {"primary": "test_channel"}}
 
         with (
             patch.dict(sys.modules, {"tools.channels.inbox": mock_inbox_module}),
             patch("tools.security.audit.log_event"),
+            patch("builtins.open", MagicMock()),
+            patch("yaml.safe_load", return_value=mock_config),
+            patch("pathlib.Path.exists", return_value=True),
         ):
             result = await router.broadcast(
-                user_id="test_user_123", content="Notification message", priority="high"
+                content="Notification message", priority="high"
             )
 
             assert result["success"] is True

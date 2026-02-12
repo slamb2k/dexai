@@ -1,18 +1,15 @@
 """Tests for tools/agent/workspace_manager.py
 
-The WorkspaceManager provides per-user isolated workspaces with:
+The WorkspaceManager provides a single isolated workspace with:
 - Workspace creation with bootstrap files
-- Scope-based lifecycle (SESSION, PERSISTENT, PERMANENT)
-- Access control (RO, RW, NONE)
 - Size limits and restrictions
-- Stale workspace cleanup
+- Session end marking
 
-These tests ensure workspace isolation works correctly.
+Single-tenant: One workspace for the owner (no per-user isolation).
 """
 
 import json
 import shutil
-from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -104,44 +101,40 @@ def workspace_manager(workspace_config: dict, temp_workspace_base: Path, temp_te
 class TestWorkspaceCreation:
     """Tests for workspace creation."""
 
-    def test_create_workspace_creates_directory(self, workspace_manager, temp_workspace_base):
+    def test_create_workspace_creates_directory(self, workspace_manager):
         """Creating a workspace should create the directory."""
-        workspace = workspace_manager.create_workspace("alice", "telegram")
+        workspace = workspace_manager.create_workspace()
 
         assert workspace.exists()
         assert workspace.is_dir()
-        assert workspace.parent == temp_workspace_base
 
     def test_create_workspace_creates_metadata(self, workspace_manager):
         """Creating a workspace should create metadata file."""
-        workspace = workspace_manager.create_workspace("bob", "discord")
+        workspace = workspace_manager.create_workspace()
 
         metadata_path = workspace / ".metadata.json"
         assert metadata_path.exists()
 
         metadata = json.loads(metadata_path.read_text())
-        assert metadata["user_id"] == "bob"
-        assert metadata["channel"] == "discord"
         assert "created_at" in metadata
         assert "last_accessed" in metadata
+        assert metadata["scope"] == "permanent"
 
-    def test_create_workspace_copies_bootstrap_files(self, workspace_manager, temp_templates_dir):
+    def test_create_workspace_copies_bootstrap_files(self, workspace_manager):
         """Creating a workspace should copy bootstrap files."""
-        workspace = workspace_manager.create_workspace("charlie", "slack")
+        workspace = workspace_manager.create_workspace()
 
         # Check PERSONA.md was copied
         persona = workspace / "PERSONA.md"
         assert persona.exists()
         assert "Dex" in persona.read_text()
 
-    def test_workspace_key_sanitization(self, workspace_manager, temp_workspace_base):
-        """Workspace keys should be filesystem-safe."""
-        # Test with special characters
-        workspace = workspace_manager.create_workspace("alice@example.com", "telegram:123")
+    def test_create_workspace_is_idempotent(self, workspace_manager):
+        """Creating workspace twice should return same path."""
+        workspace1 = workspace_manager.create_workspace()
+        workspace2 = workspace_manager.create_workspace()
 
-        # The directory should exist and be safely named
-        assert workspace.exists()
-        assert "@" not in workspace.name or ":" not in workspace.name
+        assert workspace1 == workspace2
 
 
 class TestWorkspaceRetrieval:
@@ -149,21 +142,21 @@ class TestWorkspaceRetrieval:
 
     def test_get_workspace_returns_existing(self, workspace_manager):
         """Getting an existing workspace should return the same path."""
-        created = workspace_manager.create_workspace("alice", "telegram")
-        retrieved = workspace_manager.get_workspace("alice", "telegram")
+        created = workspace_manager.create_workspace()
+        retrieved = workspace_manager.get_workspace()
 
         assert created == retrieved
 
     def test_get_workspace_creates_if_missing(self, workspace_manager):
         """Getting a non-existent workspace should create it."""
-        workspace = workspace_manager.get_workspace("newuser", "cli")
+        workspace = workspace_manager.get_workspace()
 
         assert workspace.exists()
         assert workspace.is_dir()
 
     def test_get_workspace_updates_last_accessed(self, workspace_manager):
         """Getting a workspace should update last_accessed timestamp."""
-        workspace = workspace_manager.create_workspace("alice", "telegram")
+        workspace = workspace_manager.create_workspace()
 
         # Read original metadata
         metadata_path = workspace / ".metadata.json"
@@ -175,7 +168,7 @@ class TestWorkspaceRetrieval:
 
         time.sleep(0.01)
 
-        workspace_manager.get_workspace("alice", "telegram")
+        workspace_manager.get_workspace()
 
         # Check timestamp updated
         updated = json.loads(metadata_path.read_text())
@@ -187,124 +180,42 @@ class TestWorkspaceDeletion:
 
     def test_delete_workspace_removes_directory(self, workspace_manager):
         """Deleting a workspace should remove the directory."""
-        workspace = workspace_manager.create_workspace("alice", "telegram")
+        workspace = workspace_manager.create_workspace()
         assert workspace.exists()
 
-        result = workspace_manager.delete_workspace("alice", "telegram")
+        result = workspace_manager.delete_workspace()
 
         assert result is True
         assert not workspace.exists()
 
     def test_delete_nonexistent_workspace_returns_false(self, workspace_manager):
         """Deleting a non-existent workspace should return False."""
-        result = workspace_manager.delete_workspace("nobody", "nowhere")
+        # Don't create a workspace first - just try to delete
+        # Need to ensure the workspace path doesn't exist
+        if workspace_manager.workspace_path.exists():
+            shutil.rmtree(workspace_manager.workspace_path)
+
+        result = workspace_manager.delete_workspace()
 
         assert result is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Workspace Scopes
+# Workspace Scope
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestWorkspaceScopes:
-    """Tests for workspace scope handling."""
+class TestWorkspaceScope:
+    """Tests for workspace scope (single-tenant always permanent)."""
 
-    def test_default_scope_is_persistent(self, workspace_manager):
-        """Default scope should be persistent."""
-        workspace = workspace_manager.create_workspace("alice", "telegram")
-
-        metadata_path = workspace / ".metadata.json"
-        metadata = json.loads(metadata_path.read_text())
-
-        assert metadata["scope"] == "persistent"
-
-    def test_session_scope_can_be_specified(self, workspace_manager):
-        """Session scope should be settable."""
-        from tools.agent.workspace_manager import WorkspaceScope
-
-        workspace = workspace_manager.create_workspace(
-            "bob", "discord", scope=WorkspaceScope.SESSION
-        )
-
-        metadata_path = workspace / ".metadata.json"
-        metadata = json.loads(metadata_path.read_text())
-
-        assert metadata["scope"] == "session"
-
-    def test_permanent_scope_can_be_specified(self, workspace_manager):
-        """Permanent scope should be settable."""
-        from tools.agent.workspace_manager import WorkspaceScope
-
-        workspace = workspace_manager.create_workspace(
-            "charlie", "slack", scope=WorkspaceScope.PERMANENT
-        )
+    def test_default_scope_is_permanent(self, workspace_manager):
+        """Default scope should be permanent for single-tenant."""
+        workspace = workspace_manager.create_workspace()
 
         metadata_path = workspace / ".metadata.json"
         metadata = json.loads(metadata_path.read_text())
 
         assert metadata["scope"] == "permanent"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Stale Workspace Cleanup
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestWorkspaceCleanup:
-    """Tests for stale workspace cleanup."""
-
-    def test_cleanup_removes_session_workspaces(self, workspace_manager):
-        """Cleanup should remove session-scoped workspaces."""
-        from tools.agent.workspace_manager import WorkspaceScope
-
-        # Create a session workspace
-        workspace = workspace_manager.create_workspace(
-            "alice", "telegram", scope=WorkspaceScope.SESSION
-        )
-        assert workspace.exists()
-
-        # Run cleanup
-        cleaned = workspace_manager.cleanup_stale_workspaces()
-
-        # Session workspaces are always cleaned
-        assert cleaned == 1
-        assert not workspace.exists()
-
-    def test_cleanup_preserves_permanent_workspaces(self, workspace_manager):
-        """Cleanup should never remove permanent workspaces."""
-        from tools.agent.workspace_manager import WorkspaceScope
-
-        workspace = workspace_manager.create_workspace(
-            "admin", "cli", scope=WorkspaceScope.PERMANENT
-        )
-
-        # Run cleanup
-        cleaned = workspace_manager.cleanup_stale_workspaces()
-
-        assert cleaned == 0
-        assert workspace.exists()
-
-    def test_cleanup_removes_stale_persistent_workspaces(self, workspace_manager):
-        """Cleanup should remove persistent workspaces older than stale_days."""
-        from tools.agent.workspace_manager import WorkspaceScope
-
-        workspace = workspace_manager.create_workspace(
-            "alice", "telegram", scope=WorkspaceScope.PERSISTENT
-        )
-
-        # Manually set last_accessed to 60 days ago
-        metadata_path = workspace / ".metadata.json"
-        metadata = json.loads(metadata_path.read_text())
-        old_date = (datetime.now() - timedelta(days=60)).isoformat()
-        metadata["last_accessed"] = old_date
-        metadata_path.write_text(json.dumps(metadata))
-
-        # Run cleanup
-        cleaned = workspace_manager.cleanup_stale_workspaces()
-
-        assert cleaned == 1
-        assert not workspace.exists()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -317,9 +228,9 @@ class TestWorkspaceLimits:
 
     def test_check_limits_within_bounds(self, workspace_manager):
         """Workspace within limits should pass check."""
-        workspace_manager.create_workspace("alice", "telegram")
+        workspace_manager.create_workspace()
 
-        limits = workspace_manager.check_workspace_limits("alice", "telegram")
+        limits = workspace_manager.check_workspace_limits()
 
         assert limits["within_limits"] is True
         assert limits["current_size_bytes"] > 0  # Has bootstrap files
@@ -327,13 +238,13 @@ class TestWorkspaceLimits:
 
     def test_get_workspace_size(self, workspace_manager):
         """Should correctly calculate workspace size."""
-        workspace = workspace_manager.create_workspace("alice", "telegram")
+        workspace = workspace_manager.create_workspace()
 
         # Add a file
         test_file = workspace / "test.txt"
         test_file.write_text("Hello, World!")
 
-        size = workspace_manager.get_workspace_size("alice", "telegram")
+        size = workspace_manager.get_workspace_size()
 
         assert size > 0
         # Size should include the test file
@@ -348,31 +259,34 @@ class TestWorkspaceLimits:
 class TestWorkspaceListing:
     """Tests for listing workspaces."""
 
-    def test_list_workspaces_returns_all(self, workspace_manager):
-        """Should list all created workspaces."""
-        workspace_manager.create_workspace("alice", "telegram")
-        workspace_manager.create_workspace("bob", "discord")
-        workspace_manager.create_workspace("charlie", "slack")
+    def test_list_workspaces_returns_workspace(self, workspace_manager):
+        """Should list the single workspace."""
+        workspace_manager.create_workspace()
 
         workspaces = workspace_manager.list_workspaces()
 
-        assert len(workspaces) == 3
-        users = {w["user_id"] for w in workspaces}
-        assert users == {"alice", "bob", "charlie"}
+        assert len(workspaces) == 1
 
     def test_list_workspaces_includes_metadata(self, workspace_manager):
-        """Listed workspaces should include metadata."""
-        workspace_manager.create_workspace("alice", "telegram")
+        """Listed workspace should include metadata."""
+        workspace_manager.create_workspace()
 
         workspaces = workspace_manager.list_workspaces()
 
         assert len(workspaces) == 1
         ws = workspaces[0]
-        assert "user_id" in ws
-        assert "channel" in ws
         assert "scope" in ws
         assert "size_bytes" in ws
         assert "created_at" in ws
+
+    def test_list_workspaces_empty_when_none(self, workspace_manager):
+        """Should return empty list when no workspace exists."""
+        # Ensure no workspace
+        if workspace_manager.workspace_path.exists():
+            shutil.rmtree(workspace_manager.workspace_path)
+
+        workspaces = workspace_manager.list_workspaces()
+        assert len(workspaces) == 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -383,37 +297,27 @@ class TestWorkspaceListing:
 class TestSessionEndMarking:
     """Tests for session end behavior."""
 
-    def test_mark_session_end_deletes_session_workspace(self, workspace_manager):
-        """Marking session end should delete SESSION scoped workspaces."""
-        from tools.agent.workspace_manager import WorkspaceScope
+    def test_mark_session_end_updates_metadata(self, workspace_manager):
+        """Marking session end should update workspace metadata."""
+        workspace = workspace_manager.create_workspace()
 
-        workspace = workspace_manager.create_workspace(
-            "alice", "telegram", scope=WorkspaceScope.SESSION
-        )
-        assert workspace.exists()
-
-        result = workspace_manager.mark_session_end("alice", "telegram")
+        result = workspace_manager.mark_session_end()
 
         assert result is True
-        assert not workspace.exists()
-
-    def test_mark_session_end_updates_persistent_workspace(self, workspace_manager):
-        """Marking session end should update persistent workspace metadata."""
-        from tools.agent.workspace_manager import WorkspaceScope
-
-        workspace = workspace_manager.create_workspace(
-            "bob", "discord", scope=WorkspaceScope.PERSISTENT
-        )
-
-        result = workspace_manager.mark_session_end("bob", "discord")
-
-        assert result is True
-        assert workspace.exists()  # Not deleted
+        assert workspace.exists()  # Permanent workspace not deleted
 
         # Check session_ended_at was added
         metadata_path = workspace / ".metadata.json"
         metadata = json.loads(metadata_path.read_text())
         assert "session_ended_at" in metadata
+
+    def test_mark_session_end_with_channel(self, workspace_manager):
+        """Marking session end with channel for logging."""
+        workspace_manager.create_workspace()
+
+        result = workspace_manager.mark_session_end(channel="telegram")
+
+        assert result is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -436,6 +340,6 @@ class TestDisabledWorkspaces:
         from tools.agent.workspace_manager import PROJECT_ROOT, WorkspaceManager
 
         manager = WorkspaceManager(config=config)
-        workspace = manager.get_workspace("alice", "telegram")
+        workspace = manager.get_workspace()
 
         assert workspace == PROJECT_ROOT

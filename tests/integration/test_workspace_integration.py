@@ -3,8 +3,9 @@
 These tests verify that:
 - Sessions correctly integrate with workspaces
 - Workspace paths are passed to SDK client
-- File operations happen in workspace directories
 - Session cleanup handles workspaces correctly
+
+Single-tenant: Sessions use channel-only keys with a single workspace.
 """
 
 import shutil
@@ -107,10 +108,7 @@ class TestSessionWorkspaceIntegration:
             "tools.agent.workspace_manager.get_workspace_manager",
             return_value=mock_workspace_manager,
         ):
-            session = Session(
-                user_id="alice",
-                channel="telegram",
-            )
+            session = Session(channel="telegram")
 
             # Before client init, workspace_path is None
             assert session.workspace_path is None
@@ -141,10 +139,7 @@ class TestSessionWorkspaceIntegration:
             "tools.agent.workspace_manager.get_workspace_manager",
             return_value=mock_workspace_manager,
         ):
-            session = Session(
-                user_id="bob",
-                channel="discord",
-            )
+            session = Session(channel="discord")
 
             with patch("tools.agent.sdk_client.DexAIClient") as mock_dexai_client:
                 mock_client = AsyncMock()
@@ -167,13 +162,10 @@ class TestSessionWorkspaceIntegration:
         self, mock_workspace_manager, temp_workspace_base
     ):
         """Session close should mark workspace session end."""
-        from tools.agent.workspace_manager import WorkspaceScope
         from tools.channels.session_manager import Session
 
-        # Create a SESSION scoped workspace
-        workspace = mock_workspace_manager.create_workspace(
-            "charlie", "slack", scope=WorkspaceScope.SESSION
-        )
+        # Create workspace
+        workspace = mock_workspace_manager.create_workspace()
         assert workspace.exists()
 
         with patch(
@@ -181,7 +173,6 @@ class TestSessionWorkspaceIntegration:
             return_value=mock_workspace_manager,
         ):
             session = Session(
-                user_id="charlie",
                 channel="slack",
                 workspace_path=workspace,
             )
@@ -195,8 +186,8 @@ class TestSessionWorkspaceIntegration:
                 await session._ensure_client()
                 await session.close()
 
-            # Session-scoped workspace should be deleted
-            assert not workspace.exists()
+            # Permanent workspace should still exist
+            assert workspace.exists()
 
 
 class TestSessionSerialization:
@@ -206,10 +197,9 @@ class TestSessionSerialization:
         """Session serialization should include workspace_path."""
         from tools.channels.session_manager import Session
 
-        workspace = mock_workspace_manager.create_workspace("alice", "telegram")
+        workspace = mock_workspace_manager.create_workspace()
 
         session = Session(
-            user_id="alice",
             channel="telegram",
             workspace_path=workspace,
         )
@@ -223,11 +213,10 @@ class TestSessionSerialization:
         """Session deserialization should restore workspace_path."""
         from tools.channels.session_manager import Session
 
-        workspace = mock_workspace_manager.create_workspace("alice", "telegram")
+        workspace = mock_workspace_manager.create_workspace()
 
         # Create and serialize a session
         original = Session(
-            user_id="alice",
             channel="telegram",
             workspace_path=workspace,
         )
@@ -258,23 +247,19 @@ class TestSessionManagerWorkspaceIntegration:
         ):
             manager = SessionManager(persist=False)
 
-            session = manager.get_session("alice", "telegram")
+            session = manager.get_session("telegram")
 
             assert session is not None
-            assert session.user_id == "alice"
             assert session.channel == "telegram"
             # workspace_path is set lazily on first _ensure_client
 
     @pytest.mark.asyncio
     async def test_clear_session_handles_workspace(self, mock_workspace_manager):
         """Clearing a session should properly handle workspace cleanup."""
-        from tools.agent.workspace_manager import WorkspaceScope
         from tools.channels.session_manager import SessionManager
 
-        # Create a SESSION scoped workspace
-        workspace = mock_workspace_manager.create_workspace(
-            "alice", "telegram", scope=WorkspaceScope.SESSION
-        )
+        # Create workspace
+        workspace = mock_workspace_manager.create_workspace()
 
         with patch(
             "tools.agent.workspace_manager.get_workspace_manager",
@@ -282,15 +267,13 @@ class TestSessionManagerWorkspaceIntegration:
         ):
             manager = SessionManager(persist=False)
 
-            session = manager.get_session("alice", "telegram")
+            session = manager.get_session("telegram")
             session.workspace_path = workspace
 
             # Clear the session
-            result = await manager.clear_session("alice", "telegram")
+            result = await manager.clear_session("telegram")
 
             assert result is True
-            # SESSION workspace should be cleaned up
-            assert not workspace.exists()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -309,7 +292,6 @@ class TestDexAIClientWorkspace:
         workspace.mkdir()
 
         client = DexAIClient(
-            user_id="alice",
             working_dir=str(workspace),
         )
 
@@ -341,7 +323,6 @@ class TestDexAIClientWorkspace:
             mock_builder_class.return_value = mock_builder
 
             build_system_prompt(
-                user_id="alice",
                 config=config,
                 workspace_root=workspace,
             )
@@ -361,7 +342,6 @@ class TestWorkspaceWorkflows:
     @pytest.mark.asyncio
     async def test_complete_session_lifecycle(self, mock_workspace_manager, temp_workspace_base):
         """Test complete session lifecycle with workspace."""
-        from tools.agent.workspace_manager import WorkspaceScope  # noqa: F401
         from tools.channels.session_manager import Session
 
         with patch(
@@ -369,10 +349,7 @@ class TestWorkspaceWorkflows:
             return_value=mock_workspace_manager,
         ):
             # 1. Create session
-            session = Session(
-                user_id="lifecycle_test",
-                channel="test",
-            )
+            session = Session(channel="test")
 
             # 2. Initialize client (creates workspace)
             with patch("tools.agent.sdk_client.DexAIClient") as mock_dexai_client:
@@ -395,7 +372,7 @@ class TestWorkspaceWorkflows:
             # 5. Close session
             await session.close()
 
-            # 6. Workspace should still exist (PERSISTENT scope)
+            # 6. Workspace should still exist (permanent scope)
             assert workspace.exists()
 
             # 7. Verify can restore from serialized data

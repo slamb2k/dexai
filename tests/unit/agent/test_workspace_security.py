@@ -37,8 +37,8 @@ def security_hooks(temp_workspace: Path):
     )
 
     return {
-        "bash_hook": create_bash_security_hook("test_user"),
-        "file_hook": create_file_path_security_hook("test_user", workspace_path=temp_workspace),
+        "bash_hook": create_bash_security_hook(),
+        "file_hook": create_file_path_security_hook(workspace_path=temp_workspace),
         "dangerous_patterns": DANGEROUS_BASH_PATTERNS,
         "protected_paths": PROTECTED_PATHS,
     }
@@ -156,7 +156,7 @@ class TestProtectedPaths:
         # Create hook without workspace_path to test protected paths only
         from tools.agent.hooks import create_file_path_security_hook
 
-        hook = create_file_path_security_hook("test_user", workspace_path=None)
+        hook = create_file_path_security_hook(workspace_path=None)
 
         input_data = {
             "tool_name": "Read",
@@ -249,7 +249,6 @@ class TestHookIntegration:
         from tools.agent.hooks import create_hooks
 
         hooks = create_hooks(
-            user_id="test_user",
             channel="telegram",
             enable_security=True,
             workspace_path=temp_workspace,
@@ -263,7 +262,6 @@ class TestHookIntegration:
         from tools.agent.hooks import create_hooks
 
         hooks = create_hooks(
-            user_id="test_user",
             channel="telegram",
             enable_security=False,
             enable_audit=False,
@@ -281,7 +279,6 @@ class TestHookIntegration:
         from tools.agent.hooks import create_hooks
 
         hooks = create_hooks(
-            user_id="test_user",
             channel="telegram",
             enable_security=True,
             workspace_path=temp_workspace,
