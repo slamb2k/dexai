@@ -1,9 +1,9 @@
 user:
-  name: Lamb Dog
+  name: Simon Lamb
   timezone: Australia/Melbourne
 active_hours:
-  start: 09:00
-  end: '22:00'
+  start: 07:00
+  end: __other__
   days:
   - mon
   - tue
@@ -13,5 +13,32 @@ active_hours:
   - sat
   - sun
 preferences:
-  notification_style: gentle
-  brevity_default: true
+  notification_style: persistent
+  brevity_default: false
+  work_focus_areas:
+  - software_dev
+  - design
+  energy_pattern: evening
+  adhd_challenges:
+  - finishing
+  - time_estimation
+  - task_switching
+  - prioritising
+  - staying_focused
+  encouragement_level: full
+onboarding:
+  optional_index: 12
+  version: 1
+  skipped_fields:
+  - slack_app_token
+  optional_completed: true
+  completed_at: '2026-02-11T05:33:02.398645+00:00'
+channels:
+  primary: telegram
+  # Allowed channel user IDs — only these platform-specific user IDs
+  # can interact with the bot. Replace with your actual IDs.
+  # If empty or omitted, ALL users on that channel are allowed (open access).
+  allowed_channel_user_ids:
+    telegram: []
+    discord: []
+    slack: []
