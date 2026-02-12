@@ -3,7 +3,7 @@ Tool: Message Models
 Purpose: Canonical data structures for cross-platform messaging
 
 Usage:
-    from tools.channels.models import UnifiedMessage, Attachment, ChannelUser, Conversation
+    from tools.channels.models import UnifiedMessage, Attachment, Conversation
 
 This module provides the foundation data structures that normalize messages
 across different platforms (Telegram, Discord, Slack) into a common format.
@@ -58,7 +58,7 @@ class UnifiedMessage:
         id: Internal message UUID
         channel: Platform name (telegram | discord | slack | whatsapp)
         channel_message_id: Platform-specific message ID
-        user_id: Our internal user ID (resolved by router)
+        user_id: Owner ID (always "owner" in single-tenant mode)
         channel_user_id: Platform-specific user ID
         direction: Message direction ('inbound' | 'outbound')
         content: Text content of the message
@@ -119,56 +119,6 @@ class UnifiedMessage:
         return str(uuid.uuid4())
 
 
-@dataclass
-class ChannelUser:
-    """
-    Normalized user across channels.
-
-    Represents a user identity on a specific channel. Multiple ChannelUser
-    records can be linked to a single internal user via identity linking.
-
-    Attributes:
-        id: Our internal user ID
-        channel: Platform name
-        channel_user_id: Platform-specific user ID
-        display_name: User's display name
-        username: Platform username (if available)
-        is_paired: Whether user has completed pairing
-        first_seen: When user was first seen
-        metadata: Platform-specific user data
-    """
-
-    id: str  # Our internal user ID
-    channel: str
-    channel_user_id: str
-    display_name: str
-    username: str | None = None
-    is_paired: bool = False
-    first_seen: datetime = field(default_factory=datetime.now)
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to JSON-serializable dict."""
-        d = asdict(self)
-        d["first_seen"] = self.first_seen.isoformat()
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ChannelUser":
-        """Create from dict."""
-        data = data.copy()
-        if isinstance(data.get("first_seen"), str):
-            data["first_seen"] = datetime.fromisoformat(data["first_seen"])
-        # Handle boolean from SQLite (stored as int)
-        if "is_paired" in data:
-            data["is_paired"] = bool(data["is_paired"])
-        return cls(**data)
-
-    @staticmethod
-    def generate_id() -> str:
-        """Generate a new user ID."""
-        return str(uuid.uuid4())
-
 
 @dataclass
 class Conversation:
@@ -222,53 +172,6 @@ class Conversation:
         """Generate a new conversation ID."""
         return str(uuid.uuid4())
 
-
-@dataclass
-class PairingCode:
-    """
-    Temporary pairing code for cross-channel identity linking.
-
-    When a user wants to link their account across channels, they generate
-    a pairing code on one channel and enter it on another to link identities.
-    """
-
-    code: str
-    user_id: str
-    channel: str
-    channel_user_id: str
-    created_at: datetime = field(default_factory=datetime.now)
-    expires_at: datetime | None = None
-    used: bool = False
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to JSON-serializable dict."""
-        d = asdict(self)
-        d["created_at"] = self.created_at.isoformat()
-        if self.expires_at:
-            d["expires_at"] = self.expires_at.isoformat()
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PairingCode":
-        """Create from dict."""
-        data = data.copy()
-        if isinstance(data.get("created_at"), str):
-            data["created_at"] = datetime.fromisoformat(data["created_at"])
-        if isinstance(data.get("expires_at"), str):
-            data["expires_at"] = datetime.fromisoformat(data["expires_at"])
-        if "used" in data:
-            data["used"] = bool(data["used"])
-        return cls(**data)
-
-    def is_expired(self) -> bool:
-        """Check if the pairing code has expired."""
-        if self.expires_at is None:
-            return False
-        return datetime.now() > self.expires_at
-
-    def is_valid(self) -> bool:
-        """Check if the pairing code is still valid (not used, not expired)."""
-        return not self.used and not self.is_expired()
 
 
 # =============================================================================
@@ -602,7 +505,7 @@ if __name__ == "__main__":
         id="test-1",
         channel="telegram",
         channel_message_id="123",
-        user_id="alice",
+        user_id="owner",
         channel_user_id="tg_123",
         direction="inbound",
         content="Hello world",
@@ -638,18 +541,6 @@ if __name__ == "__main__":
     assert len(msg4.attachments) == 1, "Attachment lost"
     assert msg4.attachments[0].filename == "photo.jpg", "Attachment data wrong"
 
-    # Test ChannelUser
-    user = ChannelUser(
-        id="user-1",
-        channel="telegram",
-        channel_user_id="tg_123",
-        display_name="Alice",
-        username="alice_bot",
-    )
-    d = user.to_dict()
-    user2 = ChannelUser.from_dict(d)
-    assert user.display_name == user2.display_name, "User round-trip failed"
-
     # Test Conversation
     conv = Conversation(
         id="conv-1",
@@ -661,27 +552,6 @@ if __name__ == "__main__":
     d = conv.to_dict()
     conv2 = Conversation.from_dict(d)
     assert len(conv2.participants) == 2, "Conversation round-trip failed"
-
-    # Test PairingCode
-    from datetime import timedelta
-
-    code = PairingCode(
-        code="ABC12345",
-        user_id="user-1",
-        channel="telegram",
-        channel_user_id="tg_123",
-        expires_at=datetime.now() + timedelta(minutes=10),
-    )
-    assert code.is_valid(), "New code should be valid"
-
-    expired_code = PairingCode(
-        code="EXPIRED1",
-        user_id="user-2",
-        channel="discord",
-        channel_user_id="dc_456",
-        expires_at=datetime.now() - timedelta(minutes=1),
-    )
-    assert not expired_code.is_valid(), "Expired code should be invalid"
 
     # Test validation
     valid, error = validate_message(msg)

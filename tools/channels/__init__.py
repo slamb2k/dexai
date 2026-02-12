@@ -8,9 +8,7 @@ from .models import (
     VALID_CONTENT_TYPES,
     VALID_DIRECTIONS,
     Attachment,
-    ChannelUser,
     Conversation,
-    PairingCode,
     UnifiedMessage,
     validate_message,
 )
@@ -21,9 +19,7 @@ __all__ = [
     "VALID_CONTENT_TYPES",
     "VALID_DIRECTIONS",
     "Attachment",
-    "ChannelUser",
     "Conversation",
-    "PairingCode",
     "UnifiedMessage",
     "validate_message",
 ]

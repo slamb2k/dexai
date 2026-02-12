@@ -41,6 +41,7 @@ from typing import Any
 
 import yaml
 
+from tools.agent.constants import OWNER_USER_ID
 from .providers.base import (
     DependencyStatus,
     HealthStatus,
@@ -504,11 +505,11 @@ class MemoryService:
     async def add_commitment(
         self,
         content: str,
-        user_id: str,
         target_person: str | None = None,
         due_date: datetime | None = None,
         source_channel: str | None = None,
         source_message_id: str | None = None,
+        user_id: str = OWNER_USER_ID,
     ) -> str:
         """Add a commitment/promise."""
         await self._maybe_retry_primary()
@@ -534,10 +535,10 @@ class MemoryService:
 
     async def list_commitments(
         self,
-        user_id: str,
         status: str = "active",
         include_overdue: bool = True,
         limit: int = 50,
+        user_id: str = OWNER_USER_ID,
     ) -> list[dict[str, Any]]:
         """List commitments with ADHD-safe framing."""
         await self._maybe_retry_primary()
@@ -577,10 +578,10 @@ class MemoryService:
 
     async def capture_context(
         self,
-        user_id: str,
         state: dict[str, Any],
         trigger: str = "manual",
         summary: str | None = None,
+        user_id: str = OWNER_USER_ID,
     ) -> str:
         """Capture current context snapshot."""
         await self._maybe_retry_primary()
@@ -602,8 +603,8 @@ class MemoryService:
 
     async def resume_context(
         self,
-        user_id: str,
         snapshot_id: str | None = None,
+        user_id: str = OWNER_USER_ID,
     ) -> dict[str, Any] | None:
         """Get context for resumption with ADHD-friendly framing."""
         await self._maybe_retry_primary()

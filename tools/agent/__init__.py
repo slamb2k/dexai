@@ -10,9 +10,10 @@ Components:
 
 Usage:
     from tools.agent import DexAIClient, create_permission_callback
+    from tools.agent.constants import OWNER_USER_ID
 
     # Create client with DexAI defaults
-    client = DexAIClient(user_id="alice")
+    client = DexAIClient()
 
     # Query the agent
     response = await client.query("What's my next task?")
@@ -34,6 +35,9 @@ DB_PATH = DATA_DIR / "agent.db"
 # Ensure data directory exists
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Single-tenant constant
+from tools.agent.constants import OWNER_USER_ID
+
 # Exports
 __all__ = [
     "PROJECT_ROOT",
@@ -43,6 +47,7 @@ __all__ = [
     "ARGS_DIR",
     "CONFIG_PATH",
     "DB_PATH",
+    "OWNER_USER_ID",
     # System prompt exports (lazy loaded)
     "SystemPromptBuilder",
     "PromptContext",

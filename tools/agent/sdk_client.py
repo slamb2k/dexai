@@ -7,19 +7,19 @@ intelligent model routing, and integration with the permission system.
 Usage:
     from tools.agent.sdk_client import DexAIClient
 
-    async with DexAIClient(user_id="alice") as client:
+    async with DexAIClient() as client:
         response = await client.query("What's my next task?")
         print(response.text)
 
     # Or for streaming:
-    async with DexAIClient(user_id="alice") as client:
+    async with DexAIClient() as client:
         await client.query("Help me with taxes")
         async for message in client.receive_response():
             print(message)
 
     # With explicit complexity hint:
     from tools.agent.model_router import TaskComplexity
-    async with DexAIClient(user_id="alice", explicit_complexity=TaskComplexity.TRIVIAL) as client:
+    async with DexAIClient(explicit_complexity=TaskComplexity.TRIVIAL) as client:
         response = await client.query("hi")  # Routes to cheaper model
 """
 
@@ -34,6 +34,7 @@ from typing import Any, AsyncIterator, AsyncGenerator, Optional, Union, TYPE_CHE
 import yaml
 
 from tools.agent import PROJECT_ROOT, CONFIG_PATH
+from tools.agent.constants import OWNER_USER_ID
 from tools.agent.system_prompt import (
     SystemPromptBuilder,
     PromptContext,
@@ -124,7 +125,12 @@ COMMUNICATION STYLE:
 - Be direct and helpful, not enthusiastic or overly positive
 - Use short sentences and paragraphs
 - If breaking down tasks, present ONE step at a time
-- Ask clarifying questions rather than making assumptions""",
+- Ask clarifying questions rather than making assumptions
+
+CONVERSATION CONTINUITY:
+You greet users through the chat interface on page load. When you receive the
+user's first message, do not re-introduce yourself or repeat your greeting.
+Respond naturally to their request.""",
         "include_memory": True,
         "include_commitments": True,
         "include_energy": True,
@@ -239,7 +245,6 @@ def _get_memory_service():
 
 
 def build_system_prompt(
-    user_id: str,
     config: dict,
     channel: str = "direct",
     session_type: str = "main",
@@ -247,14 +252,13 @@ def build_system_prompt(
     workspace_root: Optional[Path] = None,
 ) -> str:
     """
-    Build the system prompt with user-specific context.
+    Build the system prompt with owner context.
 
     Uses SystemPromptBuilder for workspace-based prompts with session-based
     file filtering, then adds runtime context (memory, commitments, energy)
     for main sessions via MemoryService.
 
     Args:
-        user_id: User identifier for context loading
         config: Agent configuration
         channel: Communication channel (direct, telegram, discord, slack)
         session_type: Session type (main, subagent, heartbeat, cron)
@@ -268,7 +272,7 @@ def build_system_prompt(
     # Build base prompt from workspace files with session-based filtering
     builder = SystemPromptBuilder(config.get("system_prompt", {}))
     context = PromptContext(
-        user_id=user_id,
+        user_id=OWNER_USER_ID,
         session_type=SessionType(session_type),
         prompt_mode=PromptMode(prompt_mode) if prompt_mode else None,
         channel=channel,
@@ -279,7 +283,7 @@ def build_system_prompt(
     # Only add runtime context for sessions that include it (main sessions with full mode)
     if context.include_runtime_context:
         prompt = _add_runtime_context(
-            prompt, user_id, config, workspace_root=workspace_root or PROJECT_ROOT
+            prompt, config, workspace_root=workspace_root or PROJECT_ROOT
         )
 
     return prompt
@@ -287,7 +291,6 @@ def build_system_prompt(
 
 def _add_runtime_context(
     prompt: str,
-    user_id: str,
     config: dict,
     workspace_root: Optional[Path] = None,
 ) -> str:
@@ -296,7 +299,6 @@ def _add_runtime_context(
 
     Args:
         prompt: Base prompt from SystemPromptBuilder
-        user_id: User identifier
         config: Agent configuration
         workspace_root: Optional workspace root for skill paths.
                        If None, uses PROJECT_ROOT.
@@ -321,7 +323,6 @@ def _add_runtime_context(
                 async def _search():
                     filters = SearchFilters(
                         types=[MemoryType.PREFERENCE, MemoryType.FACT],
-                        user_id=user_id,
                     )
                     return await memory_service.search(
                         query="user preferences and context",
@@ -374,7 +375,6 @@ def _add_runtime_context(
 
                 async def _list_commitments():
                     return await memory_service.list_commitments(
-                        user_id=user_id,
                         status="active",
                         limit=5,
                     )
@@ -402,7 +402,7 @@ def _add_runtime_context(
                 # Fallback to legacy direct import
                 from tools.memory import commitments
 
-                result = commitments.list_commitments(user_id=user_id, status="active")
+                result = commitments.list_commitments(user_id=OWNER_USER_ID, status="active")
                 if result.get("success"):
                     data = result.get("data", {})
                     commitment_items = data.get("commitments", [])
@@ -420,7 +420,7 @@ def _add_runtime_context(
         try:
             from tools.learning import energy_tracker
 
-            result = energy_tracker.get_current_energy(user_id=user_id)
+            result = energy_tracker.get_current_energy(user_id=OWNER_USER_ID)
             if result.get("success"):
                 energy = result.get("energy_level", "unknown")
                 confidence = result.get("confidence", 0)
@@ -476,7 +476,6 @@ class DexAIClient:
 
     def __init__(
         self,
-        user_id: str,
         working_dir: str | None = None,
         config: dict | None = None,
         explicit_complexity: "TaskComplexity | None" = None,
@@ -489,7 +488,6 @@ class DexAIClient:
         Initialize DexAI client.
 
         Args:
-            user_id: User identifier for permissions and context
             working_dir: Working directory for file operations (default: PROJECT_ROOT)
             config: Optional config override (default: load from args/agent.yaml)
             explicit_complexity: Optional explicit complexity hint for routing
@@ -498,7 +496,6 @@ class DexAIClient:
             resume_session_id: Optional session ID to resume (SDK session resumption)
             ask_user_handler: Optional async callable to handle AskUserQuestion
         """
-        self.user_id = user_id
         self.config = config or load_config()
         self.working_dir = working_dir or str(
             self.config.get("agent", {}).get("working_directory") or PROJECT_ROOT
@@ -639,7 +636,7 @@ class DexAIClient:
 
         # Build hooks for lifecycle events (including security)
         hooks = create_hooks(
-            user_id=self.user_id,
+            user_id=OWNER_USER_ID,
             channel=self.channel,
             enable_security=True,  # Block dangerous commands
             enable_audit=True,
@@ -666,14 +663,12 @@ class DexAIClient:
             "cwd": self.working_dir,
             "permission_mode": agent_config.get("permission_mode", "default"),
             "system_prompt": build_system_prompt(
-                user_id=self.user_id,
                 config=self.config,
                 channel=self.channel,
                 session_type=self.session_type,
                 workspace_root=workspace_root,
             ),
             "can_use_tool": create_permission_callback(
-                user_id=self.user_id,
                 config=self.config,
                 channel=self.channel,
                 ask_user_handler=self.ask_user_handler,
@@ -708,7 +703,7 @@ class DexAIClient:
         try:
             from tools.dashboard.backend.database import record_routing_decision
             record_routing_decision(
-                user_id=self.user_id,
+                user_id=OWNER_USER_ID,  # constant for audit trail
                 complexity=decision.complexity.value,
                 model=decision.primary_model.routed_id,
                 exacto=decision.primary_model.use_exacto,
@@ -1053,7 +1048,7 @@ class DexAIClient:
         workspace_root = Path(self.working_dir) if self.working_dir else None
 
         hooks = create_hooks(
-            user_id=self.user_id,
+            user_id=OWNER_USER_ID,
             channel=self.channel,
             enable_security=True,
             enable_audit=True,
@@ -1078,14 +1073,12 @@ class DexAIClient:
             "cwd": self.working_dir,
             "permission_mode": agent_config.get("permission_mode", "default"),
             "system_prompt": build_system_prompt(
-                user_id=self.user_id,
                 config=self.config,
                 channel=self.channel,
                 session_type=self.session_type,
                 workspace_root=workspace_root,
             ),
             "can_use_tool": create_permission_callback(
-                user_id=self.user_id,
                 config=self.config,
                 channel=self.channel,
                 ask_user_handler=self.ask_user_handler,
@@ -1330,7 +1323,6 @@ class StructuredQueryResult:
 
 
 async def quick_query(
-    user_id: str,
     message: str,
     session_type: str = "main",
     channel: str = "direct",
@@ -1339,7 +1331,6 @@ async def quick_query(
     Quick one-shot query without context management.
 
     Args:
-        user_id: User identifier
         message: Message to send
         session_type: Session type (main, subagent, heartbeat, cron)
         channel: Communication channel
@@ -1348,7 +1339,6 @@ async def quick_query(
         Response text
     """
     async with DexAIClient(
-        user_id=user_id,
         session_type=session_type,
         channel=channel,
     ) as client:
@@ -1357,7 +1347,6 @@ async def quick_query(
 
 
 async def quick_decompose(
-    user_id: str,
     task: str,
     channel: str = "direct",
 ) -> StructuredQueryResult:
@@ -1367,7 +1356,6 @@ async def quick_decompose(
     Uses the task_decomposition schema for ADHD-friendly task breakdown.
 
     Args:
-        user_id: User identifier
         task: Task to decompose
         channel: Communication channel
 
@@ -1375,7 +1363,6 @@ async def quick_decompose(
         StructuredQueryResult with current_step, remaining_steps, and blockers
     """
     async with DexAIClient(
-        user_id=user_id,
         session_type="main",
         channel=channel,
     ) as client:
@@ -1386,7 +1373,6 @@ async def quick_decompose(
 
 
 async def quick_energy_match(
-    user_id: str,
     context: str,
     channel: str = "direct",
 ) -> StructuredQueryResult:
@@ -1396,7 +1382,6 @@ async def quick_energy_match(
     Detects energy level and suggests matched tasks.
 
     Args:
-        user_id: User identifier
         context: Context for energy detection
         channel: Communication channel
 
@@ -1404,7 +1389,6 @@ async def quick_energy_match(
         StructuredQueryResult with detected_energy and suggested_task
     """
     async with DexAIClient(
-        user_id=user_id,
         session_type="main",
         channel=channel,
     ) as client:
@@ -1415,7 +1399,6 @@ async def quick_energy_match(
 
 
 async def quick_friction_check(
-    user_id: str,
     task: str,
     channel: str = "direct",
 ) -> StructuredQueryResult:
@@ -1425,7 +1408,6 @@ async def quick_friction_check(
     Identifies blockers that might stall progress.
 
     Args:
-        user_id: User identifier
         task: Task to check for friction
         channel: Communication channel
 
@@ -1433,7 +1415,6 @@ async def quick_friction_check(
         StructuredQueryResult with friction_found, blockers, and ready_to_proceed
     """
     async with DexAIClient(
-        user_id=user_id,
         session_type="main",
         channel=channel,
     ) as client:
@@ -1444,7 +1425,6 @@ async def quick_friction_check(
 
 
 async def quick_current_step(
-    user_id: str,
     context: str = "",
     channel: str = "direct",
 ) -> StructuredQueryResult:
@@ -1452,7 +1432,6 @@ async def quick_current_step(
     Get the ONE thing to do right now (one-thing mode).
 
     Args:
-        user_id: User identifier
         context: Optional context about current work
         channel: Communication channel
 
@@ -1464,7 +1443,6 @@ async def quick_current_step(
         prompt = f"{prompt} Context: {context}"
 
     async with DexAIClient(
-        user_id=user_id,
         session_type="main",
         channel=channel,
     ) as client:
@@ -1482,7 +1460,6 @@ def main():
     import asyncio
 
     parser = argparse.ArgumentParser(description="DexAI SDK Client")
-    parser.add_argument("--user", default="test_user", help="User ID")
     parser.add_argument("--query", help="Query to send")
     parser.add_argument("--interactive", action="store_true", help="Interactive mode")
     parser.add_argument("--show-config", action="store_true", help="Show configuration")
@@ -1501,7 +1478,6 @@ def main():
     if args.query:
         async def run_query():
             result = await quick_query(
-                args.user,
                 args.query,
                 session_type=args.session,
                 channel=args.channel,
@@ -1514,7 +1490,6 @@ def main():
     elif args.interactive:
         async def interactive():
             async with DexAIClient(
-                user_id=args.user,
                 session_type=args.session,
                 channel=args.channel,
             ) as client:

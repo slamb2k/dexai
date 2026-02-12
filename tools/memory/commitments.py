@@ -53,6 +53,7 @@ from typing import Any
 
 import yaml
 
+from tools.agent.constants import OWNER_USER_ID
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -184,19 +185,18 @@ def parse_due_date(due_date_str: str) -> str | None:
 
 
 def add_commitment(
-    user_id: str,
     content: str,
     target_person: str | None = None,
     due_date: str | None = None,
     source_message_id: str | None = None,
     source_channel: str | None = None,
     notes: str | None = None,
+    user_id: str = OWNER_USER_ID,
 ) -> dict[str, Any]:
     """
     Add a new commitment.
 
     Args:
-        user_id: User identifier
         content: What was promised
         target_person: Who it was promised to
         due_date: When it's due (various formats accepted)
@@ -259,18 +259,17 @@ def add_commitment(
 
 
 def list_commitments(
-    user_id: str,
     status: str | None = None,
     target_person: str | None = None,
     limit: int = 50,
     offset: int = 0,
     group_by_person: bool = False,
+    user_id: str = OWNER_USER_ID,
 ) -> dict[str, Any]:
     """
     List commitments for a user.
 
     Args:
-        user_id: User identifier
         status: Filter by status ('active', 'completed', 'cancelled')
         target_person: Filter by target person
         limit: Maximum results
@@ -469,13 +468,13 @@ def cancel_commitment(commitment_id: str, notes: str | None = None) -> dict[str,
     return {"success": True, "message": f"Commitment {commitment_id} cancelled"}
 
 
-def get_due_soon(user_id: str, hours: int = 24) -> dict[str, Any]:
+def get_due_soon(hours: int = 24, user_id: str = OWNER_USER_ID) -> dict[str, Any]:
     """
     Get commitments due within the specified hours.
 
     Args:
-        user_id: User identifier
         hours: Number of hours to look ahead
+        user_id: User identifier
 
     Returns:
         dict with commitments due soon
@@ -514,7 +513,7 @@ def get_due_soon(user_id: str, hours: int = 24) -> dict[str, Any]:
     }
 
 
-def get_overdue(user_id: str) -> dict[str, Any]:
+def get_overdue(user_id: str = OWNER_USER_ID) -> dict[str, Any]:
     """Get all overdue commitments for a user."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -607,7 +606,7 @@ def extract_commitments_simple(text: str) -> list[dict[str, Any]]:
 
 
 def extract_commitments(
-    user_id: str, text: str, source_channel: str | None = None
+    text: str, source_channel: str | None = None, user_id: str = OWNER_USER_ID
 ) -> dict[str, Any]:
     """
     Extract and optionally store commitments from text.

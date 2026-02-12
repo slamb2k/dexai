@@ -36,6 +36,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from tools.agent.constants import OWNER_USER_ID
+
 logger = logging.getLogger(__name__)
 
 # Global service instance (lazy-initialized)
@@ -303,7 +305,7 @@ def dexai_commitments_add(
     content: str,
     target_person: str | None = None,
     due_date: str | None = None,
-    user_id: str = "default",
+    user_id: str = OWNER_USER_ID,
     source_channel: str = "agent",
 ) -> dict[str, Any]:
     """
@@ -394,7 +396,7 @@ def dexai_commitments_add(
 
 
 def dexai_commitments_list(
-    user_id: str = "default",
+    user_id: str = OWNER_USER_ID,
     status: str = "active",
     target_person: str | None = None,
     limit: int = 10,
@@ -497,7 +499,7 @@ def dexai_commitments_list(
 
 
 def dexai_context_capture(
-    user_id: str = "default",
+    user_id: str = OWNER_USER_ID,
     trigger: str = "manual",
     active_file: str | None = None,
     last_action: str | None = None,
@@ -591,7 +593,7 @@ def dexai_context_capture(
 
 
 def dexai_context_resume(
-    user_id: str = "default",
+    user_id: str = OWNER_USER_ID,
     snapshot_id: str | None = None,
 ) -> dict[str, Any]:
     """

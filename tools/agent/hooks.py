@@ -14,7 +14,7 @@ DexAI uses these for:
 Usage:
     from tools.agent.hooks import create_hooks, get_hook_performance_summary
 
-    hooks = create_hooks(user_id="alice", channel="telegram")
+    hooks = create_hooks(channel="telegram")
     options = ClaudeAgentOptions(hooks=hooks, ...)
 
     # Check hook performance
@@ -36,6 +36,8 @@ from typing import Any, Callable, Optional, TypeVar
 
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+from tools.agent.constants import OWNER_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -344,7 +346,6 @@ PROTECTED_PATHS = [
 
 
 def create_bash_security_hook(
-    user_id: str,
     block_dangerous: bool = True,
     log_suspicious: bool = True,
 ) -> Callable[[dict, str, Any], dict]:
@@ -355,7 +356,6 @@ def create_bash_security_hook(
     This provides defense-in-depth beyond RBAC permissions.
 
     Args:
-        user_id: User identifier for logging
         block_dangerous: Whether to block dangerous patterns
         log_suspicious: Whether to log suspicious patterns
 
@@ -383,10 +383,10 @@ def create_bash_security_hook(
             for pattern in DANGEROUS_BASH_PATTERNS:
                 if re.search(pattern, command, re.IGNORECASE):
                     logger.warning(
-                        f"BLOCKED dangerous command for {user_id}: {command[:100]}"
+                        f"BLOCKED dangerous command: {command[:100]}"
                     )
                     _log_security_event(
-                        user_id=user_id,
+                        user_id=OWNER_USER_ID,
                         event="dangerous_command_blocked",
                         command=command,
                         pattern=pattern,
@@ -407,10 +407,10 @@ def create_bash_security_hook(
             for pattern in SUSPICIOUS_BASH_PATTERNS:
                 if re.search(pattern, command, re.IGNORECASE):
                     logger.info(
-                        f"Suspicious command for {user_id}: {command[:100]}"
+                        f"Suspicious command: {command[:100]}"
                     )
                     _log_security_event(
-                        user_id=user_id,
+                        user_id=OWNER_USER_ID,
                         event="suspicious_command",
                         command=command,
                         pattern=pattern,
@@ -423,7 +423,6 @@ def create_bash_security_hook(
 
 
 def create_file_path_security_hook(
-    user_id: str,
     workspace_path: Optional[Path] = None,
 ) -> Callable[[dict, str, Any], dict]:
     """
@@ -432,7 +431,6 @@ def create_file_path_security_hook(
     Blocks writes to protected system paths and workspace escape attempts.
 
     Args:
-        user_id: User identifier for logging
         workspace_path: Optional workspace path to enforce boundary
 
     Returns:
@@ -468,10 +466,10 @@ def create_file_path_security_hook(
                     workspace_resolved = workspace_path.resolve()
                     if not str(resolved).startswith(str(workspace_resolved)):
                         logger.warning(
-                            f"BLOCKED path traversal escape for {user_id}: {file_path}"
+                            f"BLOCKED path traversal escape: {file_path}"
                         )
                         _log_security_event(
-                            user_id=user_id,
+                            user_id=OWNER_USER_ID,
                             event="path_traversal_blocked",
                             file_path=file_path,
                             resolved_path=str(resolved),
@@ -495,10 +493,10 @@ def create_file_path_security_hook(
             protected_expanded = protected.replace("~", str(Path.home()))
             if expanded_path.startswith(protected_expanded):
                 logger.warning(
-                    f"BLOCKED write to protected path for {user_id}: {file_path}"
+                    f"BLOCKED write to protected path: {file_path}"
                 )
                 _log_security_event(
-                    user_id=user_id,
+                    user_id=OWNER_USER_ID,
                     event="protected_path_blocked",
                     file_path=file_path,
                     protected_prefix=protected,
@@ -546,7 +544,6 @@ def _log_security_event(
 
 @async_timed_hook("save_context_on_stop")
 async def save_context_on_stop(
-    user_id: str,
     channel: str,
     session_data: dict | None = None,
 ) -> dict[str, Any]:
@@ -557,7 +554,6 @@ async def save_context_on_stop(
     This captures where the user was so they can pick up instantly.
 
     Args:
-        user_id: User whose context to save
         channel: Communication channel
         session_data: Optional session data from SDK
 
@@ -585,13 +581,13 @@ async def save_context_on_stop(
                 state["tool_count"] = session_data.get("tool_count", 0)
 
             snapshot_id = await service.capture_context(
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 state=state,
                 trigger="timeout",  # Session end is like a timeout
                 summary="Session ended - context saved for resumption",
             )
 
-            logger.info(f"Context saved on stop for user {user_id}: {snapshot_id}")
+            logger.info(f"Context saved on stop: {snapshot_id}")
             return {
                 "success": True,
                 "snapshot_id": snapshot_id,
@@ -603,7 +599,7 @@ async def save_context_on_stop(
             from tools.memory import context_capture
 
             result = context_capture.capture_context(
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 trigger="timeout",
                 channel=channel,
                 metadata=session_data,
@@ -611,7 +607,7 @@ async def save_context_on_stop(
             )
 
             if result.get("success"):
-                logger.info(f"Context saved on stop for user {user_id}")
+                logger.info("Context saved on stop")
             return result
 
     except Exception as e:
@@ -623,7 +619,6 @@ async def save_context_on_stop(
 
 
 def create_stop_hook(
-    user_id: str,
     channel: str,
 ) -> Callable[[dict], dict]:
     """
@@ -633,7 +628,6 @@ def create_stop_hook(
     save context for later resumption.
 
     Args:
-        user_id: User identifier
         channel: Communication channel
 
     Returns:
@@ -667,15 +661,15 @@ def create_stop_hook(
             if loop.is_running():
                 # Schedule for later execution
                 asyncio.create_task(
-                    save_context_on_stop(user_id, channel, session_data)
+                    save_context_on_stop(channel, session_data)
                 )
             else:
                 loop.run_until_complete(
-                    save_context_on_stop(user_id, channel, session_data)
+                    save_context_on_stop(channel, session_data)
                 )
         except RuntimeError:
             # No event loop - create one
-            asyncio.run(save_context_on_stop(user_id, channel, session_data))
+            asyncio.run(save_context_on_stop(channel, session_data))
 
         # Return empty dict to allow session to stop normally
         return {}
@@ -688,16 +682,11 @@ def create_stop_hook(
 # =============================================================================
 
 
-def create_audit_hook(
-    user_id: str,
-) -> Callable[[dict, str, Any], dict]:
+def create_audit_hook() -> Callable[[dict, str, Any], dict]:
     """
     Create a PreToolUse audit hook.
 
     Logs all tool usage for security audit trail.
-
-    Args:
-        user_id: User identifier
 
     Returns:
         Hook callback function (wrapped with timing)
@@ -728,7 +717,7 @@ def create_audit_hook(
             audit.log_event(
                 event_type="tool_use",
                 action=tool_name,
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 status="attempted",
                 details={
                     "tool_use_id": tool_use_id,
@@ -826,7 +815,6 @@ _COMPACTION_MARKER_PATH = PROJECT_ROOT / "data" / ".compaction_marker"
 
 
 def create_pre_compact_hook(
-    user_id: str,
     channel: str,
 ) -> Callable[[dict], dict]:
     """
@@ -836,7 +824,6 @@ def create_pre_compact_hook(
     gets summarized: flushes extraction queue, captures snapshot, writes marker.
 
     Args:
-        user_id: User identifier
         channel: Communication channel
 
     Returns:
@@ -856,20 +843,20 @@ def create_pre_compact_hook(
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 asyncio.create_task(
-                    _async_pre_compact(user_id, channel, trigger)
+                    _async_pre_compact(channel, trigger)
                 )
             else:
                 loop.run_until_complete(
-                    _async_pre_compact(user_id, channel, trigger)
+                    _async_pre_compact(channel, trigger)
                 )
         except RuntimeError:
-            asyncio.run(_async_pre_compact(user_id, channel, trigger))
+            asyncio.run(_async_pre_compact(channel, trigger))
 
         # Write compaction marker for UserPromptSubmit to detect
         try:
             _COMPACTION_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
             _COMPACTION_MARKER_PATH.write_text(
-                f"{user_id}|{channel}|{datetime.now().isoformat()}"
+                f"{OWNER_USER_ID}|{channel}|{datetime.now().isoformat()}"
             )
         except Exception as e:
             logger.debug(f"Failed to write compaction marker: {e}")
@@ -879,7 +866,7 @@ def create_pre_compact_hook(
     return pre_compact_hook
 
 
-async def _async_pre_compact(user_id: str, channel: str, trigger: str) -> None:
+async def _async_pre_compact(channel: str, trigger: str) -> None:
     """Async pre-compaction work: flush queue, capture snapshot."""
     try:
         from tools.memory.daemon import get_daemon
@@ -892,14 +879,13 @@ async def _async_pre_compact(user_id: str, channel: str, trigger: str) -> None:
             logger.info(f"Pre-compact: flushed {flushed} extraction jobs")
 
         # Invalidate L1 cache (will be rebuilt post-compaction)
-        daemon.invalidate_l1_cache(user_id)
+        daemon.invalidate_l1_cache(OWNER_USER_ID)
 
     except Exception as e:
         logger.debug(f"Pre-compact async work failed: {e}")
 
 
 def create_user_prompt_submit_hook(
-    user_id: str,
     channel: str,
 ) -> Callable[[dict], dict]:
     """
@@ -910,7 +896,6 @@ def create_user_prompt_submit_hook(
     topic shifts and cold starts.
 
     Args:
-        user_id: User identifier
         channel: Communication channel
 
     Returns:
@@ -927,7 +912,7 @@ def create_user_prompt_submit_hook(
         try:
             if _COMPACTION_MARKER_PATH.exists():
                 marker_data = _COMPACTION_MARKER_PATH.read_text().strip()
-                if marker_data.startswith(user_id):
+                if marker_data.startswith(OWNER_USER_ID):
                     compaction_occurred = True
                     _COMPACTION_MARKER_PATH.unlink(missing_ok=True)
         except Exception:
@@ -936,7 +921,7 @@ def create_user_prompt_submit_hook(
         if compaction_occurred:
             # Re-inject L1 memory context after compaction
             try:
-                memory_block = _sync_build_l1_block(user_id)
+                memory_block = _sync_build_l1_block()
                 if memory_block:
                     return {"systemMessage": memory_block}
             except Exception as e:
@@ -947,7 +932,7 @@ def create_user_prompt_submit_hook(
     return user_prompt_submit_hook
 
 
-def _sync_build_l1_block(user_id: str) -> str:
+def _sync_build_l1_block() -> str:
     """Synchronously build L1 memory block (for use in sync hooks)."""
     try:
         from tools.memory.l1_builder import build_l1_memory_block
@@ -959,15 +944,15 @@ def _sync_build_l1_block(user_id: str) -> str:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(
                         asyncio.run,
-                        build_l1_memory_block(user_id)
+                        build_l1_memory_block(OWNER_USER_ID)
                     )
                     return future.result(timeout=3.0)
             else:
                 return loop.run_until_complete(
-                    build_l1_memory_block(user_id)
+                    build_l1_memory_block(OWNER_USER_ID)
                 )
         except RuntimeError:
-            return asyncio.run(build_l1_memory_block(user_id))
+            return asyncio.run(build_l1_memory_block(OWNER_USER_ID))
     except Exception as e:
         logger.debug(f"Failed to build L1 block: {e}")
         return ""
@@ -979,7 +964,6 @@ def _sync_build_l1_block(user_id: str) -> str:
 
 
 def create_hooks(
-    user_id: str,
     channel: str = "direct",
     enable_security: bool = True,
     enable_audit: bool = True,
@@ -994,7 +978,6 @@ def create_hooks(
     This builds the hooks dict that can be passed to ClaudeAgentOptions.
 
     Args:
-        user_id: User identifier
         channel: Communication channel
         enable_security: Enable PreToolUse security checks (dangerous command blocking)
         enable_audit: Enable PreToolUse audit logging
@@ -1016,18 +999,18 @@ def create_hooks(
         # Bash security - block dangerous commands
         pre_hooks.append({
             "matcher": "Bash",
-            "hooks": [create_bash_security_hook(user_id)],
+            "hooks": [create_bash_security_hook()],
         })
         # File path security - block writes to protected paths and workspace escapes
         pre_hooks.append({
             "matcher": "Write|Edit|NotebookEdit|Read",
-            "hooks": [create_file_path_security_hook(user_id, workspace_path)],
+            "hooks": [create_file_path_security_hook(workspace_path)],
         })
 
     # Audit hooks (run after security checks)
     if enable_audit:
         pre_hooks.append({
-            "hooks": [create_audit_hook(user_id)],
+            "hooks": [create_audit_hook()],
         })
 
     if pre_hooks:
@@ -1046,20 +1029,20 @@ def create_hooks(
     # PreCompact hooks (memory checkpoint before compaction)
     if enable_memory:
         hooks["PreCompact"] = [{
-            "hooks": [create_pre_compact_hook(user_id, channel)],
+            "hooks": [create_pre_compact_hook(channel)],
         }]
 
     # UserPromptSubmit hooks (post-compaction re-injection)
     if enable_memory:
         hooks["UserPromptSubmit"] = [{
-            "hooks": [create_user_prompt_submit_hook(user_id, channel)],
+            "hooks": [create_user_prompt_submit_hook(channel)],
         }]
 
     # Stop hooks
     stop_hooks = []
     if enable_context_save:
         stop_hooks.append({
-            "hooks": [create_stop_hook(user_id, channel)],
+            "hooks": [create_stop_hook(channel)],
         })
 
     if stop_hooks:
@@ -1079,7 +1062,6 @@ def main():
     import json
 
     parser = argparse.ArgumentParser(description="DexAI SDK Hooks")
-    parser.add_argument("--user", default="test_user", help="User ID")
     parser.add_argument("--channel", default="cli", help="Channel")
     parser.add_argument("--test-stop", action="store_true", help="Test stop hook")
     parser.add_argument("--show-config", action="store_true", help="Show hooks config")
@@ -1141,7 +1123,7 @@ def main():
         return
 
     if args.show_config:
-        hooks = create_hooks(args.user, args.channel)
+        hooks = create_hooks(args.channel)
         print("Hooks configuration:")
         for hook_type, hook_list in hooks.items():
             print(f"\n{hook_type}:")
@@ -1149,8 +1131,8 @@ def main():
                 print(f"  Hook {i + 1}: {len(h.get('hooks', []))} callbacks")
 
     if args.test_stop:
-        print(f"Testing stop hook for user {args.user}...")
-        stop_hook = create_stop_hook(args.user, args.channel)
+        print(f"Testing stop hook...")
+        stop_hook = create_stop_hook(args.channel)
         result = stop_hook({"test": True})
         print(f"Result: {json.dumps(result, indent=2)}")
 

@@ -41,6 +41,7 @@ from typing import Any
 
 import yaml
 
+from tools.agent.constants import OWNER_USER_ID
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -101,7 +102,7 @@ Rules:
 """
 
 
-def get_latest_snapshot(user_id: str) -> dict | None:
+def get_latest_snapshot(user_id: str = OWNER_USER_ID) -> dict | None:
     """Get the most recent context snapshot for a user."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -159,7 +160,7 @@ def get_snapshot_by_id(snapshot_id: str) -> dict | None:
     return snapshot
 
 
-def get_recent_commitments(user_id: str, limit: int = 3) -> list[dict]:
+def get_recent_commitments(limit: int = 3, user_id: str = OWNER_USER_ID) -> list[dict]:
     """Get recent active commitments for context."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -309,7 +310,7 @@ def fetch_context(user_id: str, snapshot_id: str | None = None) -> dict[str, Any
 
 
 def resume_context(
-    user_id: str, snapshot_id: str | None = None, include_commitments: bool = True
+    snapshot_id: str | None = None, include_commitments: bool = True, user_id: str = OWNER_USER_ID
 ) -> dict[str, Any]:
     """
     Generate a resumption prompt for a user.
@@ -355,7 +356,7 @@ def resume_context(
             .get("include_recent_commits", True)
         )
         if include_commits_config:
-            commitments = get_recent_commitments(user_id, limit=3)
+            commitments = get_recent_commitments(limit=3, user_id=user_id)
 
     return {
         "success": True,

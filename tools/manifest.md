@@ -73,8 +73,8 @@ Pluggable memory backend system supporting multiple storage providers.
 
 | Tool | Description |
 |------|-------------|
-| `models.py` | Canonical data structures for cross-platform messaging (UnifiedMessage, Attachment, ChannelUser, MediaContent, ContentBlock) |
-| `inbox.py` | Message storage, cross-channel identity linking, and user preferences |
+| `models.py` | Canonical data structures for cross-platform messaging (UnifiedMessage, Attachment, MediaContent, ContentBlock) |
+| `inbox.py` | Message storage and conversation history |
 | `router.py` | Central message routing hub with integrated security pipeline |
 | `gateway.py` | WebSocket server for real-time communication backbone |
 | `telegram_adapter.py` | Telegram bot adapter using python-telegram-bot (polling mode, voice notes, attachment download) |

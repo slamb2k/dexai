@@ -14,7 +14,7 @@ The callback:
 Usage:
     from tools.agent.permissions import create_permission_callback
 
-    callback = create_permission_callback(user_id="alice", config=config)
+    callback = create_permission_callback(config=config)
     options = ClaudeAgentOptions(can_use_tool=callback, ...)
 """
 
@@ -28,6 +28,8 @@ from typing import Any, Callable, Union
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from tools.agent.constants import OWNER_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +122,6 @@ DEXAI_PERMISSION_MAPPING = {
 
 
 def create_permission_callback(
-    user_id: str,
     config: dict | None = None,
     channel: str = "direct",
     ask_user_handler: Callable | None = None,
@@ -132,7 +133,6 @@ def create_permission_callback(
     Handles AskUserQuestion specially for ADHD-friendly clarification.
 
     Args:
-        user_id: User identifier for permission checks
         config: Agent configuration (optional, loads from args/agent.yaml)
         channel: Communication channel (for formatting questions)
         ask_user_handler: Optional async callable to handle AskUserQuestion
@@ -172,7 +172,6 @@ def create_permission_callback(
         if tool_name == "AskUserQuestion":
             return _handle_ask_user_question(
                 tool_input=tool_input,
-                user_id=user_id,
                 channel=channel,
                 handler=ask_user_handler,
                 audit_enabled=audit_enabled,
@@ -184,7 +183,7 @@ def create_permission_callback(
         if not required_permission:
             # Unknown tool - default to deny for security
             _log_tool_use(
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 tool_name=tool_name,
                 tool_input=tool_input,
                 allowed=False,
@@ -210,7 +209,7 @@ def create_permission_callback(
 
             # Log the tool use
             _log_tool_use(
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 tool_name=tool_name,
                 tool_input=tool_input,
                 allowed=allowed,
@@ -236,7 +235,7 @@ def create_permission_callback(
         except ImportError:
             # Permission system not available - allow with warning
             _log_tool_use(
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 tool_name=tool_name,
                 tool_input=tool_input,
                 allowed=True,
@@ -248,7 +247,7 @@ def create_permission_callback(
         except Exception as e:
             # Error checking permissions - deny for safety
             _log_tool_use(
-                user_id=user_id,
+                user_id=OWNER_USER_ID,
                 tool_name=tool_name,
                 tool_input=tool_input,
                 allowed=False,
@@ -265,7 +264,6 @@ def create_permission_callback(
 
 def _handle_ask_user_question(
     tool_input: dict,
-    user_id: str,
     channel: str,
     handler: Callable | None,
     audit_enabled: bool,
@@ -278,7 +276,6 @@ def _handle_ask_user_question(
 
     Args:
         tool_input: Tool input containing questions
-        user_id: User ID
         channel: Communication channel
         handler: Optional async callable to handle question display
         audit_enabled: Whether to log
@@ -293,7 +290,7 @@ def _handle_ask_user_question(
 
     # Log the question attempt
     _log_tool_use(
-        user_id=user_id,
+        user_id=OWNER_USER_ID,
         tool_name="AskUserQuestion",
         tool_input={"question_count": len(questions)},
         allowed=True,
@@ -313,15 +310,15 @@ def _handle_ask_user_question(
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(
                             asyncio.run,
-                            handler(formatted_questions, user_id, channel)
+                            handler(formatted_questions, OWNER_USER_ID, channel)
                         )
                         answers = future.result(timeout=300)  # 5 min timeout
                 else:
                     answers = loop.run_until_complete(
-                        handler(formatted_questions, user_id, channel)
+                        handler(formatted_questions, OWNER_USER_ID, channel)
                     )
             else:
-                answers = handler(formatted_questions, user_id, channel)
+                answers = handler(formatted_questions, OWNER_USER_ID, channel)
 
             # Return with collected answers
             return PermissionResultAllow(
@@ -458,9 +455,9 @@ def _sanitize_for_logging(tool_input: dict) -> dict:
 
 
 def check_tool_permission(
-    user_id: str,
     tool_name: str,
-    config: dict | None = None
+    config: dict | None = None,
+    user_id: str = OWNER_USER_ID,
 ) -> dict[str, Any]:
     """
     Check if a user can use a specific tool (for testing/debugging).
@@ -521,7 +518,7 @@ def check_tool_permission(
         }
 
 
-def get_allowed_tools(user_id: str, config: dict | None = None) -> dict[str, Any]:
+def get_allowed_tools(config: dict | None = None, user_id: str = OWNER_USER_ID) -> dict[str, Any]:
     """
     Get list of tools a user is allowed to use.
 
@@ -584,7 +581,6 @@ def main():
     import json
 
     parser = argparse.ArgumentParser(description="SDK Permission Checker")
-    parser.add_argument("--user", help="User ID to check")
     parser.add_argument("--tool", help="Specific tool to check")
     parser.add_argument("--list-allowed", action="store_true", help="List all allowed tools")
     parser.add_argument("--list-mappings", action="store_true", help="List permission mappings")
@@ -604,9 +600,9 @@ def main():
         return
 
     if args.list_allowed:
-        result = get_allowed_tools(args.user)
+        result = get_allowed_tools()
         if result.get("success"):
-            print(f"Allowed tools for user '{args.user}':")
+            print(f"Allowed tools for owner:")
             print()
             print("SDK Tools:")
             for tool in result.get("allowed_sdk_tools", []):
@@ -622,7 +618,7 @@ def main():
         return
 
     if args.tool:
-        result = check_tool_permission(args.user, args.tool)
+        result = check_tool_permission(args.tool)
         status = "ALLOWED" if result.get("allowed") else "DENIED"
         print(f"{status}: {args.tool}")
         print(json.dumps(result, indent=2))

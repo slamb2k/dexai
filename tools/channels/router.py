@@ -37,7 +37,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.channels.models import ChannelUser, UnifiedMessage
+from tools.channels.models import UnifiedMessage
+from tools.agent.constants import OWNER_USER_ID
 
 
 def _log_to_dashboard(
@@ -319,8 +320,8 @@ class MessageRouter:
 
         Pipeline stages:
         1. Input sanitization - clean content, detect injection
-        2. User resolution - look up or create user record
-        3. Pairing check - verify user has completed pairing
+        2. Owner check - assign owner ID, verify channel allowlist
+        3. Setup gate - ensure onboarding complete for external channels
         4. Rate limit check - enforce request throttling
         5. Permission check - verify user can send messages
 
@@ -354,47 +355,31 @@ class MessageRouter:
         except Exception as e:
             context["sanitized"] = {"error": str(e)}
 
-        # 2. Get user from channel
-        try:
-            from tools.channels import inbox
+        # 2. Owner check — single-tenant: assign owner ID and verify allowlist
+        message.user_id = OWNER_USER_ID
 
-            user = inbox.get_user_by_channel(message.channel, message.channel_user_id)
-
-            if not user:
-                # New user - create but mark as unpaired
-                user = ChannelUser(
-                    id=str(uuid.uuid4()),
-                    channel=message.channel,
-                    channel_user_id=message.channel_user_id,
-                    display_name=message.metadata.get("display_name", "Unknown"),
-                    username=message.metadata.get("username"),
-                    is_paired=False,
-                )
-                inbox.create_or_update_user(user)
-
-            context["user"] = user.to_dict() if hasattr(user, "to_dict") else user
-            message.user_id = user.id
-
-        except Exception as e:
-            context["user"] = {"error": str(e)}
-            # Generate a temporary user ID if we can't look up
-            if not message.user_id:
-                message.user_id = f"temp_{message.channel}_{message.channel_user_id}"
-
-        # 3. Check if user is paired (required for full access)
-        user_obj = context.get("user", {})
-        is_paired = (
-            user_obj.get("is_paired", False)
-            if isinstance(user_obj, dict)
-            else getattr(user_obj, "is_paired", False)
-        )
-
-        if not is_paired:
-            return False, "user_not_paired", context
-
-        # 3.5 Setup gate - external messaging channels require setup completion
-        #     Only applies to real platform channels; web/cli/api/test channels skip this.
         _external_channels = ("telegram", "discord", "slack", "whatsapp")
+        if message.channel in _external_channels:
+            try:
+                import yaml as _yaml
+                from tools.agent import ARGS_DIR
+
+                _user_yaml = ARGS_DIR / "user.yaml"
+                if _user_yaml.exists():
+                    with open(_user_yaml) as _f:
+                        _user_cfg = _yaml.safe_load(_f) or {}
+                    allowed_ids = (
+                        _user_cfg.get("channels", {})
+                        .get("allowed_channel_user_ids", {})
+                        .get(message.channel, [])
+                    )
+                    if allowed_ids and message.channel_user_id not in [str(a) for a in allowed_ids]:
+                        return False, "channel_user_not_allowed", context
+            except Exception as e:
+                context["allowlist_check"] = {"error": str(e)}
+
+        # 3. Setup gate - external messaging channels require setup completion
+        #    Only applies to real platform channels; web/cli/api/test channels skip this.
         if message.channel in _external_channels:
             try:
                 from tools.setup.wizard import is_setup_complete
@@ -609,14 +594,7 @@ class MessageRouter:
         """
         channel = message.channel
 
-        # If no channel specified, use user's preferred channel
-        if not channel and message.user_id:
-            try:
-                from tools.channels import inbox
-
-                channel = inbox.get_preferred_channel(message.user_id)
-            except Exception:
-                pass
+        # Single-tenant: no preferred-channel lookup needed
 
         if not channel:
             return {"success": False, "error": "no_channel_specified"}
@@ -701,13 +679,12 @@ class MessageRouter:
             _update_dex_state("idle", None)
 
     async def broadcast(
-        self, user_id: str, content: str, priority: str = "normal"
+        self, content: str, priority: str = "normal"
     ) -> dict[str, Any]:
         """
-        Send notification to user via their preferred channel.
+        Send notification via the primary channel.
 
         Args:
-            user_id: Internal user ID
             content: Message content to send
             priority: Message priority ('low', 'normal', 'high')
 
@@ -717,42 +694,26 @@ class MessageRouter:
         channel = None
 
         try:
-            from tools.channels import inbox
+            import yaml as _yaml
+            from tools.agent import ARGS_DIR
 
-            # Get preferred channel
-            channel = inbox.get_preferred_channel(user_id)
-
-            if not channel:
-                # Get any linked channel
-                links = inbox.get_linked_channels(user_id)
-                if links:
-                    channel = links[0]["channel"]
-
+            _user_yaml = ARGS_DIR / "user.yaml"
+            if _user_yaml.exists():
+                with open(_user_yaml) as _f:
+                    _cfg = _yaml.safe_load(_f) or {}
+                channel = _cfg.get("channels", {}).get("primary")
         except Exception:
             pass
 
         if not channel:
-            return {"success": False, "error": "no_channel_for_user"}
-
-        # Look up channel_user_id for the target channel
-        channel_user_id = ""
-        try:
-            from tools.channels import inbox
-
-            links = inbox.get_linked_channels(user_id)
-            for link in links:
-                if link["channel"] == channel:
-                    channel_user_id = link["channel_user_id"]
-                    break
-        except Exception:
-            pass
+            return {"success": False, "error": "no_primary_channel"}
 
         message = UnifiedMessage(
             id=str(uuid.uuid4()),
             channel=channel,
             channel_message_id="",
-            user_id=user_id,
-            channel_user_id=channel_user_id,
+            user_id=OWNER_USER_ID,
+            channel_user_id="",
             direction="outbound",
             content=content,
             metadata={"priority": priority},

@@ -281,47 +281,11 @@ def commitment_database():
 
 
 @pytest.fixture
-def mock_paired_user():
-    """Create a mock user that is paired."""
-    from tools.channels.models import ChannelUser
-
-    return ChannelUser(
-        id="test_user_123",
-        channel="test_channel",
-        channel_user_id="channel_test_user",
-        display_name="Test User",
-        is_paired=True,
-    )
-
-
-@pytest.fixture
-def mock_unpaired_user():
-    """Create a mock user that is not paired."""
-    from tools.channels.models import ChannelUser
-
-    return ChannelUser(
-        id="unpaired_user",
-        channel="test_channel",
-        channel_user_id="channel_unpaired_user",
-        display_name="Unpaired User",
-        is_paired=False,
-    )
-
-
-@pytest.fixture
-def mock_inbox_module(mock_paired_user):
-    """Mock the inbox module for user lookups."""
-
-    def get_user_by_channel(channel: str, channel_user_id: str):
-        if channel_user_id == "channel_test_user":
-            return mock_paired_user
-        return None
+def mock_inbox_module():
+    """Mock the inbox module for message storage."""
 
     mock = MagicMock()
-    mock.get_user_by_channel = get_user_by_channel
-    mock.create_or_update_user = MagicMock()
     mock.store_message = MagicMock()
-    mock.get_preferred_channel = MagicMock(return_value="test_channel")
 
     return mock
 
