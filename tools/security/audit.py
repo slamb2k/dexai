@@ -237,6 +237,22 @@ def log_event(
     conn.commit()
     conn.close()
 
+    # Mirror to dashboard.db for unified observability
+    try:
+        from tools.dashboard.backend.database import log_audit as _dashboard_audit
+        _dashboard_audit(
+            event_type=event_type,
+            severity="warning" if status in ("failure", "blocked") else "info",
+            actor=user_id,
+            target=resource or action,
+            details=details,
+        )
+    except Exception as e:
+        try:
+            logger.warning(f"Dashboard audit mirror failed (non-fatal): {e}")
+        except Exception:
+            pass  # If logging itself fails, truly swallow
+
     return {
         "success": True,
         "event_id": event_id,

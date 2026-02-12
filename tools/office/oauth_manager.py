@@ -838,12 +838,18 @@ def get_account(account_id: str) -> dict[str, Any]:
         result = vault.get_secret(key, namespace="office_tokens")
         if result.get("success"):
             account["access_token"] = result["value"]
+        else:
+            logger.warning(f"Vault decryption failed for access token (account {account_id}): {result.get('error', 'unknown')}")
+            account["access_token"] = None
 
     if account.get("refresh_token_encrypted", "").startswith("vault:"):
         key = account["refresh_token_encrypted"].replace("vault:", "")
         result = vault.get_secret(key, namespace="office_tokens")
         if result.get("success"):
             account["refresh_token"] = result["value"]
+        else:
+            logger.warning(f"Vault decryption failed for refresh token (account {account_id}): {result.get('error', 'unknown')}")
+            account["refresh_token"] = None
 
     # Parse scopes
     if account.get("scopes"):

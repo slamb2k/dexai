@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from tools.dashboard.backend.services.chat_service import ChatService
@@ -22,6 +22,30 @@ from tools.dashboard.backend.services.chat_service import ChatService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+COOKIE_NAME = "dexai_session"
+
+
+async def _get_authenticated_user(request: Request) -> str:
+    """Extract and validate user from session cookie or bearer token."""
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        from tools.security.session import validate_session
+        result = validate_session(token, update_activity=True)
+        if result.get("valid"):
+            return result.get("user_id", "owner")
+    except ImportError:
+        pass
+
+    raise HTTPException(status_code=401, detail="Invalid or expired session")
 
 
 # =============================================================================
@@ -95,7 +119,7 @@ class ConversationsResponse(BaseModel):
 
 
 @router.post("/message", response_model=ChatMessageResponse)
-async def send_chat_message(request: ChatMessageRequest):
+async def send_chat_message(request: Request, body: ChatMessageRequest):
     """
     Send a chat message and receive a response.
 
@@ -103,14 +127,13 @@ async def send_chat_message(request: ChatMessageRequest):
     the assistant's response. The conversation is automatically
     persisted in the database.
     """
-    # TODO: Get user_id from authenticated session
-    user_id = "anonymous"
+    user_id = await _get_authenticated_user(request)
 
     service = ChatService(user_id=user_id)
 
     result = await service.send_message(
-        message=request.message,
-        conversation_id=request.conversation_id,
+        message=body.message,
+        conversation_id=body.conversation_id,
     )
 
     return ChatMessageResponse(
@@ -128,6 +151,7 @@ async def send_chat_message(request: ChatMessageRequest):
 
 @router.get("/history", response_model=ChatHistoryResponse)
 async def get_chat_history(
+    request: Request,
     conversation_id: str = Query(..., description="Conversation ID to get history for"),
     limit: int = Query(50, ge=1, le=200, description="Maximum messages to return"),
 ):
@@ -136,7 +160,7 @@ async def get_chat_history(
 
     Returns messages in chronological order (oldest first).
     """
-    user_id = "anonymous"
+    user_id = await _get_authenticated_user(request)
 
     service = ChatService(user_id=user_id)
     service._current_conversation_id = conversation_id
@@ -167,6 +191,7 @@ async def get_chat_history(
 
 @router.get("/conversations", response_model=ConversationsResponse)
 async def list_conversations(
+    request: Request,
     limit: int = Query(20, ge=1, le=100, description="Maximum conversations to return"),
 ):
     """
@@ -174,7 +199,7 @@ async def list_conversations(
 
     Returns conversations sorted by most recently updated first.
     """
-    user_id = "anonymous"
+    user_id = await _get_authenticated_user(request)
 
     service = ChatService(user_id=user_id)
     conversations = service.get_conversations(limit=limit)
@@ -195,11 +220,11 @@ async def list_conversations(
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(request: Request, conversation_id: str):
     """
     Delete a conversation and all its messages.
     """
-    user_id = "anonymous"
+    user_id = await _get_authenticated_user(request)
 
     service = ChatService(user_id=user_id)
     deleted = service.delete_conversation(conversation_id)
@@ -211,13 +236,13 @@ async def delete_conversation(conversation_id: str):
 
 
 @router.post("/conversations")
-async def create_conversation():
+async def create_conversation(request: Request):
     """
     Create a new empty conversation.
 
     Returns the new conversation ID.
     """
-    user_id = "anonymous"
+    user_id = await _get_authenticated_user(request)
 
     service = ChatService(user_id=user_id)
     conversation_id = service.get_or_create_conversation()
@@ -295,9 +320,24 @@ async def websocket_chat_stream(websocket: WebSocket):
     - Invalid JSON: {"type": "error", "error": "Invalid JSON"}
     - Missing message: {"type": "error", "error": "No message provided"}
     """
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+
+    try:
+        from tools.security.session import validate_session
+        result = validate_session(token, update_activity=True)
+        if not result.get("valid"):
+            await websocket.close(code=4001, reason="Invalid session")
+            return
+        user_id = result.get("user_id", "owner")
+    except ImportError:
+        await websocket.close(code=4001, reason="Auth module unavailable")
+        return
+
     await websocket.accept()
 
-    user_id = "anonymous"
     service = ChatService(user_id=user_id)
 
     try:

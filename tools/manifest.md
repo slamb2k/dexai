@@ -684,6 +684,7 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | `model_selector.py` | ModelSelector for subagent model selection: complexity scoring (0-10), heuristic analysis (technical terms, multi-step, codebase refs), agent-specific defaults |
 | `workspace_manager.py` | Per-user isolated workspaces with bootstrap files, scope-based lifecycle management, and security boundaries |
 | `skill_validator.py` | Skill testing and validation framework — shared core for MCP tools and CLI (syntax, security, execution checks) |
+| `sdk_tools.py` | SDK tool wrappers — exposes DexAI MCP tools via `@tool` decorator for the SDK MCP server (memory, task, automation, office, channel, ADHD, skill, dependency) |
 
 ### System Prompt Architecture
 

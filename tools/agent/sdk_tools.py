@@ -396,6 +396,92 @@ async def generate_image(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # =============================================================================
+# ADHD Tools
+# =============================================================================
+
+@tool(
+    "format_response",
+    "Format a response using ADHD-friendly rules (short, one-thing, no preamble)",
+    {"content": str, "max_sentences": int, "max_chars": int, "one_thing_mode": bool}
+)
+async def format_response(args: dict[str, Any]) -> dict[str, Any]:
+    """Format response for ADHD-friendly output."""
+    from tools.agent.mcp.adhd_tools import dexai_format_response
+
+    result = dexai_format_response(
+        content=args["content"],
+        max_sentences=args.get("max_sentences", 2),
+        max_chars=args.get("max_chars", 280),
+        one_thing_mode=args.get("one_thing_mode", True),
+    )
+    return _format_result(result)
+
+
+@tool(
+    "check_language",
+    "Detect and optionally reframe RSD-triggering language",
+    {"content": str, "auto_reframe": bool}
+)
+async def check_language(args: dict[str, Any]) -> dict[str, Any]:
+    """Check language for RSD triggers."""
+    from tools.agent.mcp.adhd_tools import dexai_check_language
+
+    result = dexai_check_language(
+        content=args["content"],
+        auto_reframe=args.get("auto_reframe", True),
+    )
+    return _format_result(result)
+
+
+# =============================================================================
+# Skill Tools
+# =============================================================================
+
+@tool(
+    "validate_skill",
+    "Validate a skill for correctness (file existence, YAML, required fields, dangerous patterns)",
+    {"skill_name": str}
+)
+async def validate_skill(args: dict[str, Any]) -> dict[str, Any]:
+    """Validate a skill."""
+    from tools.agent.mcp.skill_tools import dexai_validate_skill
+
+    result = dexai_validate_skill(
+        skill_name=args["skill_name"],
+    )
+    return _format_result(result)
+
+
+@tool(
+    "test_skill",
+    "Test a skill by parsing and simulating execution",
+    {"skill_name": str, "dry_run": bool}
+)
+async def test_skill(args: dict[str, Any]) -> dict[str, Any]:
+    """Test a skill."""
+    from tools.agent.mcp.skill_tools import dexai_test_skill
+
+    result = dexai_test_skill(
+        skill_name=args["skill_name"],
+        dry_run=args.get("dry_run", True),
+    )
+    return _format_result(result)
+
+
+@tool(
+    "list_skills",
+    "List all available skills with validation status",
+    {}
+)
+async def list_skills(args: dict[str, Any]) -> dict[str, Any]:
+    """List all skills."""
+    from tools.agent.mcp.skill_tools import dexai_list_skills
+
+    result = dexai_list_skills()
+    return _format_result(result)
+
+
+# =============================================================================
 # Dependency Tools (Skill Package Management)
 # =============================================================================
 
@@ -504,6 +590,13 @@ ALL_TOOLS = [
     # Channel
     channel_pair,
     generate_image,
+    # ADHD
+    format_response,
+    check_language,
+    # Skill
+    validate_skill,
+    test_skill,
+    list_skills,
     # Dependency (Skill Package Management)
     get_skill_dependency_setting,
     verify_package,
