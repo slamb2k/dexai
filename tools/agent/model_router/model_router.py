@@ -40,6 +40,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Circuit breaker for external API providers
+try:
+    from tools.ops.circuit_breaker import circuit_breaker as _circuit_breaker
+except ImportError:
+    _circuit_breaker = None
+
 # Path constants
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 ARGS_DIR = PROJECT_ROOT / "args"
@@ -748,6 +754,18 @@ class ModelRouter:
             model = MODELS["claude-haiku-4.5"]
             logger.warning(f"Tool calling required, fell back to {model.display_name}")
 
+        # Check circuit breaker for the selected provider
+        if _circuit_breaker is not None and not _circuit_breaker.can_execute(model.provider):
+            logger.warning(
+                f"Circuit open for provider '{model.provider}', "
+                f"attempting fallback"
+            )
+            # Try to find a fallback model from a different provider
+            fallback_model = self._find_fallback_model(model, requires_tool_calling)
+            if fallback_model is not None:
+                model = fallback_model
+                logger.info(f"Fell back to {model.display_name} (provider: {model.provider})")
+
         subagent_strategy = self._subagent_strategies.get(
             complexity, SUBAGENT_STRATEGIES[TaskComplexity.MODERATE]
         )
@@ -765,6 +783,55 @@ class ModelRouter:
                 f"haiku->{subagent_strategy.haiku_model.split('/')[-1]}."
             ),
         )
+
+    def _find_fallback_model(
+        self,
+        original: ModelSpec,
+        requires_tool_calling: bool = True,
+    ) -> ModelSpec | None:
+        """Find a fallback model from a different provider when circuit is open.
+
+        Prefers models of the same tier, then adjacent tiers.
+
+        Args:
+            original: The model whose provider circuit is open.
+            requires_tool_calling: Whether tool calling support is required.
+
+        Returns:
+            A fallback ModelSpec, or None if no suitable fallback exists.
+        """
+        if _circuit_breaker is None:
+            return None
+
+        candidates = []
+        for key, spec in MODELS.items():
+            if spec.provider == original.provider:
+                continue
+            if requires_tool_calling and not spec.supports_tool_calling:
+                continue
+            if not _circuit_breaker.can_execute(spec.provider):
+                continue
+            candidates.append(spec)
+
+        if not candidates:
+            return None
+
+        # Sort by tier closeness to original, then by cost
+        tier_order = [ModelTier.PREMIUM, ModelTier.STANDARD, ModelTier.EFFICIENT, ModelTier.BUDGET]
+        try:
+            original_idx = tier_order.index(original.tier)
+        except ValueError:
+            original_idx = 1  # Default to standard
+
+        def sort_key(spec: ModelSpec) -> tuple[int, float]:
+            try:
+                idx = tier_order.index(spec.tier)
+            except ValueError:
+                idx = 4
+            return (abs(idx - original_idx), spec.cost_per_1m_input)
+
+        candidates.sort(key=sort_key)
+        return candidates[0]
 
     def build_options_dict(
         self,

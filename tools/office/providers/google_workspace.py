@@ -132,20 +132,27 @@ class GoogleWorkspaceProvider(OfficeProvider):
             return {"success": False, "error": error_msg}
 
     async def authenticate(self) -> dict[str, Any]:
-        """Verify authentication by making a test API call."""
+        """Verify authentication by making a test API call.
+
+        Uses proactive token refresh to avoid mid-operation expiry.
+        """
         if not self.account.access_token:
             return {"success": False, "error": "No access token"}
 
-        # Check if token is expired
-        if self.account.is_token_expired():
-            # Try to refresh
+        # Proactive refresh: check expiry *before* making the API call
+        from tools.office.oauth_manager import get_valid_access_token
+
+        refreshed = await get_valid_access_token("google", self.account.id)
+        if refreshed:
+            self.account.access_token = refreshed
+        elif self.account.is_token_expired():
+            # Fallback: reactive refresh if proactive refresh returned None
             if self.account.refresh_token:
                 from tools.office.oauth_manager import refresh_access_token
 
                 result = await refresh_access_token("google", self.account.refresh_token)
                 if result.get("success"):
                     self.account.access_token = result["access_token"]
-                    # Update expiry
                     expires_in = result.get("expires_in", 3600)
                     self.account.token_expiry = datetime.now() + timedelta(seconds=expires_in)
                 else:
