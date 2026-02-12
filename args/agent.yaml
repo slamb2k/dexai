@@ -249,6 +249,40 @@ security:
   # Audit all tool uses
   audit_tool_use: true
 
+  # Egress filtering — domain allowlist for WebFetch/WebSearch (V-4)
+  egress:
+    enabled: true
+    # Domains allowed for WebFetch (supports wildcards via fnmatch)
+    allowed_domains:
+      # Development resources
+      - "github.com"
+      - "*.github.com"
+      - "raw.githubusercontent.com"
+      - "stackoverflow.com"
+      - "*.stackoverflow.com"
+      - "*.stackexchange.com"
+      # Package registries
+      - "pypi.org"
+      - "*.pypi.org"
+      - "npmjs.com"
+      - "*.npmjs.com"
+      # Documentation
+      - "readthedocs.io"
+      - "*.readthedocs.io"
+      - "docs.python.org"
+      - "*.python.org"
+      - "nodejs.org"
+      - "developer.mozilla.org"
+      # AI/ML resources
+      - "docs.anthropic.com"
+      - "platform.openai.com"
+      # General reference
+      - "wikipedia.org"
+      - "*.wikipedia.org"
+      - "en.wikipedia.org"
+    # Action for non-allowlisted domains: "block" or "log_and_allow"
+    action: "block"
+
 # -----------------------------------------------------------------------------
 # Cost Tracking
 # -----------------------------------------------------------------------------
