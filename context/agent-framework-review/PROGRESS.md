@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-02-12
 > **Total findings across 6 reviews:** ~174 distinct items
-> **Completed:** ~50 items | **Remaining:** ~71 actionable items | **Accepted risk:** ~9 items
+> **Completed:** ~67 items | **Remaining:** ~54 actionable items | **Accepted risk:** ~9 items
 
 **Source documents** (relative to `context/agent-framework-review/`):
 
@@ -82,12 +82,25 @@
 | OAUTH-1 | PKCE (S256) added to OAuth authorization + token exchange | `05:292, 397-403` |
 | MCP-1 | Per-tool MCP authorization replaces wildcard `mcp__dexai__*` | `05:172-174, 417-428` |
 
-### PR #94 — Tier 3 Architecture + Tier 4 Observability & Operations (2026-02-12)
-**Impact:** 15 files modified, 3 new modules created — migration framework, structured logging, consolidated audit, memory auditing, hook metrics persistence, cost tracking, budget alerting, SQLite backup
+### PR #94 — Tier 3 Architecture & State (2026-02-12)
+**Impact:** 20 files changed, +2,975/-1,982 lines — sdk_client split, handler extraction, SQLite sessions, per-channel queues, config validation, crash recovery
 
 | ID | Item | Source |
 |----|------|--------|
-| OPS-3 | Database migration framework (forward-only, numbered SQL files) | `06:287-293, 467-471` |
+| AD-1/R-1 | Split `sdk_client.py` (1594 lines) into 4 focused modules (client_factory, query_engine, response_formatter, facade) | `01:441, 512-520` |
+| AD-2/R-6 | Extract channel-specific streaming handlers from `sdk_handler.py` into `handlers/` package (slack, discord, telegram) | `01:442, 567-574` |
+| AD-5/R-3 | Migrate session storage from JSON to SQLite with automatic one-time migration | `01:445, 537-543` |
+| AD-7/R-2 | Per-channel message queue locking (asyncio.Lock per channel ID, 5-min timeout) | `01:452, 522-534` |
+| WS-3 | Persist Claude Agent SDK session IDs in SQLite for cross-restart resumption | `04:131-132, 647` |
+| AD-4/R-4 | Pydantic v2 validation for 6 core configs (agent, routing, memory, multimodal, security, workspace) | `01:444, 545-556` |
+| WS-4 | SQLite-backed extraction queue with crash recovery (pending items recovered on daemon startup) | `04:653-654` |
+
+### PR #95 — Tier 4 Observability & Operations (2026-02-12)
+**Impact:** 23 files changed, +1,143/-348 lines — migration framework, structured logging, consolidated audit, memory auditing, hook metrics persistence, cost tracking, budget alerting, SQLite backup
+
+| ID | Item | Source |
+|----|------|--------|
+| OPS-3 | Database migration framework (forward-only, numbered SQL files) — also covers FP-4 from Review 02 | `06:287-293, 467-471` + `02:536-543` |
 | OBS-P0-3/LOG-1 | Structured JSON logging via structlog wrapping stdlib | `06:81-82, 416-421` |
 | OBS-P1-4/AUDIT-2 | Consolidated dual audit trail into single source (security/audit.py) | `06:130-147, 424-430` |
 | OBS-P1-7 | Memory access auditing for all 6 memory MCP tools | `06:114-119, 444-449` |
@@ -96,39 +109,24 @@
 | OBS-P1-6/COST-2 | Budget alerting at 80%/95%/100% thresholds (audit + dashboard) | `06:177-178, 437-443` |
 | OPS-4/OPS-5 | WAL-safe SQLite backup with gzip compression and retention | `06:295-306, 459-466` |
 
+### PR #XX — Tier 5 Deployment & Ergonomics (2026-02-12)
+**Impact:** 11 files changed — .env.dev deletion, vault-only key storage, sandbox fail-closed defaults, dependency cleanup, CSP header, TLS env var, systemd hardening, dockerignore
+
+| ID | Item | Source |
+|----|------|--------|
+| SR-3 | Delete `.env.dev` with real API keys | `02:456-467` |
+| SR-4 | Vault-only API key storage (remove `.env` file writes) | `02:470-491` |
+| V-19/S-3 | Fix sandbox defaults: enabled=True, allow_unsandboxed=False | `03:154, 378, 438` |
+| FP-7 | Remove `python-telegram-bot` from core dependencies | `02:574-581` |
+| AD-9 | Remove dead TUI dependencies (textual, rich) | `01:454` |
+| FP-5 | Configurable TLS mode via `{$CADDY_TLS_MODE}` env var | `02:545-558` |
+| EI-6 | Content-Security-Policy header in Caddyfile | `02:671-680` |
+| EI-4 | Systemd kernel/namespace/SUID hardening directives | `02:631-647` |
+| EI-5 | Enhanced `.dockerignore` exclusions | `02:650-669` |
+
 ---
 
 ## Remaining Work — By Priority Tier
-
-### Tier 3: Architecture & State (Medium Impact, Medium Effort)
-
-| ID | Item | Severity | Effort | Files | Source |
-|----|------|----------|--------|-------|--------|
-| AD-1/R-1 | Split `sdk_client.py` (1557 lines) into focused modules | High | Medium | sdk_client.py → 3+ files | `01:441, 512-520` |
-| AD-2/R-6 | Extract channel-specific handlers from `sdk_handler.py` | Medium | Medium | sdk_handler.py | `01:442, 567-574` |
-| AD-5/R-3 | Migrate session storage from JSON to SQLite | Medium | Low-Medium | session_manager.py | `01:445, 537-543` |
-| AD-7/R-2 | Add per-user message queue (asyncio.Lock) | High | Medium | router.py | `01:452, 522-534` |
-| WS-3 | Persist Claude Agent SDK session IDs for cross-restart resumption | High | Medium | session_manager.py | `04:131-132, 647` |
-| AD-4/R-4 | Add config validation (Pydantic models for args/*.yaml) | Medium | Low | New module | `01:444, 545-556` |
-| WS-4 | Crash recovery for extraction queue | Medium | Low | daemon.py | `04:653-654` |
-
-### Tier 4: Observability & Operations — COMPLETED (PR #94)
-
-All 8 items completed. See Completed Work section above.
-
-### Tier 5: Deployment & Ergonomics (Low-Medium Impact, Low Effort)
-
-| ID | Item | Severity | Effort | Files | Source |
-|----|------|----------|--------|-------|--------|
-| SR-3 | Remove `.env.dev` with real API keys (rotate keys) | High | 15 min | .env.dev | `02:456-467` |
-| SR-4 | Stop writing API keys to `.env` during setup | Medium-High | 30 min | setup_flow.py | `02:470-491` |
-| FP-5 | Remove `local_certs` hardcoding in Caddyfile | Low | 15 min | Caddyfile | `02:545-558` |
-| FP-7 | Remove duplicated `python-telegram-bot` dependency | Low | 5 min | pyproject.toml | `02:574-581` |
-| EI-4 | Add systemd hardening directives | Low | 15 min | systemd unit | `02:631-647` |
-| EI-5 | Add `.dockerignore` to reduce image size | Low | 10 min | New | `02:650-669` |
-| EI-6 | Content-Security-Policy header | Low | 30 min | backend | `02:671-680` |
-| AD-9 | Remove dead TUI dependencies (textual, rich ~30MB) | Low | Low | pyproject.toml | `01:454` |
-| V-19/S-3 | Fix sandbox default in code (False→True in sdk_client.py:623) | Medium | 1 line | sdk_client.py | `03:154, 378, 438` |
 
 ### Tier 6: Advanced / Long-Term (High Impact, High Effort)
 
@@ -140,7 +138,6 @@ All 8 items completed. See Completed Work section above.
 | V-24 | Secret rotation mechanism | Low | ~100 lines | vault.py | `03:238, 388, 465` |
 | CI-1/V-17 | Vault salt stored as plaintext file | Medium (CVSS 5.5) | Medium | vault.py | `03:235, 376` |
 | FP-2 | Rewrite install.sh (1078 lines, complex/fragile) | Medium | 2-3 hours | install.sh | `02:512-522` |
-| FP-4 | Database migration framework | Medium | 2-4 hours | New | `02:536-543` |
 | FP-6 | Master key rotation (re-encryption logic) | Medium | 2-3 hours | vault.py | `02:561-571` |
 | EI-1 | `dexai doctor` diagnostic command | Medium | 3-4 hours | New | `02:585-603` |
 | EXT-1 | Skill testing & validation MCP tool | High | High | New | `05:119, 383-395` |
@@ -171,14 +168,14 @@ All 8 items completed. See Completed Work section above.
 ## Progress Summary
 
 ```
-Review 01 (Core Architecture):     3/13 items addressed  (23%)
-Review 02 (Installation/Deploy):   2/17 items addressed  (12%)
-Review 03 (Sandbox/Security):     23/58 items addressed  (40%)  ← Tier 2 PR
-Review 04 (Session/State):         8/12 items addressed  (67%)  ← Single-tenant PR
+Review 01 (Core Architecture):     9/13 items addressed  (69%)  ← AD-9 in Tier 5 PR
+Review 02 (Installation/Deploy):  10/17 items addressed  (59%)  ← Tier 5 PR (+7)
+Review 03 (Sandbox/Security):     24/58 items addressed  (41%)  ← V-19 in Tier 5 PR
+Review 04 (Session/State):        10/12 items addressed  (83%)  ← Tier 3 PR
 Review 05 (Extensibility):         4/17 items addressed  (24%)  ← PKCE + MCP auth
 Review 06 (Observability):        10/39 items addressed  (26%)  ← Tier 4 PR
                                   ─────────────────────────────
-Overall:                          ~50/156 items addressed (32%)
+Overall:                          ~67/156 items addressed (43%)
 ```
 
 ### What's been done well
@@ -189,12 +186,15 @@ Overall:                          ~50/156 items addressed (32%)
 - **Fail-closed security model** in new code (office tools, workspace hooks, egress filter)
 - **OAuth hardened with PKCE (S256)** — code_challenge/code_verifier flow for Google and Microsoft
 - **MCP tool access scoped** — per-tool authorization replaces wildcard pattern
+- **Full Tier 3 Architecture shipped** — sdk_client split into 4 modules, SQLite sessions, per-channel queues, Pydantic config validation, crash-recoverable extraction queue
 - **Full Tier 4 Observability shipped** — structured logging, consolidated audit, cost tracking, budget alerting, migration framework, backup system
+- **Full Tier 5 Deployment & Ergonomics shipped** — .env.dev deleted, vault-only key storage, sandbox fail-closed defaults, dependency cleanup, CSP header, TLS env var, systemd hardening, dockerignore
 
 ### Highest-value next steps
-1. **Tier 5 Quick Fixes** — `.env.dev` cleanup (SR-3), sandbox default fix (V-19), dependency dedup (FP-7) are minutes each
-2. **Tier 3 Architecture** — `sdk_client.py` split and session SQLite migration reduce maintenance burden
-3. **Tier 6 Advanced** — Operational runbooks (OBS-P2-8) and "Show Your Work" mode (OBS-P2-11) build on the new observability foundation
+1. **Operational Runbooks** (OBS-P2-8) — 9 scenarios identified; builds on the new observability foundation from Tier 4
+2. **Vault Salt Hardening** (CI-1/V-17) and **Secret Rotation** (V-24) — close remaining credential management gaps
+3. **"Show Your Work" Mode** (OBS-P2-11/TRANS-3) — transparency layer leveraging structured logging and audit trail
+4. **Skill Testing & Validation** (EXT-1) — highest-severity extensibility gap remaining
 
 ---
 
@@ -217,4 +217,4 @@ For items spanning multiple reviews, read the source from each listed file. The 
 
 ---
 
-*Generated from cross-referencing 6 review documents against git history (PRs #65–67, #87, #89–91, #93–94).*
+*Generated from cross-referencing 6 review documents against git history (PRs #65–67, #87, #89–95, #XX).*

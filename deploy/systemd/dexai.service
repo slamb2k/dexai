@@ -46,6 +46,14 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/opt/dexai/data /opt/dexai/memory /opt/dexai/logs
 PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
 
 # Logging
 StandardOutput=journal

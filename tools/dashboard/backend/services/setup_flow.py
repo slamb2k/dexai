@@ -1297,38 +1297,30 @@ class SetupFlowService:
 
         os.environ["ANTHROPIC_API_KEY"] = api_key
 
+        vault_ok = False
         try:
             from tools.security import vault
             vault.set_secret("ANTHROPIC_API_KEY", api_key, namespace="default")
+            vault_ok = True
         except Exception as e:
             logger.warning(f"Could not store API key in vault: {e}")
 
-        try:
-            env_path = PROJECT_ROOT / ".env"
-            if env_path.exists():
-                content = env_path.read_text()
-                if "ANTHROPIC_API_KEY=" in content:
-                    lines = content.splitlines()
-                    new_lines = [
-                        f"ANTHROPIC_API_KEY={api_key}" if line.startswith("ANTHROPIC_API_KEY=") else line
-                        for line in lines
-                    ]
-                    env_path.write_text("\n".join(new_lines) + "\n")
-                else:
-                    with open(env_path, "a") as f:
-                        f.write(f"\nANTHROPIC_API_KEY={api_key}\n")
-            else:
-                env_path.write_text(f"ANTHROPIC_API_KEY={api_key}\n")
-        except Exception as e:
-            logger.warning(f"Could not write API key to .env: {e}")
-
         self._invalidate_cache()
 
-        yield {
-            "type": "chunk",
-            "content": "\n\nAPI key verified and stored!",
-            "conversation_id": self.conversation_id,
-        }
+        if vault_ok:
+            yield {
+                "type": "chunk",
+                "content": "\n\nAPI key verified and stored in vault!",
+                "conversation_id": self.conversation_id,
+            }
+        else:
+            yield {
+                "type": "chunk",
+                "content": "\n\nAPI key verified, but could not store in vault. "
+                "It will work for this session but won't persist across restarts. "
+                "Check vault configuration.",
+                "conversation_id": self.conversation_id,
+            }
 
         # Signal the frontend to reload (clear chat, re-fetch welcome bundle)
         # instead of continuing the setup flow inline.
