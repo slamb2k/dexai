@@ -231,6 +231,77 @@ def log_event(
     return event_id
 
 
+def record_tool_use(
+    tool_name: str,
+    tool_use_id: str,
+    success: bool,
+    user_id: str | None = None,
+    duration_ms: float | None = None,
+    details: dict | None = None,
+) -> int:
+    """Record a tool use event for dashboard analytics."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """INSERT INTO dashboard_events (event_type, timestamp, user_id, summary, details, severity)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                "tool_use",
+                datetime.now().isoformat(),
+                user_id or "system",
+                f"Tool: {tool_name} ({'ok' if success else 'fail'})",
+                json.dumps({
+                    "tool_name": tool_name,
+                    "tool_use_id": tool_use_id,
+                    "success": success,
+                    "duration_ms": duration_ms,
+                    **(details or {}),
+                }),
+                "info" if success else "warning",
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+    finally:
+        conn.close()
+
+
+def log_audit(
+    event_type: str,
+    severity: str = "info",
+    actor: str | None = None,
+    target: str | None = None,
+    details: dict | None = None,
+) -> int:
+    """Log an audit event to the dashboard database.
+
+    Cross-module audit sink called by security modules
+    (vault, session, permissions, ratelimit) and dependency_tools.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """INSERT INTO dashboard_events (event_type, timestamp, user_id, summary, details, severity)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                event_type,
+                datetime.now().isoformat(),
+                actor or "system",
+                f"{event_type}: {target or 'n/a'}",
+                json.dumps({
+                    "severity": severity,
+                    "target": target,
+                    **(details or {}),
+                }),
+                severity,
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+    finally:
+        conn.close()
+
+
 def get_events(
     event_type: str | None = None,
     severity: str | None = None,
