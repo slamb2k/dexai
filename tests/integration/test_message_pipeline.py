@@ -71,7 +71,7 @@ class TestSecurityPipeline:
                 "security": {"recommendation": "allow"},
             }
 
-            allowed, reason, _context = await router.security_pipeline(message)
+            allowed, _reason, _context = await router.security_pipeline(message)
 
             assert allowed is False
 
