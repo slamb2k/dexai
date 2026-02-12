@@ -362,11 +362,33 @@ def stubbed_env(tmp_path: Path, install_dir: Path) -> dict[str, str]:
 
     # Symlink basic utilities that install.sh needs (sort, grep, mkdir, etc.)
     _basic_utils = [
-        "bash", "sh",
-        "sort", "grep", "mkdir", "chmod", "cp", "touch", "cat",
-        "printf", "sed", "awk", "rm", "ls", "tr", "head", "tail",
-        "tee", "wc", "basename", "dirname", "readlink", "id", "env",
-        "od", "cut", "sleep",
+        "bash",
+        "sh",
+        "sort",
+        "grep",
+        "mkdir",
+        "chmod",
+        "cp",
+        "touch",
+        "cat",
+        "printf",
+        "sed",
+        "awk",
+        "rm",
+        "ls",
+        "tr",
+        "head",
+        "tail",
+        "tee",
+        "wc",
+        "basename",
+        "dirname",
+        "readlink",
+        "id",
+        "env",
+        "od",
+        "cut",
+        "sleep",
     ]
     for util in _basic_utils:
         real = shutil.which(util)
@@ -379,53 +401,50 @@ def stubbed_env(tmp_path: Path, install_dir: Path) -> dict[str, str]:
     # curl — succeeds; handles health-check probes (localhost)
     _make_stub(
         "curl",
-        '#!/bin/bash\n'
-        'if [[ "$*" == *"localhost"* ]]; then exit 0; fi\n'
-        'exit 0\n',
+        '#!/bin/bash\nif [[ "$*" == *"localhost"* ]]; then exit 0; fi\nexit 0\n',
     )
 
     # python3 — handles version check invocation
     _make_stub(
         "python3",
-        '#!/bin/bash\n'
+        "#!/bin/bash\n"
         'if [[ "$*" == *"sys.version_info"* ]]; then\n'
         '    echo "3.12"\n'
-        'else\n'
-        '    exit 0\n'
-        'fi\n',
+        "else\n"
+        "    exit 0\n"
+        "fi\n",
     )
 
     # uv — creates fake venv so `source .venv/bin/activate` works
     _make_stub(
         "uv",
-        '#!/bin/bash\n'
+        "#!/bin/bash\n"
         'if [[ "$1" == "venv" ]] && [[ -n "$2" ]]; then\n'
         '    mkdir -p "$2/bin"\n'
         '    echo "# fake activate" > "$2/bin/activate"\n'
-        'fi\n'
-        'exit 0\n',
+        "fi\n"
+        "exit 0\n",
     )
 
     # docker — compose-aware stub (required in default mode)
     _make_stub(
         "docker",
-        '#!/bin/bash\n'
+        "#!/bin/bash\n"
         'if [[ "$1" == "compose" ]]; then\n'
         '    if [[ "$2" == "version" ]]; then\n'
         '        echo "Docker Compose version v2.20.0"\n'
-        '    fi\n'
-        '    exit 0\n'
-        'fi\n'
+        "    fi\n"
+        "    exit 0\n"
+        "fi\n"
         'if [[ "$1" == "info" ]]; then exit 0; fi\n'
         'if [[ "$1" == "--version" ]]; then echo "Docker version 24.0.0, build abc123"; fi\n'
-        'exit 0\n',
+        "exit 0\n",
     )
 
     # node — returns v20
     _make_stub(
         "node",
-        '#!/bin/bash\n'
-        'if [[ "$1" == "--version" ]]; then echo "v20.0.0"; else echo "v20.0.0"; fi\n',
+        '#!/bin/bash\nif [[ "$1" == "--version" ]]; then echo "v20.0.0"; else echo "v20.0.0"; fi\n',
     )
 
     # npm — succeeds for any invocation
@@ -434,8 +453,7 @@ def stubbed_env(tmp_path: Path, install_dir: Path) -> dict[str, str]:
     # openssl — returns deterministic hex for master key generation
     _make_stub(
         "openssl",
-        '#!/bin/bash\n'
-        'echo "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"\n',
+        '#!/bin/bash\necho "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"\n',
     )
 
     # uname — returns Linux

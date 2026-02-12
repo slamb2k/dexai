@@ -106,10 +106,10 @@ class TestDockerDefault:
         bin_dir = stubbed_env["PATH"].split(":")[0]
         docker_stub = Path(bin_dir) / "docker"
         docker_stub.write_text(
-            '#!/bin/bash\n'
+            "#!/bin/bash\n"
             'if [[ "$1" == "info" ]]; then exit 1; fi\n'
             'if [[ "$1" == "--version" ]]; then echo "Docker version 24.0.0"; fi\n'
-            'exit 0\n'
+            "exit 0\n"
         )
         docker_stub.chmod(0o755)
         result = run_install(env=stubbed_env)
@@ -282,12 +282,12 @@ class TestPrerequisites:
         bin_dir = stubbed_env["PATH"].split(":")[0]
         old_python = Path(bin_dir) / "python3"
         old_python.write_text(
-            '#!/bin/bash\n'
+            "#!/bin/bash\n"
             'if [[ "$*" == *"sys.version_info"* ]]; then\n'
             '    echo "3.9"\n'
-            'else\n'
-            '    exit 0\n'
-            'fi\n'
+            "else\n"
+            "    exit 0\n"
+            "fi\n"
         )
         old_python.chmod(0o755)
         result = run_install("--local", env=stubbed_env)
