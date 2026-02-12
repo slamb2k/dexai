@@ -343,7 +343,7 @@ class MessageRouter:
             # Check if content should be blocked
             security = sanitize_result.get("security", {})
             recommendation = security.get("recommendation", "allow")
-            if recommendation in ["block", "escalate"]:
+            if recommendation in ["sanitize", "block", "escalate"]:
                 return False, "content_blocked", context
 
             # Use sanitized content

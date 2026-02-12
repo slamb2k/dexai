@@ -371,6 +371,9 @@ def create_bash_security_hook(
         """
         Security hook for Bash command execution.
 
+        Uses AST analysis (bashlex) first for structural detection,
+        then falls back to regex patterns if AST is unavailable or fails.
+
         Returns empty dict to proceed, or denial response to block.
         """
         tool_name = input_data.get("tool_name", "")
@@ -381,18 +384,54 @@ def create_bash_security_hook(
         if not command:
             return {}
 
-        # Check for dangerous patterns
+        # --- Try AST analysis first (V-7) ---
+        if block_dangerous:
+            try:
+                from tools.security.bash_ast_parser import analyze_bash_command
+
+                ast_result = analyze_bash_command(command)
+                if ast_result is not None:
+                    if ast_result["dangerous"]:
+                        logger.warning(
+                            f"BLOCKED dangerous command (AST): {command[:100]}"
+                        )
+                        _log_security_event(
+                            user_id=OWNER_USER_ID,
+                            event="dangerous_command_blocked",
+                            command=command,
+                            reason=ast_result["reason"],
+                            method="ast",
+                        )
+                        return {
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "permissionDecision": "deny",
+                                "permissionDecisionReason": (
+                                    f"Security: {ast_result['reason']}. "
+                                    f"This command type is blocked for safety."
+                                ),
+                            }
+                        }
+                    # AST parsed successfully and found no danger — still run
+                    # regex fallback for patterns AST might miss
+            except ImportError:
+                logger.debug("bash_ast_parser not available, using regex fallback")
+            except Exception as e:
+                logger.debug(f"AST analysis error ({type(e).__name__}), using regex fallback: {e}")
+
+        # --- Regex fallback (original patterns) ---
         if block_dangerous:
             for pattern in DANGEROUS_BASH_PATTERNS:
                 if re.search(pattern, command, re.IGNORECASE):
                     logger.warning(
-                        f"BLOCKED dangerous command: {command[:100]}"
+                        f"BLOCKED dangerous command (regex): {command[:100]}"
                     )
                     _log_security_event(
                         user_id=OWNER_USER_ID,
                         event="dangerous_command_blocked",
                         command=command,
                         pattern=pattern,
+                        method="regex",
                     )
                     return {
                         "hookSpecificOutput": {
@@ -417,6 +456,7 @@ def create_bash_security_hook(
                         event="suspicious_command",
                         command=command,
                         pattern=pattern,
+                        method="regex",
                     )
                     break  # Only log once
 
@@ -732,6 +772,147 @@ def create_workspace_restriction_hook(
         return {}
 
     return workspace_restriction_hook
+
+
+def create_egress_filter_hook(
+    allowed_domains: list[str] | None = None,
+    action: str | None = None,
+) -> Callable[[dict, str, Any], dict]:
+    """
+    Create a PreToolUse hook for egress filtering (V-4).
+
+    Blocks WebFetch requests to domains not in the allowlist.
+    WebSearch queries are allowed through (they are not URLs).
+
+    Args:
+        allowed_domains: List of allowed domain patterns (supports fnmatch wildcards).
+                         If None, loaded from args/agent.yaml security.egress section.
+        action: "block" or "log_and_allow". If None, loaded from config.
+
+    Returns:
+        Hook callback function (wrapped with timing)
+    """
+    import fnmatch
+    import urllib.parse
+
+    # Load config from args/agent.yaml if not provided
+    _allowed_domains = allowed_domains
+    _action = action
+
+    if _allowed_domains is None or _action is None:
+        try:
+            import yaml
+
+            config_path = PROJECT_ROOT / "args" / "agent.yaml"
+            if config_path.exists():
+                with open(config_path) as f:
+                    config = yaml.safe_load(f) or {}
+                egress_config = config.get("security", {}).get("egress", {})
+                if _allowed_domains is None:
+                    _allowed_domains = egress_config.get("allowed_domains", [])
+                if _action is None:
+                    _action = egress_config.get("action", "block")
+        except Exception as e:
+            logger.debug(f"Failed to load egress config: {e}")
+
+    # Ensure defaults
+    if _allowed_domains is None:
+        _allowed_domains = []
+    if _action is None:
+        _action = "block"
+
+    @timed_hook("egress_filter_hook")
+    def egress_filter_hook(input_data: dict, tool_use_id: str, context: Any) -> dict:
+        """
+        Egress filter hook for WebFetch/WebSearch.
+
+        Checks WebFetch URLs against domain allowlist.
+        WebSearch queries are allowed through (not URL-based).
+
+        Returns empty dict to allow, denial response to block.
+        """
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input", {})
+
+        # WebSearch — allow all searches (queries aren't URLs)
+        if tool_name == "WebSearch":
+            # Only filter if allowed_domains contains search-specific entries
+            # For now, web searches are always allowed
+            return {}
+
+        # WebFetch — check domain against allowlist
+        if tool_name == "WebFetch":
+            url = tool_input.get("url", "")
+            if not url:
+                return {}
+
+            try:
+                parsed = urllib.parse.urlparse(url)
+                domain = parsed.hostname or ""
+            except Exception:
+                domain = ""
+
+            if not domain:
+                logger.warning(f"BLOCKED WebFetch with unparseable URL: {url[:100]}")
+                _log_security_event(
+                    user_id=OWNER_USER_ID,
+                    event="egress_blocked",
+                    url=url[:200],
+                    reason="unparseable_url",
+                )
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            "Security: Could not parse URL domain. "
+                            "WebFetch blocked for safety."
+                        ),
+                    }
+                }
+
+            # Check domain against allowlist (supports fnmatch wildcards)
+            domain_allowed = any(
+                fnmatch.fnmatch(domain, pattern)
+                for pattern in _allowed_domains
+            )
+
+            if not domain_allowed:
+                if _action == "block":
+                    logger.warning(
+                        f"BLOCKED egress to non-allowlisted domain: {domain}"
+                    )
+                    _log_security_event(
+                        user_id=OWNER_USER_ID,
+                        event="egress_blocked",
+                        domain=domain,
+                        url=url[:200],
+                    )
+                    return {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": (
+                                f"Security: Domain '{domain}' is not in the "
+                                f"egress allowlist. WebFetch blocked."
+                            ),
+                        }
+                    }
+                else:
+                    # log_and_allow — log but don't block
+                    logger.info(
+                        f"Egress to non-allowlisted domain (allowed): {domain}"
+                    )
+                    _log_security_event(
+                        user_id=OWNER_USER_ID,
+                        event="egress_warning",
+                        domain=domain,
+                        url=url[:200],
+                    )
+
+        return {}
+
+    return egress_filter_hook
 
 
 def _log_security_event(
@@ -1369,6 +1550,11 @@ def create_hooks(
         pre_hooks.append({
             "matcher": "Write|Edit|NotebookEdit",
             "hooks": [create_workspace_restriction_hook(workspace_path)],
+        })
+        # Egress filtering - block WebFetch/WebSearch to untrusted domains (V-4)
+        pre_hooks.append({
+            "matcher": "WebFetch|WebSearch",
+            "hooks": [create_egress_filter_hook()],
         })
 
     # Audit hooks (run after security checks)

@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-02-12
 > **Total findings across 6 reviews:** ~174 distinct items
-> **Completed:** ~35 items | **Remaining:** ~85 actionable items | **Accepted risk:** ~9 items
+> **Completed:** ~42 items | **Remaining:** ~79 actionable items | **Accepted risk:** ~9 items
 
 **Source documents** (relative to `context/agent-framework-review/`):
 
@@ -70,20 +70,21 @@
 | — | Path traversal detection in hooks.py | `03:173` |
 | — | Package security: PyPI validation, typosquatting, blocklist | `03:283-288` |
 
+### PR #93 — Tier 2 Security Hardening (2026-02-12)
+**Impact:** 8 files changed — egress filtering, bash AST parsing, PKCE, per-tool MCP auth, env sanitization, medium-risk blocking
+
+| ID | Item | Source |
+|----|------|--------|
+| V-4/N-1/N-2 | Egress filtering — domain allowlist for WebFetch/WebSearch (CVSS 8.5) | `03:255-256, 358, 450` |
+| V-7/S-6 | Bash AST parsing via bashlex with regex fallback (CVSS 7.8) | `03:171, 361, 454` |
+| V-14/PI-1 | Sanitizer medium-risk patterns now blocked (CVSS 6.5) | `03:204, 373` |
+| V-12/SC-6 | Package install environment sanitized (CVSS 7.0) | `03:288, 366` |
+| OAUTH-1 | PKCE (S256) added to OAuth authorization + token exchange | `05:292, 397-403` |
+| MCP-1 | Per-tool MCP authorization replaces wildcard `mcp__dexai__*` | `05:172-174, 417-428` |
+
 ---
 
 ## Remaining Work — By Priority Tier
-
-### Tier 2: Security (High Impact, Medium Effort)
-
-| ID | Item | Severity | Effort | Files | Source |
-|----|------|----------|--------|-------|--------|
-| V-4/N-1/N-2 | Egress filtering — domain allowlist for WebFetch/WebSearch | High (CVSS 8.5) | Medium | New module + config | `03:255-256, 358, 450` |
-| V-7/S-6 | Upgrade bash security from regex to AST-based parsing | High (CVSS 7.8) | Medium (~200 lines) | hooks.py + new module | `03:171, 361, 454` |
-| V-14/PI-1 | Sanitizer medium-risk patterns: block instead of log-only | Medium (CVSS 6.5) | Low | sanitizer.py, router.py | `03:204, 373` |
-| V-12/SC-6 | Package install runs setup.py with full process context | High (CVSS 7.0) | Medium | dependency_tools.py | `03:288, 366` |
-| OAUTH-1 | Add PKCE to OAuth flow | High | Medium | oauth_manager.py | `05:292, 397-403` |
-| MCP-1 | Per-tool MCP authorization (replace wildcard `mcp__dexai__*`) | High | Medium | sdk_client.py | `05:172-174, 417-428` |
 
 ### Tier 3: Architecture & State (Medium Impact, Medium Effort)
 
@@ -167,26 +168,27 @@
 ```
 Review 01 (Core Architecture):     3/13 items addressed  (23%)
 Review 02 (Installation/Deploy):   2/17 items addressed  (12%)
-Review 03 (Sandbox/Security):     19/58 items addressed  (33%)
+Review 03 (Sandbox/Security):     23/58 items addressed  (40%)  ← Tier 2 PR
 Review 04 (Session/State):         8/12 items addressed  (67%)  ← Single-tenant PR
-Review 05 (Extensibility):         2/17 items addressed  (12%)
+Review 05 (Extensibility):         4/17 items addressed  (24%)  ← PKCE + MCP auth
 Review 06 (Observability):         2/39 items addressed  ( 5%)
                                   ─────────────────────────────
-Overall:                          ~36/156 items addressed (23%)
+Overall:                          ~42/156 items addressed (27%)
 ```
 
 ### What's been done well
 - **All Critical/CVSS 9+ vulnerabilities addressed** (V-1, V-2, V-3)
-- **All Tier 1 quick wins shipped** (PR #90, #91)
+- **All Tier 1 and Tier 2 security items shipped** (PR #90, #91, #93)
 - **Single-tenant simplification** removed ~1,460 lines of unnecessary abstraction
-- **Defense-in-depth layers** now include: sandbox, hooks, RBAC, output sanitization, workspace restrictions
-- **Fail-closed security model** in new code (office tools, workspace hooks)
+- **Defense-in-depth layers** now include: sandbox, hooks, RBAC, output sanitization, workspace restrictions, egress filtering, AST bash analysis
+- **Fail-closed security model** in new code (office tools, workspace hooks, egress filter)
+- **OAuth hardened with PKCE (S256)** — code_challenge/code_verifier flow for Google and Microsoft
+- **MCP tool access scoped** — per-tool authorization replaces wildcard pattern
 
 ### Highest-value next steps
-1. **Tier 2 Security** — Egress filtering (V-4) and bash AST parsing (V-7) close the remaining high-CVSS gaps
-2. **Tier 4 Observability** — Structured logging and consolidated audit trail are low-effort, high-visibility
-3. **Tier 5 Quick Fixes** — `.env.dev` cleanup (SR-3), sandbox default fix (V-19), dependency dedup (FP-7) are minutes each
-4. **Tier 3 Architecture** — `sdk_client.py` split and session SQLite migration reduce maintenance burden
+1. **Tier 4 Observability** — Structured logging and consolidated audit trail are low-effort, high-visibility
+2. **Tier 5 Quick Fixes** — `.env.dev` cleanup (SR-3), sandbox default fix (V-19), dependency dedup (FP-7) are minutes each
+3. **Tier 3 Architecture** — `sdk_client.py` split and session SQLite migration reduce maintenance burden
 
 ---
 

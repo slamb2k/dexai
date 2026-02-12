@@ -35,6 +35,40 @@ sys.path.insert(0, str(PROJECT_ROOT))
 logger = logging.getLogger(__name__)
 
 
+def _get_safe_install_env() -> dict[str, str]:
+    """
+    Build sanitized environment for package installation subprocess.
+
+    Only includes essential variables. Excludes all API keys, tokens,
+    and vault secrets to prevent malicious setup.py from stealing them.
+
+    Addresses V-12/SC-6 (CVSS 7.0).
+    """
+    import os
+
+    safe_env = {}
+
+    # Essential paths
+    for key in ("PATH", "HOME", "USER", "PYTHONPATH", "VIRTUAL_ENV"):
+        if key in os.environ:
+            safe_env[key] = os.environ[key]
+
+    # UV-specific cache
+    for key in ("UV_CACHE_DIR", "UV_PYTHON"):
+        if key in os.environ:
+            safe_env[key] = os.environ[key]
+
+    # Locale (prevents encoding errors during install)
+    safe_env["LANG"] = os.environ.get("LANG", "en_US.UTF-8")
+    safe_env["LC_ALL"] = os.environ.get("LC_ALL", "en_US.UTF-8")
+
+    # Temp directory
+    if "TMPDIR" in os.environ:
+        safe_env["TMPDIR"] = os.environ["TMPDIR"]
+
+    return safe_env
+
+
 def _get_event_loop():
     """Get or create an event loop for async operations."""
     try:
@@ -309,6 +343,9 @@ def dexai_install_package(
 
     # Install using uv pip
     try:
+        # V-12: Use sanitized environment (no API keys, secrets)
+        safe_env = _get_safe_install_env()
+
         # Try uv first (faster)
         cmd = ["uv", "pip", "install", package_spec]
         result = subprocess.run(
@@ -316,6 +353,7 @@ def dexai_install_package(
             capture_output=True,
             text=True,
             timeout=120,
+            env=safe_env,
         )
 
         if result.returncode != 0:
@@ -326,6 +364,7 @@ def dexai_install_package(
                 capture_output=True,
                 text=True,
                 timeout=120,
+                env=safe_env,
             )
 
         if result.returncode == 0:

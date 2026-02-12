@@ -512,6 +512,71 @@ class DexAIClient:
         self._pending_prompt: str | None = None
         self._last_routing_decision = None
 
+    def _get_authorized_mcp_tools(self) -> list[str]:
+        """
+        Build list of authorized MCP tools based on connected services.
+
+        Replaces wildcard mcp__dexai__* with explicit per-tool authorization.
+        Office tools are only authorized if a connected account exists at
+        the required integration level.
+
+        Addresses MCP-1: per-tool MCP authorization.
+        """
+        prefix = "mcp__dexai__"
+        tools = []
+
+        # Always-available tools
+        always_available = [
+            # Memory
+            "memory_search", "memory_write",
+            "commitments_add", "commitments_list",
+            "context_capture", "context_resume",
+            # Tasks
+            "task_decompose", "friction_check",
+            "current_step", "energy_match",
+            # Automation
+            "schedule", "notify", "reminder",
+            # Channel
+            "channel_pair", "generate_image",
+            # Dependencies
+            "get_skill_dependency_setting", "verify_package", "install_package",
+        ]
+        tools.extend(f"{prefix}{name}" for name in always_available)
+
+        # Office tools — conditional on connected accounts
+        try:
+            import sqlite3 as _sqlite3
+            from pathlib import Path as _Path
+
+            db_path = _Path(__file__).parent.parent.parent / "data" / "office.db"
+            if db_path.exists():
+                conn = _sqlite3.connect(str(db_path))
+                conn.row_factory = _sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT MAX(integration_level) as max_level FROM office_accounts"
+                )
+                row = cursor.fetchone()
+                conn.close()
+
+                if row and row["max_level"]:
+                    max_level = int(row["max_level"])
+
+                    # Level 2+ (READ_ONLY): read tools
+                    if max_level >= 2:
+                        tools.extend(f"{prefix}{name}" for name in [
+                            "email_list", "email_read",
+                            "calendar_today", "calendar_propose",
+                        ])
+
+                    # Level 3+ (COLLABORATIVE): draft tools
+                    if max_level >= 3:
+                        tools.append(f"{prefix}email_draft")
+        except Exception as e:
+            logger.debug(f"Office tools authorization check failed: {e}")
+
+        return tools
+
     async def __aenter__(self) -> "DexAIClient":
         """Async context manager entry."""
         await self._init_client()
@@ -566,7 +631,8 @@ class DexAIClient:
 
         # Build allowed tools list: built-in + DexAI tools
         allowed_tools = tools_config.get("allowed_builtin", []).copy()
-        allowed_tools.append("mcp__dexai__*")  # Allow all DexAI tools
+        # MCP-1: Per-tool authorization (replaces wildcard mcp__dexai__*)
+        allowed_tools.extend(self._get_authorized_mcp_tools())
 
         # Initialize router
         self._router = self._init_router()
@@ -1005,7 +1071,8 @@ class DexAIClient:
         sandbox_config = self.config.get("sandbox", {})
 
         allowed_tools = tools_config.get("allowed_builtin", []).copy()
-        allowed_tools.append("mcp__dexai__*")
+        # MCP-1: Per-tool authorization (replaces wildcard mcp__dexai__*)
+        allowed_tools.extend(self._get_authorized_mcp_tools())
 
         # Use existing routing decision or route new
         model = agent_config.get("model", "claude-sonnet-4-20250514")
