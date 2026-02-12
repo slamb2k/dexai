@@ -223,7 +223,7 @@ adhd:
 observability:
   # Langfuse OTEL tracing (recommended for production)
   langfuse:
-    enabled: false  # Set to true when keys are configured
+    enabled: true  # Activate when LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are set
     public_key_env: "LANGFUSE_PUBLIC_KEY"
     secret_key_env: "LANGFUSE_SECRET_KEY"
     base_url: "https://cloud.langfuse.com"
