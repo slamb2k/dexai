@@ -366,6 +366,7 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
             channel=message.channel,
             user_id=message.user_id,
             details={
+                "trace_id": context.get("trace_id"),
                 "error": result.get("error"),
                 "message_id": message.id,
             },
@@ -390,6 +391,7 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
             channel=message.channel,
             user_id=message.user_id,
             details={
+                "trace_id": context.get("trace_id"),
                 "message_id": message.id,
                 "response_length": len(response_content),
                 "tool_uses": len(result.get("tool_uses", [])),

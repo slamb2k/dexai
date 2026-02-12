@@ -439,6 +439,7 @@ class MessageRouter:
             Dict with success status and processing results
         """
         start_time = time.time()
+        trace_id = str(uuid.uuid4())
 
         # Update state to thinking while processing
         _update_dex_state("thinking", f"Processing message from {message.channel}")
@@ -446,6 +447,7 @@ class MessageRouter:
         try:
             # Run security checks
             allowed, reason, context = await self.security_pipeline(message)
+            context["trace_id"] = trace_id
 
             # Log to audit
             try:
@@ -458,6 +460,7 @@ class MessageRouter:
                     channel=message.channel,
                     status="success" if allowed else "blocked",
                     details={
+                        "trace_id": trace_id,
                         "reason": reason,
                         "message_id": message.id,
                         "content_type": message.content_type,
@@ -475,7 +478,7 @@ class MessageRouter:
                     summary=f"Blocked inbound message: {reason}",
                     channel=message.channel,
                     user_id=message.user_id,
-                    details={"reason": reason, "message_id": message.id},
+                    details={"trace_id": trace_id, "reason": reason, "message_id": message.id},
                     severity="warning",
                 )
 
@@ -514,6 +517,7 @@ class MessageRouter:
                 channel=message.channel,
                 user_id=message.user_id,
                 details={
+                    "trace_id": trace_id,
                     "message_id": message.id,
                     "content_type": message.content_type,
                     "content_preview": message.content[:100] if message.content else None,
@@ -560,6 +564,7 @@ class MessageRouter:
                             action="handler_error",
                             user_id=message.user_id,
                             details={
+                                "trace_id": trace_id,
                                 "error": str(e),
                                 "handler": handler.__name__,
                                 "message_id": message.id,
@@ -576,7 +581,7 @@ class MessageRouter:
                 labels={"channel": message.channel, "success": "true"},
             )
 
-            return {"success": True, "message_id": message.id, "handlers": handler_results}
+            return {"success": True, "message_id": message.id, "trace_id": trace_id, "handlers": handler_results}
         finally:
             # Always return to idle — prevents state from getting stuck
             # when any exception escapes the processing pipeline
