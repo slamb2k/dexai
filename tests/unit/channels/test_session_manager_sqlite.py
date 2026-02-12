@@ -20,9 +20,12 @@ def temp_json_path(tmp_path):
 
 @pytest.fixture
 def session_manager(temp_db_path, temp_json_path):
-    with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-         patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+    with (
+        patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+        patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+    ):
         from tools.channels.session_manager import SessionManager
+
         manager = SessionManager(persist=True, timeout_minutes=60)
         return manager
 
@@ -31,8 +34,11 @@ class TestGetConnection:
     def test_creates_table(self, temp_db_path):
         with patch("tools.channels.session_manager._DB_PATH", temp_db_path):
             from tools.channels.session_manager import get_connection
+
             conn = get_connection()
-            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'")
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
+            )
             assert cursor.fetchone() is not None
             conn.close()
 
@@ -40,6 +46,7 @@ class TestGetConnection:
         db_path = tmp_path / "subdir" / "sessions.db"
         with patch("tools.channels.session_manager._DB_PATH", db_path):
             from tools.channels.session_manager import get_connection
+
             conn = get_connection()
             assert db_path.exists()
             conn.close()
@@ -47,8 +54,10 @@ class TestGetConnection:
 
 class TestSQLiteSaveLoad:
     def test_save_and_load_session(self, temp_db_path, temp_json_path):
-        with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-             patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+        with (
+            patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+            patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+        ):
             from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True)
@@ -68,8 +77,10 @@ class TestSQLiteSaveLoad:
             assert restored.sdk_session_id == "test-session-123"
 
     def test_stale_sessions_cleaned_on_save(self, temp_db_path, temp_json_path):
-        with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-             patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+        with (
+            patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+            patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+        ):
             from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True, timeout_minutes=1)
@@ -101,8 +112,10 @@ class TestJSONMigration:
         }
         temp_json_path.write_text(json.dumps(json_data))
 
-        with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-             patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+        with (
+            patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+            patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+        ):
             from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True)
@@ -115,8 +128,10 @@ class TestJSONMigration:
             assert not temp_json_path.exists()
 
     def test_migration_skipped_if_no_json(self, temp_db_path, temp_json_path):
-        with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-             patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+        with (
+            patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+            patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+        ):
             from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True)
@@ -125,8 +140,10 @@ class TestJSONMigration:
     def test_empty_json_migrated(self, temp_db_path, temp_json_path):
         temp_json_path.write_text("{}")
 
-        with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-             patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+        with (
+            patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+            patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+        ):
             from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True)
@@ -137,8 +154,10 @@ class TestJSONMigration:
 
 class TestSessionPersistenceRoundTrip:
     def test_multiple_sessions_persist(self, temp_db_path, temp_json_path):
-        with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
-             patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
+        with (
+            patch("tools.channels.session_manager._DB_PATH", temp_db_path),
+            patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path),
+        ):
             from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True)

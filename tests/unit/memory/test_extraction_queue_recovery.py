@@ -79,16 +79,18 @@ class TestCrashRecovery:
     async def test_recover_pending_items(self, temp_db_path):
         with patch("tools.memory.extraction.queue._DB_PATH", temp_db_path):
             conn = _get_connection()
-            item_data = json.dumps({
-                "user_message": "test message",
-                "assistant_response": "test response",
-                "user_id": "owner",
-                "session_id": "sess-1",
-                "channel": "telegram",
-                "recent_context": [],
-                "timestamp": datetime.now().isoformat(),
-                "gate_score": 0.5,
-            })
+            item_data = json.dumps(
+                {
+                    "user_message": "test message",
+                    "assistant_response": "test response",
+                    "user_id": "owner",
+                    "session_id": "sess-1",
+                    "channel": "telegram",
+                    "recent_context": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "gate_score": 0.5,
+                }
+            )
             conn.execute(
                 "INSERT INTO queue_items (item_data, status) VALUES (?, ?)",
                 (item_data, "pending"),
@@ -108,16 +110,18 @@ class TestCrashRecovery:
     async def test_recover_processing_items(self, temp_db_path):
         with patch("tools.memory.extraction.queue._DB_PATH", temp_db_path):
             conn = _get_connection()
-            item_data = json.dumps({
-                "user_message": "interrupted message",
-                "assistant_response": "interrupted response",
-                "user_id": "owner",
-                "session_id": "sess-2",
-                "channel": "discord",
-                "recent_context": [],
-                "timestamp": datetime.now().isoformat(),
-                "gate_score": 0.7,
-            })
+            item_data = json.dumps(
+                {
+                    "user_message": "interrupted message",
+                    "assistant_response": "interrupted response",
+                    "user_id": "owner",
+                    "session_id": "sess-2",
+                    "channel": "discord",
+                    "recent_context": [],
+                    "timestamp": datetime.now().isoformat(),
+                    "gate_score": 0.7,
+                }
+            )
             conn.execute(
                 "INSERT INTO queue_items (item_data, status) VALUES (?, ?)",
                 (item_data, "processing"),
@@ -133,12 +137,14 @@ class TestCrashRecovery:
     async def test_recover_skips_done_and_failed(self, temp_db_path):
         with patch("tools.memory.extraction.queue._DB_PATH", temp_db_path):
             conn = _get_connection()
-            item_data = json.dumps({
-                "user_message": "done message",
-                "assistant_response": "done response",
-                "user_id": "owner",
-                "timestamp": datetime.now().isoformat(),
-            })
+            item_data = json.dumps(
+                {
+                    "user_message": "done message",
+                    "assistant_response": "done response",
+                    "user_id": "owner",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
             conn.execute(
                 "INSERT INTO queue_items (item_data, status) VALUES (?, ?)",
                 (item_data, "done"),

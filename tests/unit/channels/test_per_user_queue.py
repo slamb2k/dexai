@@ -70,10 +70,12 @@ class TestPerChannelLocking:
         async def mock_pipeline(message):
             return True, "ok", {}
 
-        with patch("tools.channels.router._update_dex_state"), \
-             patch("tools.channels.router._log_to_dashboard"), \
-             patch("tools.channels.router._record_dashboard_metric"), \
-             patch.object(router, "security_pipeline", side_effect=mock_pipeline):
+        with (
+            patch("tools.channels.router._update_dex_state"),
+            patch("tools.channels.router._log_to_dashboard"),
+            patch("tools.channels.router._record_dashboard_metric"),
+            patch.object(router, "security_pipeline", side_effect=mock_pipeline),
+        ):
             await asyncio.gather(
                 router.route_inbound(msg1),
                 router.route_inbound(msg2),
@@ -114,10 +116,12 @@ class TestPerChannelLocking:
         async def mock_pipeline(message):
             return True, "ok", {}
 
-        with patch("tools.channels.router._update_dex_state"), \
-             patch("tools.channels.router._log_to_dashboard"), \
-             patch("tools.channels.router._record_dashboard_metric"), \
-             patch.object(router, "security_pipeline", side_effect=mock_pipeline):
+        with (
+            patch("tools.channels.router._update_dex_state"),
+            patch("tools.channels.router._log_to_dashboard"),
+            patch("tools.channels.router._record_dashboard_metric"),
+            patch.object(router, "security_pipeline", side_effect=mock_pipeline),
+        ):
             await asyncio.gather(
                 router.route_inbound(msg_ch1),
                 router.route_inbound(msg_ch2),
