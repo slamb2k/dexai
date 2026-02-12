@@ -55,7 +55,9 @@ class TestSecurityPipeline:
 
     @pytest.mark.asyncio
     async def test_pipeline_blocks_disallowed_channel_user(
-        self, message_router, sample_unified_message,
+        self,
+        message_router,
+        sample_unified_message,
     ):
         """Channel users not in the allowlist should be blocked."""
         router, _adapter = message_router
@@ -231,9 +233,7 @@ class TestMessageRouting:
             patch("yaml.safe_load", return_value=mock_config),
             patch("pathlib.Path.exists", return_value=True),
         ):
-            result = await router.broadcast(
-                content="Notification message", priority="high"
-            )
+            result = await router.broadcast(content="Notification message", priority="high")
 
             assert result["success"] is True
             assert len(adapter.sent_messages) == 1

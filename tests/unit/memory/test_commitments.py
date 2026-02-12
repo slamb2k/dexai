@@ -187,28 +187,18 @@ class TestListCommitments:
             "promise to John", target_person="John", user_id=mock_user_id
         )
 
-        result = commitments_temp_db.list_commitments(
-            target_person="Sarah", user_id=mock_user_id
-        )
+        result = commitments_temp_db.list_commitments(target_person="Sarah", user_id=mock_user_id)
 
         assert len(result["data"]["commitments"]) == 1
         assert result["data"]["commitments"][0]["target_person"] == "Sarah"
 
     def test_groups_by_person(self, commitments_temp_db, mock_user_id):
         """Should support grouping by target person."""
-        commitments_temp_db.add_commitment(
-            "promise 1", target_person="Sarah", user_id=mock_user_id
-        )
-        commitments_temp_db.add_commitment(
-            "promise 2", target_person="Sarah", user_id=mock_user_id
-        )
-        commitments_temp_db.add_commitment(
-            "promise 3", target_person="John", user_id=mock_user_id
-        )
+        commitments_temp_db.add_commitment("promise 1", target_person="Sarah", user_id=mock_user_id)
+        commitments_temp_db.add_commitment("promise 2", target_person="Sarah", user_id=mock_user_id)
+        commitments_temp_db.add_commitment("promise 3", target_person="John", user_id=mock_user_id)
 
-        result = commitments_temp_db.list_commitments(
-            group_by_person=True, user_id=mock_user_id
-        )
+        result = commitments_temp_db.list_commitments(group_by_person=True, user_id=mock_user_id)
 
         assert "commitments_by_person" in result["data"]
         assert "Sarah" in result["data"]["commitments_by_person"]
