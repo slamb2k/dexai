@@ -214,7 +214,7 @@ class DexAIClient:
             self._last_routing_decision = decision
 
         sandbox_settings = None
-        if sandbox_config.get("enabled", False):
+        if sandbox_config.get("enabled", True):
             sandbox_settings = {
                 "enabled": True,
                 "autoAllowBashIfSandboxed": sandbox_config.get(
@@ -222,7 +222,7 @@ class DexAIClient:
                 ),
                 "excludedCommands": sandbox_config.get("excluded_commands", []),
                 "allowUnsandboxedCommands": sandbox_config.get(
-                    "allow_unsandboxed_commands", True
+                    "allow_unsandboxed_commands", False
                 ),
             }
             network_config = sandbox_config.get("network", {})
