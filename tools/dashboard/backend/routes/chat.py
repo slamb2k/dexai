@@ -26,8 +26,20 @@ router = APIRouter()
 COOKIE_NAME = "dexai_session"
 
 
+def _is_auth_required() -> bool:
+    """Check if authentication is enabled in dashboard config."""
+    try:
+        from tools.dashboard.backend.main import security_config
+        return security_config.get("require_auth", True)
+    except ImportError:
+        return True
+
+
 async def _get_authenticated_user(request: Request) -> str:
     """Extract and validate user from session cookie or bearer token."""
+    if not _is_auth_required():
+        return "anonymous"
+
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         auth_header = request.headers.get("Authorization", "")
@@ -320,21 +332,27 @@ async def websocket_chat_stream(websocket: WebSocket):
     - Invalid JSON: {"type": "error", "error": "Invalid JSON"}
     - Missing message: {"type": "error", "error": "No message provided"}
     """
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=4001, reason="Authentication required")
-        return
+    if _is_auth_required():
+        token = websocket.query_params.get("token")
+        if not token:
+            token = websocket.cookies.get(COOKIE_NAME)
 
-    try:
-        from tools.security.session import validate_session
-        result = validate_session(token, update_activity=True)
-        if not result.get("valid"):
-            await websocket.close(code=4001, reason="Invalid session")
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required")
             return
-        user_id = result.get("user_id", "owner")
-    except ImportError:
-        await websocket.close(code=4001, reason="Auth module unavailable")
-        return
+
+        try:
+            from tools.security.session import validate_session
+            result = validate_session(token, update_activity=True)
+            if not result.get("valid"):
+                await websocket.close(code=4001, reason="Invalid session")
+                return
+            user_id = result.get("user_id", "owner")
+        except ImportError:
+            await websocket.close(code=4001, reason="Auth module unavailable")
+            return
+    else:
+        user_id = "anonymous"
 
     await websocket.accept()
 
