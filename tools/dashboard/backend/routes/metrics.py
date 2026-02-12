@@ -7,10 +7,14 @@ Provides endpoints for metrics and analytics:
 - GET routing stats (model routing analytics)
 """
 
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from tools.dashboard.backend.database import (
     aggregate_metrics,
@@ -338,6 +342,49 @@ async def get_routing_decision_history(
         "limit": limit,
         "offset": offset,
     }
+
+
+# =============================================================================
+# Prometheus-Compatible Metrics Endpoint (OBS-P3-14)
+# =============================================================================
+
+
+@router.get(
+    "/prometheus",
+    response_class=PlainTextResponse,
+    summary="Prometheus-compatible metrics",
+)
+async def get_prometheus_metrics():
+    """Return metrics in Prometheus text exposition format.
+
+    Collects system metrics on each scrape and returns OpenMetrics
+    text format suitable for Prometheus scraping.
+
+    This endpoint is auth-exempt (handled in main.py middleware).
+    """
+    try:
+        from tools.ops.prometheus import metrics
+
+        # Collect latest system metrics before formatting
+        metrics.collect_system_metrics()
+        output = metrics.format_openmetrics()
+        return PlainTextResponse(
+            content=output,
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+    except ImportError:
+        logger.warning("Prometheus metrics module not available")
+        return PlainTextResponse(
+            content="# Prometheus metrics module not available\n",
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+    except Exception as e:
+        logger.error(f"Error generating Prometheus metrics: {e}")
+        return PlainTextResponse(
+            content=f"# Error generating metrics: {e}\n",
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+            status_code=500,
+        )
 
 
 # =============================================================================

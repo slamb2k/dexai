@@ -458,6 +458,10 @@ def create_bash_security_hook(
         """
         Security hook for Bash command execution.
 
+        If container isolation is enabled and an executor exists for the
+        session, the command is routed through ContainerExecutor instead
+        of the normal sandbox path.
+
         Uses AST analysis (bashlex) first for structural detection,
         then falls back to regex patterns if AST is unavailable or fails.
 
@@ -470,6 +474,50 @@ def create_bash_security_hook(
         command = input_data.get("tool_input", {}).get("command", "")
         if not command:
             return {}
+
+        # --- Container isolation routing (V-10/S-4) ---
+        try:
+            from tools.security.container_executor import CONTAINER_ISOLATION_ENABLED
+
+            if CONTAINER_ISOLATION_ENABLED:
+                session_id = (context or {}).get("session_id") if isinstance(context, dict) else None
+                if session_id:
+                    from tools.security.container_executor import get_executor
+
+                    executor = get_executor(session_id, PROJECT_ROOT)
+                    if executor is not None:
+                        if not executor.is_running():
+                            start_result = executor.start()
+                            if not start_result.get("success"):
+                                logger.warning(
+                                    "Container start failed, falling back to sandbox: %s",
+                                    start_result.get("error"),
+                                )
+                            else:
+                                # Route command through the container
+                                timeout = input_data.get("tool_input", {}).get("timeout", 120000) // 1000
+                                result = executor.execute(command, timeout=timeout)
+                                return {
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "modifiedInput": input_data.get("tool_input", {}),
+                                        "containerResult": result,
+                                    }
+                                }
+                        else:
+                            timeout = input_data.get("tool_input", {}).get("timeout", 120000) // 1000
+                            result = executor.execute(command, timeout=timeout)
+                            return {
+                                "hookSpecificOutput": {
+                                    "hookEventName": "PreToolUse",
+                                    "modifiedInput": input_data.get("tool_input", {}),
+                                    "containerResult": result,
+                                }
+                            }
+        except ImportError:
+            pass  # container_executor not available — continue with normal sandbox
+        except Exception as e:
+            logger.debug(f"Container isolation check failed, using sandbox: {e}")
 
         # --- Try AST analysis first (V-7) ---
         if block_dangerous:
@@ -1252,6 +1300,7 @@ def create_dashboard_hook() -> Callable[[dict, str, Any], dict]:
     Create a PostToolUse hook for dashboard recording.
 
     Records tool results to the dashboard for analytics.
+    Also logs to the transparency logger if enabled for the conversation.
 
     Returns:
         Hook callback function (wrapped with timing)
@@ -1270,11 +1319,11 @@ def create_dashboard_hook() -> Callable[[dict, str, Any], dict]:
         Returns:
             Empty dict to proceed
         """
+        tool_name = input_data.get("tool_name", "unknown")
+        success = input_data.get("success", True)
+
         try:
             from tools.dashboard.backend.database import record_tool_use
-
-            tool_name = input_data.get("tool_name", "unknown")
-            success = input_data.get("success", True)
 
             record_tool_use(
                 tool_name=tool_name,
@@ -1285,6 +1334,35 @@ def create_dashboard_hook() -> Callable[[dict, str, Any], dict]:
             pass  # Dashboard not available
         except Exception as e:
             logger.debug(f"Dashboard hook error: {e}")
+
+        # Transparency logging (OBS-P2-11)
+        try:
+            from tools.ops.transparency import transparency
+
+            # Extract conversation_id from context if available
+            conversation_id = None
+            if isinstance(context, dict):
+                conversation_id = context.get("conversation_id") or context.get("session_id")
+            elif hasattr(context, "conversation_id"):
+                conversation_id = getattr(context, "conversation_id", None)
+            elif hasattr(context, "session_id"):
+                conversation_id = getattr(context, "session_id", None)
+
+            if conversation_id and transparency.is_enabled(conversation_id):
+                result_summary = (
+                    f"{'success' if success else 'failure'} "
+                    f"(tool_use_id={tool_use_id})"
+                )
+                transparency.log_tool_use(
+                    conversation_id=conversation_id,
+                    tool_name=tool_name,
+                    duration_ms=0.0,  # Duration not available in PostToolUse
+                    result_summary=result_summary,
+                )
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"Transparency logging error: {e}")
 
         return {}
 
