@@ -67,3 +67,12 @@ test_*.py
 Dockerfile*
 docker-compose*.yml
 .dockerignore
+
+# Framework documentation (not needed in container)
+context/
+goals/
+hardprompts/
+
+# CI/CD and deployment configs
+.github/
+deploy/

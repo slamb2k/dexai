@@ -95,6 +95,7 @@ services:
     environment:
       - DEXAI_DOMAIN=${DEXAI_DOMAIN:-localhost}
       - DEXAI_ADMIN_EMAIL=${DEXAI_ADMIN_EMAIL:-admin@example.com}
+      - CADDY_TLS_MODE=${CADDY_TLS_MODE:-local_certs}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
