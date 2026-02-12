@@ -211,6 +211,74 @@ class HookMetrics:
         """
         self.slow_threshold_ms = threshold_ms
 
+    def flush_to_db(self) -> int:
+        """
+        Persist current metrics snapshot to SQLite and clear in-memory data.
+
+        Returns:
+            Number of hook rows written.
+        """
+        import sqlite3 as _sqlite3
+
+        from tools.ops import DATA_DIR
+
+        db_path = DATA_DIR / "audit.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with self._timings_lock:
+            snapshot = self.timings
+            self.timings = {}
+
+        if not snapshot:
+            return 0
+
+        conn = _sqlite3.connect(str(db_path))
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='hook_metrics'"
+        )
+        if not cursor.fetchone():
+            logger.warning("hook_metrics table missing - run migrations first")
+            conn.close()
+            return 0
+
+        rows_written = 0
+        for hook_name, times in snapshot.items():
+            if not times:
+                continue
+            sorted_times = sorted(times)
+            count = len(times)
+
+            def _pct(data: list[float], p: float) -> float:
+                if not data:
+                    return 0.0
+                k = (len(data) - 1) * (p / 100)
+                f = int(k)
+                c = f + 1 if f + 1 < len(data) else f
+                return data[f] + (k - f) * (data[c] - data[f]) if f != c else data[f]
+
+            slow = sum(1 for t in times if t > self.slow_threshold_ms)
+            conn.execute(
+                """INSERT INTO hook_metrics
+                (hook_name, call_count, avg_ms, p50_ms, p95_ms, p99_ms, min_ms, max_ms, slow_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    hook_name,
+                    count,
+                    statistics.mean(times),
+                    _pct(sorted_times, 50),
+                    _pct(sorted_times, 95),
+                    _pct(sorted_times, 99),
+                    min(times),
+                    max(times),
+                    slow,
+                ),
+            )
+            rows_written += 1
+
+        conn.commit()
+        conn.close()
+        return rows_written
+
 
 # Module-level singleton instance
 _metrics = HookMetrics()
@@ -219,6 +287,25 @@ _metrics = HookMetrics()
 def get_hook_metrics() -> HookMetrics:
     """Get the global HookMetrics singleton."""
     return _metrics
+
+
+_flush_task: asyncio.Task | None = None
+
+
+async def _periodic_flush(interval_seconds: int = 60) -> None:
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            _metrics.flush_to_db()
+        except Exception as e:
+            logger.debug(f"Hook metrics flush error: {e}")
+
+
+def start_metrics_flush_task(interval_seconds: int = 60) -> None:
+    global _flush_task
+    if _flush_task is not None and not _flush_task.done():
+        return
+    _flush_task = asyncio.create_task(_periodic_flush(interval_seconds))
 
 
 def get_hook_performance_summary() -> dict:

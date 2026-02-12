@@ -37,10 +37,14 @@ from tools.dashboard.backend.routes import api_router
 from tools.dashboard.backend.websocket import ws_router
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configure structured logging
+try:
+    from tools.logging_config import setup_logging
+    setup_logging()
+except ImportError:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 logger = logging.getLogger(__name__)
 
 # Configuration paths
@@ -72,9 +76,26 @@ async def lifespan(app: FastAPI):
     logger.info("Starting DexAI Dashboard Backend...")
     startup_time = datetime.now()
 
+    # Run database migrations
+    try:
+        from tools.ops.migrate import run_migrations
+        result = run_migrations()
+        if result["applied"]:
+            logger.info(f"Migrations applied: {result['applied']}")
+    except Exception as e:
+        logger.warning(f"Migration runner unavailable: {e}")
+
     # Initialize database
     init_db()
     logger.info("Database initialized")
+
+    # Start hook metrics periodic flush
+    try:
+        from tools.agent.hooks import start_metrics_flush_task
+        start_metrics_flush_task(interval_seconds=60)
+        logger.info("Hook metrics flush task started")
+    except Exception as e:
+        logger.debug(f"Hook metrics flush not started: {e}")
 
     # Initialize channel router and adapters
     adapters_started = []

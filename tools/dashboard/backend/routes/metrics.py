@@ -8,7 +8,6 @@ Provides endpoints for metrics and analytics:
 """
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -16,8 +15,8 @@ from pydantic import BaseModel
 from tools.dashboard.backend.database import (
     aggregate_metrics,
     get_quick_stats,
-    get_routing_stats,
     get_routing_decisions,
+    get_routing_stats,
 )
 from tools.dashboard.backend.models import (
     MetricsSummary,
@@ -277,6 +276,18 @@ async def get_system_metrics():
         system_metrics["error"] = str(e)
 
     return system_metrics
+
+
+@router.get("/hooks")
+async def get_hook_metrics():
+    """
+    Get hook performance metrics (in-memory + persisted).
+    """
+    try:
+        from tools.agent.hooks import get_hook_performance_summary
+        return get_hook_performance_summary()
+    except ImportError:
+        return {"hooks": {}, "total_calls": 0}
 
 
 @router.get("/routing", response_model=RoutingStatsResponse)
