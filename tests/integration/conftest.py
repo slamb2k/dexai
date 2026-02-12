@@ -131,11 +131,22 @@ def dashboard_app(temp_dashboard_db, temp_activity_db):
 
 @pytest.fixture
 @requires_fastapi
-def test_client(dashboard_app):
-    """Create a test client for the dashboard API."""
+def test_client(dashboard_app, temp_dashboard_db):
+    """Create a test client for the dashboard API.
+
+    Clears any events created during app lifespan startup (e.g. channel
+    adapter connection audit events) so tests start with a clean slate.
+    """
     from fastapi.testclient import TestClient
 
     with TestClient(dashboard_app) as client:
+        # Clear events created during lifespan startup
+        conn = sqlite3.connect(str(temp_dashboard_db))
+        conn.execute("DELETE FROM dashboard_events")
+        conn.execute("DELETE FROM dashboard_metrics")
+        conn.commit()
+        conn.close()
+
         yield client
 
 
@@ -301,6 +312,163 @@ def mock_inbox_module():
 # ─────────────────────────────────────────────────────────────────────────────
 # ADHD Pipeline Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# install.sh Test Fixtures
+# ─────────────────────────────────────────────────────────────────────────────
+
+INSTALL_SCRIPT = PROJECT_ROOT / "install.sh"
+
+
+@pytest.fixture
+def install_dir(tmp_path: Path) -> Path:
+    """Create a temp directory mimicking a cloned DexAI repo.
+
+    Creates a .git/ dir and copies .env.example so that setup_repository()
+    takes the 'exists' branch instead of attempting git clone.
+    """
+    dexai_dir = tmp_path / "dexai"
+    dexai_dir.mkdir()
+    (dexai_dir / ".git").mkdir()
+
+    # Copy .env.example if it exists in the real repo
+    env_example = PROJECT_ROOT / ".env.example"
+    if env_example.exists():
+        import shutil
+
+        shutil.copy(env_example, dexai_dir / ".env.example")
+
+    return dexai_dir
+
+
+@pytest.fixture
+def stubbed_env(tmp_path: Path, install_dir: Path) -> dict[str, str]:
+    """Create stub executables for all prerequisites.
+
+    Returns an env dict with PATH pointing ONLY to the stubs dir (plus
+    symlinked basic utilities). This fully isolates the environment so
+    removing a stub makes the command genuinely unavailable.
+    """
+    import shutil
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    def _make_stub(name: str, script: str) -> None:
+        stub = bin_dir / name
+        stub.write_text(script)
+        stub.chmod(0o755)
+
+    # Symlink basic utilities that install.sh needs (sort, grep, mkdir, etc.)
+    _basic_utils = [
+        "bash",
+        "sh",
+        "sort",
+        "grep",
+        "mkdir",
+        "chmod",
+        "cp",
+        "touch",
+        "cat",
+        "printf",
+        "sed",
+        "awk",
+        "rm",
+        "ls",
+        "tr",
+        "head",
+        "tail",
+        "tee",
+        "wc",
+        "basename",
+        "dirname",
+        "readlink",
+        "id",
+        "env",
+        "od",
+        "cut",
+        "sleep",
+    ]
+    for util in _basic_utils:
+        real = shutil.which(util)
+        if real and not (bin_dir / util).exists():
+            (bin_dir / util).symlink_to(real)
+
+    # git — succeeds for any invocation
+    _make_stub("git", "#!/bin/bash\nexit 0\n")
+
+    # curl — succeeds; handles health-check probes (localhost)
+    _make_stub(
+        "curl",
+        '#!/bin/bash\nif [[ "$*" == *"localhost"* ]]; then exit 0; fi\nexit 0\n',
+    )
+
+    # python3 — handles version check invocation
+    _make_stub(
+        "python3",
+        "#!/bin/bash\n"
+        'if [[ "$*" == *"sys.version_info"* ]]; then\n'
+        '    echo "3.12"\n'
+        "else\n"
+        "    exit 0\n"
+        "fi\n",
+    )
+
+    # uv — creates fake venv so `source .venv/bin/activate` works
+    _make_stub(
+        "uv",
+        "#!/bin/bash\n"
+        'if [[ "$1" == "venv" ]] && [[ -n "$2" ]]; then\n'
+        '    mkdir -p "$2/bin"\n'
+        '    echo "# fake activate" > "$2/bin/activate"\n'
+        "fi\n"
+        "exit 0\n",
+    )
+
+    # docker — compose-aware stub (required in default mode)
+    _make_stub(
+        "docker",
+        "#!/bin/bash\n"
+        'if [[ "$1" == "compose" ]]; then\n'
+        '    if [[ "$2" == "version" ]]; then\n'
+        '        echo "Docker Compose version v2.20.0"\n'
+        "    fi\n"
+        "    exit 0\n"
+        "fi\n"
+        'if [[ "$1" == "info" ]]; then exit 0; fi\n'
+        'if [[ "$1" == "--version" ]]; then echo "Docker version 24.0.0, build abc123"; fi\n'
+        "exit 0\n",
+    )
+
+    # node — returns v20
+    _make_stub(
+        "node",
+        '#!/bin/bash\nif [[ "$1" == "--version" ]]; then echo "v20.0.0"; else echo "v20.0.0"; fi\n',
+    )
+
+    # npm — succeeds for any invocation
+    _make_stub("npm", "#!/bin/bash\nexit 0\n")
+
+    # openssl — returns deterministic hex for master key generation
+    _make_stub(
+        "openssl",
+        '#!/bin/bash\necho "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"\n',
+    )
+
+    # uname — returns Linux
+    _make_stub("uname", '#!/bin/bash\necho "Linux"\n')
+
+    env = {
+        "PATH": str(bin_dir),
+        "HOME": str(tmp_path / "home"),
+        "DEXAI_DIR": str(install_dir),
+        "TERM": "dumb",
+    }
+    # Create HOME directory
+    (tmp_path / "home").mkdir(exist_ok=True)
+
+    return env
 
 
 @pytest.fixture

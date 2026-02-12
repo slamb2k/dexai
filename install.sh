@@ -1,20 +1,26 @@
 #!/bin/bash
 # ==============================================================================
-# DexAI Installation Script — Prerequisites Only
+# DexAI Installation Script — Docker-First
 # ==============================================================================
 #
-# This script installs system prerequisites and sets up the Python environment.
-# Configuration (API keys, channels, vault) is handled by `dexai setup`.
+# Default: builds and starts DexAI via Docker Compose.
+# Use --local for a development setup (venv + npm, no containers).
+#
+# Configuration (API keys, channels) is deferred to the running dashboard.
+# This script handles infrastructure only.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/slamb2k/dexai/main/install.sh | bash
 #
 # Or locally:
-#   bash install.sh
+#   bash install.sh            # Docker mode (default)
+#   bash install.sh --local    # Local dev mode
 #
 # Options:
+#   --local      Local dev mode (venv + npm, no Docker)
 #   --dry-run    Show what would be done without making changes
 #   --dir PATH   Override install directory (default: $HOME/dexai)
+#   --no-start   Scaffold only, don't start containers
 #   --help       Show this help message
 #
 # ==============================================================================
@@ -29,6 +35,10 @@ DEXAI_REPO="https://github.com/slamb2k/dexai.git"
 DEXAI_DIR="${DEXAI_DIR:-$HOME/dexai}"
 PYTHON_MIN_VERSION="3.11"
 DRY_RUN=false
+LOCAL_MODE=false
+NO_START=false
+ENABLE_PROXY=false
+ENABLE_TAILSCALE=false
 
 # Colors (disabled when not connected to a terminal)
 if [ -t 1 ]; then
@@ -53,6 +63,22 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
+        --local)
+            LOCAL_MODE=true
+            shift
+            ;;
+        --no-start)
+            NO_START=true
+            shift
+            ;;
+        --with-proxy)
+            ENABLE_PROXY=true
+            shift
+            ;;
+        --with-tailscale)
+            ENABLE_TAILSCALE=true
+            shift
+            ;;
         --dir)
             DEXAI_DIR="$2"
             shift 2
@@ -62,16 +88,21 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "DexAI Prerequisite Installer"
+            echo "DexAI Installer"
             echo ""
             echo "Usage: bash install.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --dry-run    Show what would be done without making changes"
-            echo "  --dir PATH   Override install directory (default: \$HOME/dexai)"
-            echo "  --help       Show this help message"
+            echo "  --local           Local dev mode (venv + npm, no Docker)"
+            echo "  --dry-run         Show what would be done without making changes"
+            echo "  --dir PATH        Override install directory (default: \$HOME/dexai)"
+            echo "  --no-start        Scaffold only, don't start containers"
+            echo "  --with-proxy      Enable Caddy reverse proxy (HTTPS)"
+            echo "  --with-tailscale  Enable Tailscale VPN access"
+            echo "  --help            Show this help message"
             echo ""
-            echo "After installation, run: dexai setup"
+            echo "Default: Docker mode (builds and starts containers)"
+            echo "In interactive mode, you'll be prompted for optional services."
             exit 0
             ;;
         *)
@@ -218,8 +249,29 @@ check_uv() {
     exit 1
 }
 
-check_docker() {
-    # Docker is optional — just report status
+check_docker_required() {
+    if ! check_command docker; then
+        log_error "Docker is required for installation."
+        case "$OS_TYPE" in
+            macos) echo "  Install: https://docs.docker.com/desktop/install/mac-install/" ;;
+            wsl)   echo "  Install: https://docs.docker.com/desktop/install/windows-install/" ;;
+            *)     echo "  Install: https://docs.docker.com/engine/install/" ;;
+        esac
+        exit 1
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        log_error "Docker is not running. Please start Docker and try again."
+        exit 1
+    fi
+    if ! docker compose version >/dev/null 2>&1; then
+        log_error "Docker Compose v2 is required."
+        exit 1
+    fi
+    log_success "Docker found and running"
+}
+
+check_docker_optional() {
+    # Docker is optional in local mode — just report status
     if check_command docker && docker info >/dev/null 2>&1; then
         log_success "Docker found and running (optional)"
     else
@@ -227,14 +279,36 @@ check_docker() {
     fi
 }
 
+check_node() {
+    if ! check_command node || ! check_command npm; then
+        log_error "Node.js 18+ and npm are required for local mode."
+        echo "  Install from: https://nodejs.org/"
+        exit 1
+    fi
+    local node_major
+    node_major=$(node --version | tr -d 'v' | cut -d. -f1)
+    if [ "$node_major" -lt 18 ] 2>/dev/null; then
+        log_error "Node.js 18+ required, found $(node --version)"
+        exit 1
+    fi
+    log_success "Node.js $(node --version) found"
+}
+
 check_prerequisites() {
     log_info "Checking prerequisites..."
     echo ""
     check_git
     check_curl
-    check_python
-    check_uv
-    check_docker
+
+    if [ "$LOCAL_MODE" = true ]; then
+        check_python
+        check_uv
+        check_node
+        check_docker_optional
+    else
+        check_docker_required
+    fi
+
     echo ""
     log_success "All required prerequisites met"
 }
@@ -305,26 +379,55 @@ ensure_env_file() {
 
     if [ -f "$env_file" ]; then
         log_success ".env file exists"
-        return 0
-    fi
-
-    log_info "Creating .env file from template..."
-    if [ -f "$DEXAI_DIR/.env.example" ]; then
+    elif [ -f "$DEXAI_DIR/.env.example" ]; then
+        log_info "Creating .env from template..."
         run_cmd cp "$DEXAI_DIR/.env.example" "$env_file"
+        log_success ".env file created"
     else
         run_cmd touch "$env_file"
+        log_success ".env file created (empty)"
     fi
 
     # Set restrictive permissions
-    if [ "$DRY_RUN" = false ]; then
+    if [ "$DRY_RUN" = false ] && [ -f "$env_file" ]; then
         chmod 600 "$env_file" 2>/dev/null || true
     fi
 
-    log_success ".env file created"
+    # Auto-generate master key if still placeholder
+    if [ "$DRY_RUN" = false ] && [ -f "$env_file" ]; then
+        local current_key=""
+        current_key=$(grep -E "^DEXAI_MASTER_KEY=" "$env_file" 2>/dev/null | cut -d= -f2-) || true
+        if [ "$current_key" = "your-secure-master-password-here" ] || [ -z "$current_key" ]; then
+            local new_key
+            new_key=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | od -A n -t x1 | tr -d ' \n')
+            sed -i "s|^DEXAI_MASTER_KEY=.*|DEXAI_MASTER_KEY=${new_key}|" "$env_file" 2>/dev/null \
+                || echo "DEXAI_MASTER_KEY=${new_key}" >> "$env_file"
+            log_success "DEXAI_MASTER_KEY auto-generated"
+        fi
+    fi
 }
 
 # ==============================================================================
-# Step 6: Create Data Directories
+# Step 6: Scaffold User Config
+# ==============================================================================
+
+ensure_user_config() {
+    local user_yaml="$DEXAI_DIR/args/user.yaml"
+
+    if [ -f "$user_yaml" ]; then
+        log_success "User config exists"
+        return 0
+    fi
+
+    if [ -f "$DEXAI_DIR/args/user.yaml.example" ]; then
+        log_info "Creating user config from template..."
+        run_cmd cp "$DEXAI_DIR/args/user.yaml.example" "$user_yaml"
+        log_success "User config created (configure via dashboard)"
+    fi
+}
+
+# ==============================================================================
+# Step 7: Create Data Directories
 # ==============================================================================
 
 ensure_data_dirs() {
@@ -339,41 +442,237 @@ ensure_data_dirs() {
 }
 
 # ==============================================================================
+# Step 7: Optional Services (interactive prompts)
+# ==============================================================================
+
+set_env_var() {
+    local key="$1"
+    local value="$2"
+    local env_file="$DEXAI_DIR/.env"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${YELLOW}[DRY-RUN]${NC} Would set ${key} in .env"
+        return 0
+    fi
+
+    # Replace existing line (commented or uncommented), or append
+    if grep -qE "^[# ]*${key}=" "$env_file" 2>/dev/null; then
+        sed -i "s|^[# ]*${key}=.*|${key}=${value}|" "$env_file"
+    else
+        echo "${key}=${value}" >> "$env_file"
+    fi
+}
+
+prompt_optional_services() {
+    # Only prompt in Docker mode, non-dry-run, interactive terminal
+    if [ "$LOCAL_MODE" = true ] || [ "$DRY_RUN" = true ]; then
+        return 0
+    fi
+
+    # Non-interactive (piped install) — skip prompts, use flags only
+    if [ ! -t 0 ]; then
+        return 0
+    fi
+
+    echo ""
+    log_info "Optional services (Docker profiles):"
+    echo ""
+
+    # Caddy reverse proxy
+    if [ "$ENABLE_PROXY" = false ]; then
+        read -r -p "  Enable HTTPS via Caddy reverse proxy? [y/N] " response </dev/tty
+        if [[ "$response" =~ ^[Yy] ]]; then
+            ENABLE_PROXY=true
+        fi
+    fi
+
+    if [ "$ENABLE_PROXY" = true ]; then
+        local current_domain=""
+        current_domain=$(grep -E "^DEXAI_DOMAIN=" "$DEXAI_DIR/.env" 2>/dev/null | cut -d= -f2-) || true
+        if [ "$current_domain" = "localhost" ] || [ -z "$current_domain" ]; then
+            read -r -p "  Enter your domain (e.g., dexai.example.com) [localhost]: " domain </dev/tty
+            domain="${domain:-localhost}"
+            set_env_var "DEXAI_DOMAIN" "$domain"
+            log_success "Domain set to $domain"
+        else
+            log_success "Domain already configured: $current_domain"
+        fi
+    fi
+
+    # Tailscale VPN
+    if [ "$ENABLE_TAILSCALE" = false ]; then
+        read -r -p "  Enable Tailscale VPN access? [y/N] " response </dev/tty
+        if [[ "$response" =~ ^[Yy] ]]; then
+            ENABLE_TAILSCALE=true
+        fi
+    fi
+
+    if [ "$ENABLE_TAILSCALE" = true ]; then
+        local current_tskey=""
+        current_tskey=$(grep -E "^TAILSCALE_AUTHKEY=" "$DEXAI_DIR/.env" 2>/dev/null | cut -d= -f2-) || true
+        if [ -z "$current_tskey" ]; then
+            echo "  Generate a key at: https://login.tailscale.com/admin/settings/keys"
+            read -r -p "  Enter your Tailscale auth key (tskey-auth-...): " tskey </dev/tty
+            if [ -n "$tskey" ]; then
+                set_env_var "TAILSCALE_AUTHKEY" "$tskey"
+                log_success "Tailscale auth key configured"
+            else
+                log_warn "No Tailscale key provided — profile enabled but may fail to authenticate"
+            fi
+        else
+            log_success "Tailscale auth key already configured"
+        fi
+    fi
+}
+
+# ==============================================================================
+# Step 8: Docker Setup
+# ==============================================================================
+
+setup_docker() {
+    # Build compose command with optional profiles
+    local compose_profiles=""
+    if [ "$ENABLE_PROXY" = true ]; then
+        compose_profiles="$compose_profiles --profile proxy"
+    fi
+    if [ "$ENABLE_TAILSCALE" = true ]; then
+        compose_profiles="$compose_profiles --profile tailscale"
+    fi
+
+    log_info "Building and starting DexAI containers..."
+    if [ -n "$compose_profiles" ]; then
+        log_info "Profiles:${compose_profiles}"
+    fi
+
+    if [ "$NO_START" = true ]; then
+        log_info "Skipping container start (--no-start)"
+        return 0
+    fi
+
+    # shellcheck disable=SC2086
+    run_cmd docker compose $compose_profiles up -d --build
+
+    if [ "$DRY_RUN" = true ]; then
+        return 0
+    fi
+
+    # Wait for backend health
+    log_info "Waiting for services to become healthy..."
+    local retries=30
+    while [ $retries -gt 0 ]; do
+        if curl -sf http://localhost:${DEXAI_BACKEND_PORT:-8080}/api/health >/dev/null 2>&1; then
+            log_success "Backend is healthy"
+            break
+        fi
+        retries=$((retries - 1))
+        sleep 2
+    done
+    if [ $retries -eq 0 ]; then
+        log_warn "Backend timed out. Check: docker compose logs backend"
+    fi
+
+    retries=30
+    while [ $retries -gt 0 ]; do
+        if curl -sf http://localhost:${DEXAI_FRONTEND_PORT:-3000} >/dev/null 2>&1; then
+            log_success "Frontend is ready"
+            break
+        fi
+        retries=$((retries - 1))
+        sleep 2
+    done
+    if [ $retries -eq 0 ]; then
+        log_warn "Frontend timed out. Check: docker compose logs frontend"
+    fi
+}
+
+# ==============================================================================
+# Step 5b: Local Setup
+# ==============================================================================
+
+setup_local() {
+    setup_python_env
+    setup_frontend
+}
+
+setup_frontend() {
+    local frontend_dir="$DEXAI_DIR/tools/dashboard/frontend"
+    if [ ! -d "$frontend_dir" ]; then
+        log_warn "Frontend directory not found, skipping"
+        return 0
+    fi
+    log_info "Installing frontend dependencies..."
+    run_cmd npm --prefix "$frontend_dir" install
+    log_success "Frontend dependencies installed"
+}
+
+# ==============================================================================
 # Main
 # ==============================================================================
 
 main() {
     echo ""
-    echo -e "${BOLD}DexAI Prerequisite Installer${NC}"
-    echo "==============================="
+    echo -e "${BOLD}DexAI Installer${NC}"
+    echo "========================"
     echo ""
 
     detect_os
     check_prerequisites
     setup_repository
-    setup_python_env
     ensure_env_file
+    ensure_user_config
     ensure_data_dirs
 
-    echo ""
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}  Prerequisites installed successfully!${NC}"
-    echo -e "${GREEN}========================================${NC}"
-    echo ""
-
-    if [ "$DRY_RUN" = true ]; then
-        log_info "Dry run complete. No changes were made."
-        exit 0
+    if [ "$LOCAL_MODE" = true ]; then
+        setup_local
+    else
+        prompt_optional_services
+        setup_docker
     fi
 
-    echo -e "Next step: configure your installation."
     echo ""
-    echo -e "  ${CYAN}cd $DEXAI_DIR${NC}"
-    echo -e "  ${CYAN}source .venv/bin/activate${NC}"
-    echo -e "  ${CYAN}dexai setup${NC}"
-    echo ""
-    echo "Or start the dashboard directly:"
-    echo -e "  ${CYAN}dexai dashboard${NC}"
+    if [ "$DRY_RUN" = true ]; then
+        log_info "Dry run complete. No changes were made."
+    elif [ "$LOCAL_MODE" = true ]; then
+        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}  Local setup complete!${NC}"
+        echo -e "${GREEN}========================================${NC}"
+        echo ""
+        echo -e "Start development servers:"
+        echo -e "  ${CYAN}cd $DEXAI_DIR${NC}"
+        echo -e "  ${CYAN}./scripts/dev.sh${NC}"
+        echo ""
+        echo -e "For HTTPS (Caddy) or VPN (Tailscale), use Docker mode:"
+        echo -e "  ${CYAN}bash install.sh --with-proxy --with-tailscale${NC}"
+    else
+        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}  DexAI is running!${NC}"
+        echo -e "${GREEN}========================================${NC}"
+        echo ""
+        echo -e "  Dashboard:  ${CYAN}http://localhost:${DEXAI_FRONTEND_PORT:-3000}${NC}"
+        echo -e "  API:        ${CYAN}http://localhost:${DEXAI_BACKEND_PORT:-8080}${NC}"
+        if [ "$ENABLE_PROXY" = true ]; then
+            echo -e "  HTTPS:      ${CYAN}https://$(grep -E '^DEXAI_DOMAIN=' "$DEXAI_DIR/.env" 2>/dev/null | cut -d= -f2- || echo 'localhost')${NC}"
+        fi
+        echo ""
+        echo -e "Next: open the dashboard to configure API keys."
+
+        # Show add-later hints only for services not already enabled
+        if [ "$ENABLE_PROXY" = false ] || [ "$ENABLE_TAILSCALE" = false ]; then
+            echo ""
+            echo -e "Add services later:"
+            if [ "$ENABLE_PROXY" = false ]; then
+                echo -e "  ${CYAN}bash install.sh --with-proxy${NC}              Enable Caddy (HTTPS)"
+            fi
+            if [ "$ENABLE_TAILSCALE" = false ]; then
+                echo -e "  ${CYAN}bash install.sh --with-tailscale${NC}          Enable Tailscale (VPN)"
+            fi
+        fi
+        echo ""
+        echo -e "Useful commands:"
+        echo -e "  ${CYAN}docker compose logs -f${NC}       View logs"
+        echo -e "  ${CYAN}docker compose down${NC}          Stop services"
+        echo -e "  ${CYAN}docker compose up -d${NC}         Restart"
+    fi
     echo ""
 }
 
