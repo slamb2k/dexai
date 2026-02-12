@@ -241,3 +241,14 @@ observability:
 
   # Log decisions to dashboard events table
   log_to_dashboard: true
+
+# -----------------------------------------------------------------------------
+# Budget Alert Thresholds (OBS-P1-6)
+# -----------------------------------------------------------------------------
+# Separate from budget limits above — these control when alerts fire.
+# BudgetWatchdog reads this section and pushes WebSocket + audit events.
+
+alert_thresholds:
+  max_per_day_usd: 50.0
+  max_per_user_per_day_usd: 10.0
+  max_per_session_usd: 5.0

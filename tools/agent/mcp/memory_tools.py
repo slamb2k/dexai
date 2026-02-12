@@ -44,6 +44,38 @@ logger = logging.getLogger(__name__)
 _memory_service = None
 
 
+def _audit_memory_access(
+    user_id: str | None,
+    action: str,
+    query: str | None = None,
+    results_count: int | None = None,
+    latency_ms: float | None = None,
+) -> None:
+    try:
+        from tools.security.audit import log_event
+
+        details: dict[str, Any] = {}
+        if query is not None:
+            details["query"] = query[:200]
+        if results_count is not None:
+            details["results_count"] = results_count
+        if latency_ms is not None:
+            details["latency_ms"] = round(latency_ms, 2)
+
+        log_event(
+            event_type="command",
+            action=action,
+            user_id=user_id or OWNER_USER_ID,
+            resource="memory",
+            status="success",
+            details=details,
+        )
+    except ImportError:
+        pass  # Audit module not available
+    except Exception as e:
+        logger.debug(f"Failed to audit memory access: {e}")
+
+
 def _get_event_loop():
     """Get or create an event loop for async operations."""
     try:
@@ -187,8 +219,20 @@ def dexai_memory_search(
                 ],
             }
 
+    import time as _time
+
+    _t0 = _time.perf_counter()
     try:
-        return _run_async(_search())
+        result = _run_async(_search())
+        _latency = (_time.perf_counter() - _t0) * 1000
+        _audit_memory_access(
+            user_id=OWNER_USER_ID,
+            action="memory_search",
+            query=query,
+            results_count=result.get("count", 0),
+            latency_ms=_latency,
+        )
+        return result
     except Exception as e:
         return {
             "success": False,
@@ -286,8 +330,19 @@ def dexai_memory_write(
                 "message": f"Memory stored: {content[:50]}...",
             }
 
+    import time as _time
+
+    _t0 = _time.perf_counter()
     try:
-        return _run_async(_write())
+        result = _run_async(_write())
+        _latency = (_time.perf_counter() - _t0) * 1000
+        _audit_memory_access(
+            user_id=user_id or OWNER_USER_ID,
+            action="memory_write",
+            query=content[:200],
+            latency_ms=_latency,
+        )
+        return result
     except Exception as e:
         return {
             "success": False,
@@ -380,8 +435,19 @@ def dexai_commitments_add(
                 "message": f"Commitment tracked: {content[:50]}...",
             }
 
+    import time as _time
+
+    _t0 = _time.perf_counter()
     try:
-        return _run_async(_add())
+        result = _run_async(_add())
+        _latency = (_time.perf_counter() - _t0) * 1000
+        _audit_memory_access(
+            user_id=user_id,
+            action="commitments_add",
+            query=content[:200],
+            latency_ms=_latency,
+        )
+        return result
     except Exception as e:
         return {
             "success": False,
@@ -483,8 +549,19 @@ def dexai_commitments_list(
                 "commitments": formatted,
             }
 
+    import time as _time
+
+    _t0 = _time.perf_counter()
     try:
-        return _run_async(_list())
+        result = _run_async(_list())
+        _latency = (_time.perf_counter() - _t0) * 1000
+        _audit_memory_access(
+            user_id=user_id,
+            action="commitments_list",
+            results_count=result.get("count", 0),
+            latency_ms=_latency,
+        )
+        return result
     except Exception as e:
         return {
             "success": False,
@@ -577,8 +654,19 @@ def dexai_context_capture(
                 "message": f"Context captured. Next step: {next_step or 'not specified'}",
             }
 
+    import time as _time
+
+    _t0 = _time.perf_counter()
     try:
-        return _run_async(_capture())
+        result = _run_async(_capture())
+        _latency = (_time.perf_counter() - _t0) * 1000
+        _audit_memory_access(
+            user_id=user_id,
+            action="context_capture",
+            query=next_step[:200] if next_step else trigger,
+            latency_ms=_latency,
+        )
+        return result
     except Exception as e:
         return {
             "success": False,
@@ -699,8 +787,19 @@ def dexai_context_resume(
                     "context": None,
                 }
 
+    import time as _time
+
+    _t0 = _time.perf_counter()
     try:
-        return _run_async(_resume())
+        result = _run_async(_resume())
+        _latency = (_time.perf_counter() - _t0) * 1000
+        _audit_memory_access(
+            user_id=user_id,
+            action="context_resume",
+            query=snapshot_id,
+            latency_ms=_latency,
+        )
+        return result
     except Exception as e:
         return {
             "success": False,

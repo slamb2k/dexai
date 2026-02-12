@@ -90,20 +90,6 @@ def init_db():
         )
     """)
 
-    # Audit log table for security events
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            event_type TEXT NOT NULL,
-            severity TEXT DEFAULT 'info',
-            actor TEXT,
-            target TEXT,
-            details TEXT,
-            ip_address TEXT
-        )
-    """)
-
     # Migrate existing tables - add new columns if they don't exist
     for col, default in [
         ("display_name", "'User'"),
@@ -160,19 +146,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_dashboard_metrics_name_time
         ON dashboard_metrics(metric_name, timestamp DESC)
     """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
-        ON audit_log(timestamp DESC)
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_log_event_type
-        ON audit_log(event_type)
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_audit_log_severity
-        ON audit_log(severity)
-    """)
-
     # Initialize dex_state with default if not exists
     cursor.execute(
         """
@@ -830,155 +803,6 @@ def get_quick_stats() -> dict:
         "avg_response_time_ms": round(avg_response_time, 2),
         "error_rate_percent": round(error_rate, 2),
     }
-
-
-# =============================================================================
-# Audit Log Operations
-# =============================================================================
-
-
-def log_audit(
-    event_type: str,
-    severity: str = "info",
-    actor: str | None = None,
-    target: str | None = None,
-    details: dict | None = None,
-    ip_address: str | None = None,
-) -> int:
-    """
-    Log a security audit event.
-
-    Args:
-        event_type: Type of event (e.g., 'auth.login', 'permission.denied', 'config.changed')
-        severity: Severity level ('info', 'warning', 'error', 'critical')
-        actor: User or system that triggered the event
-        target: Resource affected
-        details: Additional event details as dict
-        ip_address: Source IP address if available
-
-    Returns:
-        Audit log entry ID
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    details_json = json.dumps(details) if details else None
-
-    cursor.execute(
-        """
-        INSERT INTO audit_log
-        (timestamp, event_type, severity, actor, target, details, ip_address)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """,
-        (datetime.now().isoformat(), event_type, severity, actor, target, details_json, ip_address),
-    )
-
-    entry_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-
-    return entry_id
-
-
-def get_audit_events(
-    event_type: str | None = None,
-    severity: str | None = None,
-    actor: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-) -> list[dict]:
-    """
-    Get audit log events with optional filters.
-
-    Returns list of audit event dictionaries.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    query = "SELECT * FROM audit_log WHERE 1=1"
-    params = []
-
-    if event_type:
-        query += " AND event_type LIKE ?"
-        params.append(f"{event_type}%")
-
-    if severity:
-        query += " AND severity = ?"
-        params.append(severity)
-
-    if actor:
-        query += " AND actor = ?"
-        params.append(actor)
-
-    if start_date:
-        query += " AND timestamp >= ?"
-        params.append(start_date.isoformat())
-
-    if end_date:
-        query += " AND timestamp <= ?"
-        params.append(end_date.isoformat())
-
-    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-
-    events = []
-    for row in rows:
-        event = dict(row)
-        if event.get("details"):
-            try:
-                event["details"] = json.loads(event["details"])
-            except json.JSONDecodeError:
-                pass
-        events.append(event)
-
-    return events
-
-
-def count_audit_events(
-    event_type: str | None = None,
-    severity: str | None = None,
-    actor: str | None = None,
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-) -> int:
-    """Count audit events matching filters."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    query = "SELECT COUNT(*) as count FROM audit_log WHERE 1=1"
-    params = []
-
-    if event_type:
-        query += " AND event_type LIKE ?"
-        params.append(f"{event_type}%")
-
-    if severity:
-        query += " AND severity = ?"
-        params.append(severity)
-
-    if actor:
-        query += " AND actor = ?"
-        params.append(actor)
-
-    if start_date:
-        query += " AND timestamp >= ?"
-        params.append(start_date.isoformat())
-
-    if end_date:
-        query += " AND timestamp <= ?"
-        params.append(end_date.isoformat())
-
-    cursor.execute(query, params)
-    count = cursor.fetchone()["count"]
-    conn.close()
-
-    return count
 
 
 # =============================================================================

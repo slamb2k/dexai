@@ -117,6 +117,7 @@ def log_event(
     details: dict | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Log a security event. Append-only - events cannot be modified or deleted.
@@ -132,6 +133,7 @@ def log_event(
         details: Additional JSON-serializable context
         ip_address: Client IP address
         user_agent: Client user agent
+        trace_id: Optional distributed trace ID for request correlation
 
     Returns:
         dict with success status and event ID
@@ -147,25 +149,49 @@ def log_event(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT INTO audit_log
-        (event_type, user_id, session_id, channel, action, resource, status, details, ip_address, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        (
-            event_type,
-            user_id,
-            session_id,
-            channel,
-            action,
-            resource,
-            status,
-            details_json,
-            ip_address,
-            user_agent,
-        ),
-    )
+    # Check if trace_id column exists (migration may not have run yet)
+    col_names = {row[1] for row in cursor.execute("PRAGMA table_info(audit_log)").fetchall()}
+    if "trace_id" in col_names:
+        cursor.execute(
+            """
+            INSERT INTO audit_log
+            (event_type, user_id, session_id, channel, action, resource, status, details, ip_address, user_agent, trace_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                event_type,
+                user_id,
+                session_id,
+                channel,
+                action,
+                resource,
+                status,
+                details_json,
+                ip_address,
+                user_agent,
+                trace_id,
+            ),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO audit_log
+            (event_type, user_id, session_id, channel, action, resource, status, details, ip_address, user_agent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                event_type,
+                user_id,
+                session_id,
+                channel,
+                action,
+                resource,
+                status,
+                details_json,
+                ip_address,
+                user_agent,
+            ),
+        )
 
     event_id = cursor.lastrowid
     conn.commit()

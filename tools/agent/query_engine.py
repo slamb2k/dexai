@@ -365,6 +365,19 @@ class DexAIClient:
 
         self._total_cost += total_cost
 
+        # Record cost for budget tracking
+        try:
+            from tools.ops.cost_tracker import record_cost
+            record_cost(
+                model=self._last_routing_decision.primary_model.routed_id if self._last_routing_decision else "unknown",
+                cost_usd=total_cost,
+                channel=self.channel,
+                session_key=self._session_id,
+                complexity=self._last_routing_decision.complexity.value if self._last_routing_decision else None,
+            )
+        except Exception:
+            pass
+
         text = "\n".join(response_parts)
         adhd_config = self.config.get("adhd", {}).get("response", {})
 

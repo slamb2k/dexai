@@ -69,6 +69,25 @@ Pluggable memory backend system supporting multiple storage providers.
 
 ---
 
+## Operations Tools (`tools/ops/`)
+
+| Tool | Description |
+|------|-------------|
+| `migrate.py` | Forward-only database migration runner (numbered SQL files in `migrations/`) |
+| `cost_tracker.py` | Per-API-call cost recording and query with conversation-level aggregation |
+| `budget_alerter.py` | Budget threshold alerting at 80%/95%/100% with audit logging and dashboard events |
+| `backup.py` | WAL-safe SQLite backup with gzip compression and configurable retention |
+
+---
+
+## Logging Configuration (`tools/`)
+
+| Tool | Description |
+|------|-------------|
+| `logging_config.py` | Structured JSON logging configuration via structlog wrapping stdlib |
+
+---
+
 ## Channel Tools (`tools/channels/`)
 
 | Tool | Description |
