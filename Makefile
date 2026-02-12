@@ -170,13 +170,18 @@ db-init: ## Initialize all databases
 
 db-migrate: ## Run database migrations
 	@echo "$(BLUE)Running migrations...$(NC)"
-	@echo "$(YELLOW)Note: Manual migration not yet implemented$(NC)"
+	@python -m tools.ops.migrate
+	@echo "$(GREEN)Migrations complete$(NC)"
 
-db-backup: ## Backup databases
+db-backup: ## Backup databases (WAL-safe, compressed)
 	@echo "$(BLUE)Backing up databases...$(NC)"
-	@mkdir -p backups
-	@cp data/*.db backups/ 2>/dev/null || true
+	@python -m tools.ops.backup
 	@echo "$(GREEN)Databases backed up to backups/$(NC)"
+
+db-enable-wal: ## Enable WAL mode on all databases
+	@echo "$(BLUE)Enabling WAL mode...$(NC)"
+	@python -m tools.ops.backup --enable-wal
+	@echo "$(GREEN)WAL mode enabled$(NC)"
 
 # ==============================================================================
 # Cleanup
