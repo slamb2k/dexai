@@ -51,8 +51,8 @@ logger = logging.getLogger(__name__)
 # Configuration path
 CONFIG_PATH = ARGS_DIR / "workspace.yaml"
 
-# Default workspace base path
-DEFAULT_BASE_PATH = DATA_DIR / "workspaces"
+# Single workspace path (single-tenant: one workspace for the owner)
+DEFAULT_WORKSPACE_PATH = DATA_DIR / "workspace"
 
 
 class WorkspaceScope(Enum):
@@ -134,57 +134,36 @@ class WorkspaceManager:
         """
         Initialize workspace manager.
 
+        Single-tenant: manages a single shared workspace directory.
+
         Args:
             config: Optional config override (default: load from file)
         """
         self.config = config or load_config()
         self._workspace_config = self.config.get("workspace", DEFAULT_CONFIG["workspace"])
 
-        # Resolve base path
-        base_path_str = self._workspace_config.get("base_path", "data/workspaces")
-        if not Path(base_path_str).is_absolute():
-            self.base_path = PROJECT_ROOT / base_path_str
+        # Single workspace path — use config base_path if provided, otherwise default
+        base_path = self._workspace_config.get("base_path")
+        if base_path:
+            self.workspace_path = Path(base_path) / "workspace"
         else:
-            self.base_path = Path(base_path_str)
+            self.workspace_path = DEFAULT_WORKSPACE_PATH
 
-        # Ensure base directory exists
-        self.base_path.mkdir(parents=True, exist_ok=True)
-
-        # Run startup cleanup if configured
-        if self._workspace_config.get("scope", {}).get("cleanup", {}).get("cleanup_on_startup", True):
-            try:
-                self.cleanup_stale_workspaces()
-            except Exception as e:
-                logger.warning(f"Startup cleanup failed: {e}")
+        # Ensure workspace directory exists
+        self.workspace_path.mkdir(parents=True, exist_ok=True)
 
     @property
     def enabled(self) -> bool:
         """Check if workspace isolation is enabled."""
         return self._workspace_config.get("enabled", True)
 
-    def _workspace_key(self, user_id: str, channel: str) -> str:
-        """
-        Generate workspace directory name from user and channel.
+    def _metadata_path(self) -> Path:
+        """Get metadata file path for the workspace."""
+        return self.workspace_path / ".metadata.json"
 
-        Args:
-            user_id: User identifier
-            channel: Communication channel
-
-        Returns:
-            Safe directory name
-        """
-        # Sanitize for filesystem safety
-        safe_user = "".join(c if c.isalnum() or c in "-_" else "_" for c in user_id)
-        safe_channel = "".join(c if c.isalnum() or c in "-_" else "_" for c in channel)
-        return f"{safe_user}_{safe_channel}"
-
-    def _metadata_path(self, workspace: Path) -> Path:
-        """Get metadata file path for a workspace."""
-        return workspace / ".metadata.json"
-
-    def _read_metadata(self, workspace: Path) -> dict:
+    def _read_metadata(self) -> dict:
         """Read workspace metadata."""
-        metadata_path = self._metadata_path(workspace)
+        metadata_path = self._metadata_path()
         if metadata_path.exists():
             try:
                 with open(metadata_path) as f:
@@ -193,253 +172,129 @@ class WorkspaceManager:
                 pass
         return {}
 
-    def _write_metadata(self, workspace: Path, metadata: dict) -> None:
+    def _write_metadata(self, metadata: dict) -> None:
         """Write workspace metadata."""
-        metadata_path = self._metadata_path(workspace)
+        metadata_path = self._metadata_path()
         try:
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2, default=str)
         except Exception as e:
             logger.warning(f"Failed to write metadata: {e}")
 
-    def get_workspace(
-        self,
-        user_id: str,
-        channel: str,
-        scope: Optional[WorkspaceScope] = None,
-        access: Optional[WorkspaceAccess] = None,
-    ) -> Path:
+    def get_workspace(self, **kwargs) -> Path:
         """
-        Get or create a workspace for a user.
-
-        If the workspace exists, returns it (updating last_accessed).
-        If not, creates a new workspace with bootstrap files.
-
-        Args:
-            user_id: User identifier
-            channel: Communication channel
-            scope: Workspace scope (default from config)
-            access: Access level (default from config)
+        Get or create the single workspace.
 
         Returns:
             Path to workspace directory
         """
         if not self.enabled:
-            # Return project root if workspaces disabled
             return PROJECT_ROOT
 
-        workspace_key = self._workspace_key(user_id, channel)
-        workspace_path = self.base_path / workspace_key
-
-        if workspace_path.exists():
+        if self.workspace_path.exists() and (self.workspace_path / ".metadata.json").exists():
             # Update last accessed time
-            metadata = self._read_metadata(workspace_path)
+            metadata = self._read_metadata()
             metadata["last_accessed"] = datetime.now().isoformat()
-            self._write_metadata(workspace_path, metadata)
-            return workspace_path
+            self._write_metadata(metadata)
+            return self.workspace_path
 
-        # Create new workspace
-        return self.create_workspace(user_id, channel, scope, access)
+        # Bootstrap workspace
+        return self.create_workspace()
 
-    def create_workspace(
-        self,
-        user_id: str,
-        channel: str,
-        scope: Optional[WorkspaceScope] = None,
-        access: Optional[WorkspaceAccess] = None,
-    ) -> Path:
+    def create_workspace(self, **kwargs) -> Path:
         """
-        Create a new workspace with bootstrap files.
-
-        Args:
-            user_id: User identifier
-            channel: Communication channel
-            scope: Workspace scope (default from config)
-            access: Access level (default from config)
+        Create or bootstrap the single workspace with template files.
 
         Returns:
-            Path to created workspace directory
+            Path to workspace directory
         """
-        workspace_key = self._workspace_key(user_id, channel)
-        workspace_path = self.base_path / workspace_key
-
-        # Determine scope and access
-        if scope is None:
-            scope_str = self._workspace_config.get("scope", {}).get("default", "persistent")
-            scope = WorkspaceScope(scope_str)
-
-        if access is None:
-            access_str = self._workspace_config.get("access", {}).get("default", "rw")
-            access = WorkspaceAccess(access_str)
-
-        # Create workspace directory
-        workspace_path.mkdir(parents=True, exist_ok=True)
+        self.workspace_path.mkdir(parents=True, exist_ok=True)
 
         # Bootstrap with template files
-        bootstrap_result = _bootstrap_files(workspace_path)
+        bootstrap_result = _bootstrap_files(self.workspace_path)
         if not bootstrap_result.get("success"):
             logger.warning(f"Bootstrap partially failed: {bootstrap_result.get('errors', [])}")
 
+        # Populate workspace files with existing user.yaml values
+        self._populate_from_user_yaml(self.workspace_path)
+
         # Write metadata
         metadata = {
-            "user_id": user_id,
-            "channel": channel,
-            "scope": scope.value,
-            "access": access.value,
+            "scope": "permanent",
+            "access": "rw",
             "created_at": datetime.now().isoformat(),
             "last_accessed": datetime.now().isoformat(),
             "bootstrap_files": bootstrap_result.get("created", []),
         }
-        self._write_metadata(workspace_path, metadata)
+        self._write_metadata(metadata)
 
-        logger.info(f"Created workspace for {user_id}:{channel} at {workspace_path}")
-        return workspace_path
+        logger.info(f"Created workspace at {self.workspace_path}")
+        return self.workspace_path
 
-    def delete_workspace(self, user_id: str, channel: str) -> bool:
+    def _populate_from_user_yaml(self, workspace_path: Path) -> None:
+        """Populate workspace files with existing values from args/user.yaml.
+
+        Called after bootstrap so that workspaces created *after* onboarding
+        already contain the user's name, timezone, and ADHD context.
         """
-        Delete a workspace.
+        try:
+            from tools.setup.wizard import populate_workspace_files
 
-        Args:
-            user_id: User identifier
-            channel: Communication channel
+            user_yaml_path = ARGS_DIR / "user.yaml"
+            if not user_yaml_path.exists():
+                return
+
+            with open(user_yaml_path) as f:
+                data = yaml.safe_load(f) or {}
+
+            field_values = {
+                "user_name": data.get("user", {}).get("name"),
+                "timezone": data.get("user", {}).get("timezone"),
+                "energy_pattern": data.get("preferences", {}).get("energy_pattern"),
+                "adhd_challenges": data.get("preferences", {}).get("adhd_challenges"),
+                "work_focus_areas": data.get("preferences", {}).get("work_focus_areas"),
+            }
+
+            for field, value in field_values.items():
+                if value:
+                    display = ", ".join(value) if isinstance(value, list) else str(value)
+                    populate_workspace_files(workspace_path, field, display)
+        except Exception as e:
+            logger.warning(f"Could not populate workspace from user.yaml: {e}")
+
+    def delete_workspace(self) -> bool:
+        """
+        Delete the workspace.
 
         Returns:
             True if deleted, False if not found
         """
-        workspace_key = self._workspace_key(user_id, channel)
-        workspace_path = self.base_path / workspace_key
-
-        if not workspace_path.exists():
+        if not self.workspace_path.exists():
             return False
 
         try:
-            shutil.rmtree(workspace_path)
-            logger.info(f"Deleted workspace for {user_id}:{channel}")
+            shutil.rmtree(self.workspace_path)
+            logger.info(f"Deleted workspace at {self.workspace_path}")
             return True
         except Exception as e:
             logger.error(f"Failed to delete workspace: {e}")
             return False
 
-    def cleanup_stale_workspaces(self) -> int:
+    def get_workspace_size(self) -> int:
         """
-        Clean up stale workspaces based on scope and age.
-
-        - SESSION scoped workspaces are always deleted
-        - PERSISTENT workspaces are deleted after stale_days
-        - PERMANENT workspaces are never deleted
-
-        Returns:
-            Number of workspaces cleaned up
-        """
-        stale_days = self._workspace_config.get("scope", {}).get("cleanup", {}).get("stale_days", 30)
-        stale_threshold = datetime.now() - timedelta(days=stale_days)
-        cleaned = 0
-
-        if not self.base_path.exists():
-            return 0
-
-        for workspace_dir in self.base_path.iterdir():
-            if not workspace_dir.is_dir():
-                continue
-
-            metadata = self._read_metadata(workspace_dir)
-            scope = metadata.get("scope", "persistent")
-
-            # Check if should be cleaned
-            should_clean = False
-
-            if scope == WorkspaceScope.SESSION.value:
-                # Session scoped - always clean
-                should_clean = True
-            elif scope == WorkspaceScope.PERSISTENT.value:
-                # Check age
-                last_accessed = metadata.get("last_accessed")
-                if last_accessed:
-                    try:
-                        last_dt = datetime.fromisoformat(last_accessed)
-                        if last_dt < stale_threshold:
-                            should_clean = True
-                    except ValueError:
-                        pass
-            # PERMANENT scope - never clean
-
-            if should_clean:
-                try:
-                    shutil.rmtree(workspace_dir)
-                    cleaned += 1
-                    logger.info(f"Cleaned stale workspace: {workspace_dir.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to clean workspace {workspace_dir.name}: {e}")
-
-        if cleaned > 0:
-            logger.info(f"Cleaned {cleaned} stale workspaces")
-
-        return cleaned
-
-    def list_workspaces(self) -> list[dict]:
-        """
-        List all workspaces with metadata.
-
-        Returns:
-            List of workspace info dicts
-        """
-        workspaces = []
-
-        if not self.base_path.exists():
-            return workspaces
-
-        for workspace_dir in self.base_path.iterdir():
-            if not workspace_dir.is_dir():
-                continue
-
-            metadata = self._read_metadata(workspace_dir)
-
-            # Calculate size
-            size_bytes = sum(
-                f.stat().st_size for f in workspace_dir.rglob("*") if f.is_file()
-            )
-
-            workspaces.append({
-                "path": str(workspace_dir),
-                "name": workspace_dir.name,
-                "user_id": metadata.get("user_id", "unknown"),
-                "channel": metadata.get("channel", "unknown"),
-                "scope": metadata.get("scope", "persistent"),
-                "access": metadata.get("access", "rw"),
-                "created_at": metadata.get("created_at"),
-                "last_accessed": metadata.get("last_accessed"),
-                "size_bytes": size_bytes,
-                "bootstrap_files": metadata.get("bootstrap_files", []),
-            })
-
-        return sorted(workspaces, key=lambda w: w.get("last_accessed") or "", reverse=True)
-
-    def get_workspace_size(self, user_id: str, channel: str) -> int:
-        """
-        Get the total size of a workspace in bytes.
-
-        Args:
-            user_id: User identifier
-            channel: Communication channel
+        Get the total size of the workspace in bytes.
 
         Returns:
             Size in bytes, or 0 if not found
         """
-        workspace_key = self._workspace_key(user_id, channel)
-        workspace_path = self.base_path / workspace_key
-
-        if not workspace_path.exists():
+        if not self.workspace_path.exists():
             return 0
 
-        return sum(f.stat().st_size for f in workspace_path.rglob("*") if f.is_file())
+        return sum(f.stat().st_size for f in self.workspace_path.rglob("*") if f.is_file())
 
-    def check_workspace_limits(self, user_id: str, channel: str) -> dict[str, Any]:
+    def check_workspace_limits(self) -> dict[str, Any]:
         """
         Check if workspace is within size limits.
-
-        Args:
-            user_id: User identifier
-            channel: Communication channel
 
         Returns:
             Dict with 'within_limits', 'current_size', 'max_size'
@@ -447,7 +302,7 @@ class WorkspaceManager:
         restrictions = self._workspace_config.get("restrictions", {})
         max_size = restrictions.get("max_workspace_size_bytes", 104857600)
 
-        current_size = self.get_workspace_size(user_id, channel)
+        current_size = self.get_workspace_size()
 
         return {
             "within_limits": current_size < max_size,
@@ -456,36 +311,49 @@ class WorkspaceManager:
             "usage_percent": (current_size / max_size * 100) if max_size > 0 else 0,
         }
 
-    def mark_session_end(self, user_id: str, channel: str) -> bool:
+    def list_workspaces(self) -> list[dict]:
         """
-        Mark a session as ended (for SESSION scoped workspaces).
-
-        If the workspace has SESSION scope, schedules it for cleanup.
-
-        Args:
-            user_id: User identifier
-            channel: Communication channel
+        List the workspace with metadata.
 
         Returns:
-            True if marked/cleaned, False if not applicable
+            List with single workspace info dict (or empty if not created)
         """
-        workspace_key = self._workspace_key(user_id, channel)
-        workspace_path = self.base_path / workspace_key
+        if not self.workspace_path.exists():
+            return []
 
-        if not workspace_path.exists():
+        metadata = self._read_metadata()
+        size_bytes = self.get_workspace_size()
+
+        return [{
+            "path": str(self.workspace_path),
+            "name": self.workspace_path.name,
+            "scope": metadata.get("scope", "permanent"),
+            "access": metadata.get("access", "rw"),
+            "created_at": metadata.get("created_at"),
+            "last_accessed": metadata.get("last_accessed"),
+            "size_bytes": size_bytes,
+            "bootstrap_files": metadata.get("bootstrap_files", []),
+        }]
+
+    def mark_session_end(self, channel: str = "") -> bool:
+        """
+        Mark a session as ended.
+
+        Updates last accessed time on the workspace.
+
+        Args:
+            channel: Communication channel (for logging)
+
+        Returns:
+            True if updated
+        """
+        if not self.workspace_path.exists():
             return False
 
-        metadata = self._read_metadata(workspace_path)
-        scope = metadata.get("scope", "persistent")
-
-        if scope == WorkspaceScope.SESSION.value:
-            # Clean up session workspace immediately
-            return self.delete_workspace(user_id, channel)
-
-        # Update last accessed for non-session workspaces
+        metadata = self._read_metadata()
         metadata["last_accessed"] = datetime.now().isoformat()
         metadata["session_ended_at"] = datetime.now().isoformat()
-        self._write_metadata(workspace_path, metadata)
+        self._write_metadata(metadata)
         return True
 
 
@@ -519,15 +387,11 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Workspace Manager")
-    parser.add_argument("--list", action="store_true", help="List all workspaces")
-    parser.add_argument("--create", nargs=2, metavar=("USER", "CHANNEL"), help="Create workspace")
-    parser.add_argument("--delete", nargs=2, metavar=("USER", "CHANNEL"), help="Delete workspace")
-    parser.add_argument("--cleanup", action="store_true", help="Cleanup stale workspaces")
-    parser.add_argument("--scope", choices=["session", "persistent", "permanent"],
-                        help="Scope for new workspace")
+    parser.add_argument("--list", action="store_true", help="List workspace")
+    parser.add_argument("--create", action="store_true", help="Create/bootstrap workspace")
+    parser.add_argument("--delete", action="store_true", help="Delete workspace")
+    parser.add_argument("--check", action="store_true", help="Check workspace limits")
     parser.add_argument("--test", action="store_true", help="Run self-test")
-    parser.add_argument("--check", nargs=2, metavar=("USER", "CHANNEL"),
-                        help="Check workspace limits")
 
     args = parser.parse_args()
     manager = get_workspace_manager()
@@ -535,40 +399,29 @@ def main():
     if args.list:
         workspaces = manager.list_workspaces()
         if workspaces:
-            print(f"Found {len(workspaces)} workspaces:\n")
-            for ws in workspaces:
-                size_mb = ws["size_bytes"] / (1024 * 1024)
-                print(f"  {ws['name']}:")
-                print(f"    User: {ws['user_id']}, Channel: {ws['channel']}")
-                print(f"    Scope: {ws['scope']}, Access: {ws['access']}")
-                print(f"    Size: {size_mb:.2f} MB")
-                print(f"    Created: {ws['created_at']}")
-                print(f"    Last accessed: {ws['last_accessed']}")
-                print()
+            ws = workspaces[0]
+            size_mb = ws["size_bytes"] / (1024 * 1024)
+            print(f"Workspace: {ws['name']}")
+            print(f"  Scope: {ws['scope']}, Access: {ws['access']}")
+            print(f"  Size: {size_mb:.2f} MB")
+            print(f"  Created: {ws['created_at']}")
+            print(f"  Last accessed: {ws['last_accessed']}")
         else:
-            print("No workspaces found.")
+            print("No workspace found.")
 
     elif args.create:
-        user_id, channel = args.create
-        scope = WorkspaceScope(args.scope) if args.scope else None
-        workspace = manager.create_workspace(user_id, channel, scope)
+        workspace = manager.create_workspace()
         print(f"Created workspace: {workspace}")
 
     elif args.delete:
-        user_id, channel = args.delete
-        if manager.delete_workspace(user_id, channel):
-            print(f"Deleted workspace for {user_id}:{channel}")
+        if manager.delete_workspace():
+            print("Deleted workspace")
         else:
-            print(f"Workspace not found for {user_id}:{channel}")
-
-    elif args.cleanup:
-        cleaned = manager.cleanup_stale_workspaces()
-        print(f"Cleaned {cleaned} stale workspaces")
+            print("Workspace not found")
 
     elif args.check:
-        user_id, channel = args.check
-        limits = manager.check_workspace_limits(user_id, channel)
-        print(f"Workspace limits for {user_id}:{channel}:")
+        limits = manager.check_workspace_limits()
+        print(f"Workspace limits:")
         print(f"  Within limits: {limits['within_limits']}")
         print(f"  Current size: {limits['current_size_bytes'] / (1024 * 1024):.2f} MB")
         print(f"  Max size: {limits['max_size_bytes'] / (1024 * 1024):.2f} MB")
@@ -577,33 +430,21 @@ def main():
     elif args.test:
         print("Running self-test...")
 
-        # Test create
-        test_user = "test_user"
-        test_channel = "test_cli"
-        workspace = manager.create_workspace(test_user, test_channel, WorkspaceScope.SESSION)
+        workspace = manager.create_workspace()
         print(f"  Created: {workspace}")
         assert workspace.exists(), "Workspace should exist"
 
-        # Test get (should return same path)
-        same_workspace = manager.get_workspace(test_user, test_channel)
+        same_workspace = manager.get_workspace()
         assert same_workspace == workspace, "get_workspace should return existing"
         print("  Get returned same workspace")
 
-        # Test list
         workspaces = manager.list_workspaces()
-        assert any(w["user_id"] == test_user for w in workspaces), "Should be in list"
+        assert len(workspaces) == 1, "Should have one workspace"
         print(f"  Listed {len(workspaces)} workspaces")
 
-        # Test limits
-        limits = manager.check_workspace_limits(test_user, test_channel)
+        limits = manager.check_workspace_limits()
         assert limits["within_limits"], "Should be within limits"
-        print(f"  Limits check passed")
-
-        # Test delete
-        deleted = manager.delete_workspace(test_user, test_channel)
-        assert deleted, "Should delete successfully"
-        assert not workspace.exists(), "Workspace should be gone"
-        print("  Deleted successfully")
+        print("  Limits check passed")
 
         print("\nAll tests passed!")
 
