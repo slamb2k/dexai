@@ -72,6 +72,12 @@ __all__ = [
     # Skill tracker exports (lazy loaded)
     "SkillTracker",
     "SkillUsageData",
+    # Skill validator exports (lazy loaded)
+    "SkillValidationResult",
+    "validate_skill",
+    "test_skill",
+    "list_skills",
+    "compute_skill_hash",
     # Workspace manager exports (lazy loaded)
     "WorkspaceManager",
     "WorkspaceScope",
@@ -176,6 +182,30 @@ def __getattr__(name):
         return {
             "SkillTracker": SkillTracker,
             "SkillUsageData": SkillUsageData,
+        }[name]
+
+    # Skill validator components
+    skill_validator_exports = (
+        "SkillValidationResult",
+        "validate_skill",
+        "test_skill",
+        "list_skills",
+        "compute_skill_hash",
+    )
+    if name in skill_validator_exports:
+        from tools.agent.skill_validator import (
+            SkillValidationResult,
+            validate_skill,
+            test_skill,
+            list_skills,
+            compute_skill_hash,
+        )
+        return {
+            "SkillValidationResult": SkillValidationResult,
+            "validate_skill": validate_skill,
+            "test_skill": test_skill,
+            "list_skills": list_skills,
+            "compute_skill_hash": compute_skill_hash,
         }[name]
 
     # Workspace manager components

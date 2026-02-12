@@ -36,6 +36,10 @@ services:
       - ./memory:/app/memory
       # Note: .claude/skills/ is baked into the image (built-in skills, read-only)
       # User-created skills go in workspace: /app/data/workspaces/{user}/.claude/skills/
+      # Uncomment the line below to enable container-based execution isolation (V-10/S-4).
+      # Requires DEXAI_CONTAINER_ISOLATION=true in .env.
+      # WARNING: Grants the backend the ability to manage Docker containers.
+      # - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/api/health', timeout=5).raise_for_status()"]
       interval: 30s

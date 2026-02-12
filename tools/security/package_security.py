@@ -22,13 +22,19 @@ Usage:
 
 import asyncio
 import difflib
+import hashlib
+import json as _json
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+HASH_CACHE_PATH = PROJECT_ROOT / "data" / "package_hashes.json"
 
 
 # =============================================================================
@@ -189,6 +195,31 @@ async def verify_package_security(
             }
 
         package_info = pypi_result["info"]
+
+        # Check 4: OSV advisory feed using version already fetched from PyPI
+        version_for_osv = package_info.get("version")
+        if version_for_osv:
+            try:
+                from tools.security.advisory_feed import is_package_vulnerable
+
+                vuln_result = is_package_vulnerable(package_name, version_for_osv)
+                if vuln_result.get("vulnerable"):
+                    advisory_ids = [a.get("id", "unknown") for a in vuln_result.get("advisories", [])]
+                    return {
+                        "safe": False,
+                        "risk_level": "blocked",
+                        "warnings": [
+                            f"BLOCKED: Known vulnerabilities found: {', '.join(advisory_ids)}"
+                        ],
+                        "recommendation": "skip",
+                        "package_info": None,
+                        "blocked_reason": f"OSV advisories: {', '.join(advisory_ids)}",
+                        "advisories": vuln_result.get("advisories", []),
+                    }
+            except ImportError:
+                logger.debug("advisory_feed module not available, skipping OSV check")
+            except Exception as e:
+                logger.warning(f"OSV advisory check failed for {package_name}: {e}")
 
         # Check download count
         if package_info.get("downloads"):
@@ -361,6 +392,171 @@ async def _get_download_count(package_name: str) -> int | None:
             return data.get("data", {}).get("last_month")
 
     except Exception:
+        return None
+
+
+# =============================================================================
+# Package Hash Pinning
+# =============================================================================
+
+
+def _load_hash_cache() -> dict[str, str]:
+    """Load pinned hashes from the local cache file."""
+    try:
+        if HASH_CACHE_PATH.exists():
+            return _json.loads(HASH_CACHE_PATH.read_text())
+    except Exception as e:
+        logger.warning(f"Failed to load hash cache: {e}")
+    return {}
+
+
+def _save_hash_cache(cache: dict[str, str]) -> None:
+    """Save pinned hashes to the local cache file."""
+    try:
+        HASH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HASH_CACHE_PATH.write_text(_json.dumps(cache, indent=2))
+    except Exception as e:
+        logger.warning(f"Failed to save hash cache: {e}")
+
+
+def get_pypi_hash(package_name: str, version: str) -> str | None:
+    """Fetch the expected SHA-256 hash for a package version from PyPI.
+
+    Queries the PyPI JSON API and returns the sha256 digest of the first
+    available wheel or sdist distribution file.
+
+    Args:
+        package_name: PyPI package name.
+        version: Exact version string.
+
+    Returns:
+        SHA-256 hex digest string, or None if unavailable.
+    """
+    url = f"https://pypi.org/pypi/{package_name}/{version}/json"
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url)
+            if response.status_code != 200:
+                return None
+            data = response.json()
+
+        # Prefer wheel, fall back to sdist
+        urls = data.get("urls", [])
+        for dist in urls:
+            digests = dist.get("digests", {})
+            sha256 = digests.get("sha256")
+            if sha256:
+                return sha256
+
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to fetch PyPI hash for {package_name}=={version}: {e}")
+        return None
+
+
+def verify_package_hash(
+    package_name: str,
+    version: str,
+    expected_hash: str | None = None,
+    mode: str = "warn",
+) -> dict[str, Any]:
+    """Verify package integrity by comparing SHA-256 hashes.
+
+    After a package is installed, this function computes the SHA-256 of the
+    installed distribution and compares it against a pinned hash from the local
+    cache, an explicitly provided hash, or stores the hash for future comparison.
+
+    The PyPI distribution hash is also fetched and stored alongside the installed
+    hash for audit purposes.
+
+    Args:
+        package_name: Name of the installed package.
+        version: Installed version string.
+        expected_hash: Pre-known hash to verify against. If None, fetched from
+            local cache or PyPI.
+        mode: "warn" (log mismatch, allow) or "strict" (block on mismatch).
+
+    Returns:
+        {"verified": True} on match, or
+        {"verified": False, "warning": ...} in warn mode, or
+        {"verified": False, "error": ..., "blocked": True} in strict mode.
+    """
+    cache = _load_hash_cache()
+    cache_key = f"{package_name}=={version}"
+    pypi_key = f"{package_name}=={version}:pypi"
+
+    # Compute hash of installed package
+    actual_hash = _compute_installed_hash(package_name)
+    if actual_hash is None:
+        logger.warning(f"Could not compute hash for installed {cache_key}")
+        if mode == "strict":
+            return {"verified": False, "error": "Package not found or unreadable", "blocked": True}
+        else:
+            return {"verified": False, "warning": "Package not found, cannot verify hash"}
+
+    # Resolve expected hash: explicit arg > pinned cache > first-install pin
+    if expected_hash is None:
+        expected_hash = cache.get(cache_key)
+
+    if expected_hash is None:
+        # First install: fetch PyPI dist hash for audit, pin installed hash
+        pypi_hash = get_pypi_hash(package_name, version)
+        if pypi_hash:
+            cache[pypi_key] = pypi_hash
+
+        # Pin the computed installed-files hash for future comparison
+        cache[cache_key] = actual_hash
+        _save_hash_cache(cache)
+        logger.info(f"Pinned hash for {cache_key}: {actual_hash[:16]}...")
+        return {"verified": True, "pinned": True}
+
+    if actual_hash == expected_hash:
+        return {"verified": True}
+
+    # Mismatch
+    msg = f"Hash mismatch for {cache_key}: expected {expected_hash[:16]}..., got {actual_hash[:16]}..."
+    logger.warning(msg)
+
+    if mode == "strict":
+        return {"verified": False, "error": msg, "blocked": True}
+    else:
+        return {"verified": False, "warning": msg}
+
+
+def _compute_installed_hash(package_name: str) -> str | None:
+    """Compute SHA-256 hash of an installed package's RECORD files.
+
+    Uses importlib.metadata to locate installed distribution files and
+    hashes the concatenation of their contents in sorted order.
+
+    Args:
+        package_name: Installed package name.
+
+    Returns:
+        SHA-256 hex digest, or None if package not found.
+    """
+    try:
+        import importlib.metadata
+
+        dist = importlib.metadata.distribution(package_name)
+        files = dist.files
+        if not files:
+            return None
+
+        hasher = hashlib.sha256()
+        for f in sorted(files, key=lambda p: str(p)):
+            try:
+                located = f.locate()
+                if located.exists() and located.is_file():
+                    hasher.update(located.read_bytes())
+            except Exception:
+                continue
+
+        return hasher.hexdigest()
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning(f"Error computing hash for {package_name}: {e}")
         return None
 
 

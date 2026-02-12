@@ -27,13 +27,17 @@ Output:
 """
 
 import argparse
+import hashlib
 import json
+import logging
 import re
 import sqlite3
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # Database path
@@ -49,10 +53,35 @@ VALID_TYPES = [
     "error",
     "system",
     "security",
+    "tool_use",
 ]
 
 # Valid statuses
-VALID_STATUSES = ["success", "failure", "blocked"]
+VALID_STATUSES = ["success", "failure", "blocked", "attempted"]
+
+
+def _compute_entry_hash(
+    previous_hash: str,
+    event_type: str,
+    source: str,
+    details: str,
+    timestamp: str,
+) -> str:
+    """Compute SHA-256 hash for a new audit entry.
+
+    Args:
+        previous_hash: Hash of the previous entry (or empty string for first entry).
+        event_type: The event type being logged.
+        source: The action/source string.
+        details: JSON-serialized details string (or empty).
+        timestamp: ISO-format timestamp of the event.
+
+    Returns:
+        Hex-encoded SHA-256 digest.
+    """
+    payload = f"{previous_hash}|{event_type}|{source}|{details}|{timestamp}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
 
 
 def get_connection():
@@ -68,13 +97,13 @@ def get_connection():
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            event_type TEXT NOT NULL CHECK(event_type IN ('auth', 'command', 'permission', 'secret', 'rate_limit', 'error', 'system', 'security')),
+            event_type TEXT NOT NULL CHECK(event_type IN ('auth', 'command', 'permission', 'secret', 'rate_limit', 'error', 'system', 'security', 'tool_use')),
             user_id TEXT,
             session_id TEXT,
             channel TEXT,
             action TEXT NOT NULL,
             resource TEXT,
-            status TEXT CHECK(status IN ('success', 'failure', 'blocked')),
+            status TEXT CHECK(status IN ('success', 'failure', 'blocked', 'attempted')),
             details TEXT,
             ip_address TEXT,
             user_agent TEXT
@@ -149,49 +178,60 @@ def log_event(
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Check if trace_id column exists (migration may not have run yet)
+    # Check which columns exist (migrations may not have run yet)
     col_names = {row[1] for row in cursor.execute("PRAGMA table_info(audit_log)").fetchall()}
-    if "trace_id" in col_names:
-        cursor.execute(
-            """
-            INSERT INTO audit_log
-            (event_type, user_id, session_id, channel, action, resource, status, details, ip_address, user_agent, trace_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                event_type,
-                user_id,
-                session_id,
-                channel,
-                action,
-                resource,
-                status,
-                details_json,
-                ip_address,
-                user_agent,
-                trace_id,
-            ),
+    has_trace_id = "trace_id" in col_names
+    has_hash_chain = "entry_hash" in col_names
+
+    # Generate timestamp explicitly so it can be used in hash computation
+    # Use the same format as SQLite CURRENT_TIMESTAMP for consistency
+    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Use BEGIN IMMEDIATE to acquire a write lock before reading the latest hash,
+    # preventing TOCTOU race conditions in the hash chain.
+    cursor.execute("BEGIN IMMEDIATE")
+
+    # Compute hash chain values if columns exist
+    entry_hash = None
+    previous_hash = None
+    if has_hash_chain:
+        row = cursor.execute(
+            "SELECT entry_hash FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = row["entry_hash"] if row and row["entry_hash"] else ""
+        entry_hash = _compute_entry_hash(
+            previous_hash=previous_hash,
+            event_type=event_type,
+            source=action,
+            details=details_json or "",
+            timestamp=timestamp_str,
         )
-    else:
-        cursor.execute(
-            """
-            INSERT INTO audit_log
-            (event_type, user_id, session_id, channel, action, resource, status, details, ip_address, user_agent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                event_type,
-                user_id,
-                session_id,
-                channel,
-                action,
-                resource,
-                status,
-                details_json,
-                ip_address,
-                user_agent,
-            ),
-        )
+
+    # Build column list and values dynamically (include explicit timestamp)
+    columns = [
+        "timestamp", "event_type", "user_id", "session_id", "channel", "action",
+        "resource", "status", "details", "ip_address", "user_agent",
+    ]
+    values = [
+        timestamp_str, event_type, user_id, session_id, channel, action,
+        resource, status, details_json, ip_address, user_agent,
+    ]
+
+    if has_trace_id:
+        columns.append("trace_id")
+        values.append(trace_id)
+
+    if has_hash_chain:
+        columns.extend(["entry_hash", "previous_hash"])
+        values.extend([entry_hash, previous_hash])
+
+    placeholders = ", ".join("?" for _ in values)
+    col_str = ", ".join(columns)
+
+    cursor.execute(
+        f"INSERT INTO audit_log ({col_str}) VALUES ({placeholders})",
+        values,
+    )
 
     event_id = cursor.lastrowid
     conn.commit()
@@ -441,6 +481,106 @@ def export_events(since: str | None = None, format: str = "json") -> dict[str, A
         return {"success": True, "format": "csv", "count": len(events), "data": "\n".join(lines)}
     else:
         return {"success": False, "error": f"Unknown format: {format}"}
+
+
+def verify_hash_chain(limit: int = 1000) -> dict[str, Any]:
+    """Verify the integrity of the audit log hash chain.
+
+    Reads the last N entries and verifies each entry's hash matches
+    the expected value computed from its data and the previous hash.
+
+    Args:
+        limit: Maximum number of entries to verify (most recent first).
+
+    Returns:
+        dict with verification result, checked count, and any broken entries.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Check if hash columns exist
+    col_names = {row[1] for row in cursor.execute("PRAGMA table_info(audit_log)").fetchall()}
+    if "entry_hash" not in col_names:
+        conn.close()
+        return {
+            "success": True,
+            "verified": False,
+            "message": "Hash chain columns not present. Run migration 0004 first.",
+        }
+
+    # Read entries in ascending order (oldest first) for chain verification
+    cursor.execute(
+        """
+        SELECT id, timestamp, event_type, action, details, entry_hash, previous_hash
+        FROM audit_log
+        WHERE entry_hash IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return {
+            "success": True,
+            "verified": True,
+            "checked": 0,
+            "message": "No hashed entries found.",
+        }
+
+    # Reverse to process oldest first
+    rows = list(reversed(rows))
+
+    broken_entries: list[dict] = []
+    checked = 0
+
+    for row in rows:
+        row_dict = dict(row)
+        expected_hash = _compute_entry_hash(
+            previous_hash=row_dict["previous_hash"] or "",
+            event_type=row_dict["event_type"],
+            source=row_dict["action"],
+            details=row_dict["details"] or "",
+            timestamp=row_dict["timestamp"],
+        )
+        checked += 1
+
+        if expected_hash != row_dict["entry_hash"]:
+            broken_entries.append({
+                "id": row_dict["id"],
+                "expected_hash": expected_hash,
+                "actual_hash": row_dict["entry_hash"],
+            })
+
+    # Also verify chain linkage (each entry's previous_hash matches prior entry's entry_hash)
+    chain_breaks: list[dict] = []
+    for i in range(1, len(rows)):
+        prev_row = dict(rows[i - 1])
+        curr_row = dict(rows[i])
+        if curr_row["previous_hash"] != prev_row["entry_hash"]:
+            chain_breaks.append({
+                "id": curr_row["id"],
+                "expected_previous": prev_row["entry_hash"],
+                "actual_previous": curr_row["previous_hash"],
+            })
+
+    is_valid = len(broken_entries) == 0 and len(chain_breaks) == 0
+
+    return {
+        "success": True,
+        "verified": True,
+        "valid": is_valid,
+        "checked": checked,
+        "broken_hashes": broken_entries,
+        "chain_breaks": chain_breaks,
+        "message": (
+            f"Hash chain valid: {checked} entries verified."
+            if is_valid
+            else f"Hash chain INVALID: {len(broken_entries)} bad hashes, {len(chain_breaks)} chain breaks."
+        ),
+    }
 
 
 def cleanup_old_events(retention_days: int = 90, dry_run: bool = False) -> dict[str, Any]:

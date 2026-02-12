@@ -24,6 +24,7 @@ from .setup import router as setup_router
 from .skills import router as skills_router
 from .status import router as status_router
 from .tasks import router as tasks_router
+from .transparency import router as transparency_router
 from .voice import router as voice_router
 
 
@@ -49,6 +50,7 @@ api_router.include_router(push_router, prefix="/push", tags=["push"])
 api_router.include_router(services_router, tags=["services"])
 api_router.include_router(skills_router, tags=["skills"])
 api_router.include_router(audit_router, tags=["audit"])
+api_router.include_router(transparency_router, prefix="/transparency", tags=["transparency"])
 api_router.include_router(debug_router, tags=["debug"])
 
 __all__ = ["api_router"]

@@ -371,6 +371,21 @@ def dexai_install_package(
             # Try to get installed version
             installed_version = _get_installed_version(package_name)
 
+            # Hash verification (SC-4)
+            hash_result = _verify_installed_hash(package_name, installed_version)
+            if hash_result and hash_result.get("blocked"):
+                # Strict mode: uninstall and return error
+                _uninstall_package(package_name, safe_env)
+                return {
+                    "success": False,
+                    "tool": "dexai_install_package",
+                    "package": package_spec,
+                    "installed_version": None,
+                    "message": f"Package hash verification failed (strict mode): {hash_result.get('error', 'hash mismatch')}",
+                    "output": result.stdout,
+                    "hash_verification": hash_result,
+                }
+
             return {
                 "success": True,
                 "tool": "dexai_install_package",
@@ -378,6 +393,7 @@ def dexai_install_package(
                 "installed_version": installed_version,
                 "message": f"Successfully installed {package_name}" + (f" {installed_version}" if installed_version else ""),
                 "output": result.stdout,
+                "hash_verification": hash_result,
             }
         else:
             return {
@@ -416,6 +432,51 @@ def _get_installed_version(package_name: str) -> str | None:
         return importlib.metadata.version(package_name)
     except Exception:
         return None
+
+
+def _verify_installed_hash(
+    package_name: str,
+    installed_version: str | None,
+) -> dict | None:
+    """Run hash verification on an installed package and log results."""
+    if not installed_version:
+        return None
+
+    try:
+        from tools.security.package_security import verify_package_hash
+
+        hash_result = verify_package_hash(package_name, installed_version)
+
+        # Audit log the hash verification result
+        try:
+            from tools.dashboard.backend.database import log_audit
+            log_audit(
+                event_type="package.hash_verify",
+                severity="warning" if not hash_result.get("verified") else "info",
+                actor="agent",
+                target=f"{package_name}=={installed_version}",
+                details=hash_result,
+            )
+        except Exception:
+            pass
+
+        return hash_result
+    except ImportError:
+        logger.debug("package_security module not available for hash verification")
+        return None
+    except Exception as e:
+        logger.warning(f"Hash verification failed for {package_name}: {e}")
+        return None
+
+
+def _uninstall_package(package_name: str, env: dict[str, str]) -> None:
+    """Uninstall a package after failed strict hash verification."""
+    try:
+        cmd = ["uv", "pip", "uninstall", package_name, "-y"]
+        subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
+        logger.info(f"Uninstalled {package_name} after hash verification failure")
+    except Exception as e:
+        logger.error(f"Failed to uninstall {package_name}: {e}")
 
 
 # =============================================================================

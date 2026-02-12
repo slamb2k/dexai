@@ -224,6 +224,7 @@ PUBLIC_ROUTES = (
     "/api/docs",
     "/api/redoc",
     "/api/openapi.json",
+    "/api/metrics/prometheus",
     "/ws/",
 )
 

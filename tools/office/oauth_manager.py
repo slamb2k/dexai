@@ -21,6 +21,7 @@ Dependencies:
 
 import argparse
 import json
+import logging
 import os
 import sys
 import uuid
@@ -28,6 +29,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+
+logger = logging.getLogger(__name__)
 
 
 # Project paths
@@ -534,6 +537,147 @@ async def refresh_access_token(
         return {"success": False, "error": str(e)}
     except Exception as e:
         return {"success": False, "error": f"Token refresh error: {e!s}"}
+
+
+def is_token_expiring_soon(
+    provider: str,
+    account_id: str,
+    threshold_minutes: int = 5,
+) -> bool:
+    """
+    Check if an account's access token is expiring within the threshold.
+
+    Args:
+        provider: 'google' or 'microsoft'
+        account_id: Account ID
+        threshold_minutes: Minutes before expiry to consider "expiring soon"
+
+    Returns:
+        True if token expires within threshold or is already expired
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT token_expiry FROM office_accounts WHERE id = ? AND provider = ?",
+        (account_id, provider),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row["token_expiry"]:
+        return True  # No expiry recorded — treat as expiring
+
+    try:
+        expiry = datetime.fromisoformat(row["token_expiry"])
+    except (TypeError, ValueError):
+        return True
+
+    return (expiry - datetime.now()) < timedelta(minutes=threshold_minutes)
+
+
+async def get_valid_access_token(
+    provider: str,
+    account_id: str,
+) -> str | None:
+    """
+    Get a valid (non-expired) access token, refreshing proactively if needed.
+
+    Loads the token from storage, checks if it expires within 5 minutes,
+    and refreshes proactively if so.  Returns the valid access token or
+    None on failure (caller handles).
+
+    Args:
+        provider: 'google' or 'microsoft'
+        account_id: Account ID
+
+    Returns:
+        Valid access token string, or None if refresh fails
+    """
+    account_result = get_account(account_id)
+    if not account_result.get("success"):
+        logger.error(
+            "get_valid_access_token: account %s not found: %s",
+            account_id,
+            account_result.get("error"),
+        )
+        return None
+
+    account = account_result["account"]
+    access_token = account.get("access_token")
+    refresh_token = account.get("refresh_token")
+
+    # Check if token is expiring soon (within 5 minutes)
+    if not is_token_expiring_soon(provider, account_id, threshold_minutes=5):
+        # Token still valid — return it directly
+        return access_token
+
+    # Token is expiring or expired — attempt proactive refresh
+    if not refresh_token:
+        logger.warning(
+            "get_valid_access_token: token expiring for %s/%s but no refresh token",
+            provider,
+            account_id,
+        )
+        return access_token  # Return current token; caller will see 401 if expired
+
+    logger.info(
+        "Proactively refreshing expiring token for %s/%s",
+        provider,
+        account_id,
+    )
+
+    result = await refresh_access_token(provider, refresh_token)
+    if not result.get("success"):
+        logger.error(
+            "Proactive token refresh failed for %s/%s: %s",
+            provider,
+            account_id,
+            result.get("error"),
+        )
+        return None
+
+    # Persist the refreshed token
+    new_access = result["access_token"]
+    new_refresh = result.get("refresh_token")  # Microsoft may rotate
+    expires_in = result.get("expires_in", 3600)
+    new_expiry = datetime.now() + timedelta(seconds=expires_in)
+
+    from tools.security import vault
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Encrypt and store new access token
+    try:
+        vault.set_secret(
+            f"office_access_{account_id}",
+            new_access,
+            namespace="office_tokens",
+        )
+    except Exception as exc:
+        logger.error("Failed to store refreshed access token in vault: %s", exc)
+
+    # Update expiry in database
+    cursor.execute(
+        "UPDATE office_accounts SET token_expiry = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (new_expiry.isoformat(), account_id),
+    )
+
+    # If provider rotated the refresh token, persist it too
+    if new_refresh and new_refresh != refresh_token:
+        try:
+            vault.set_secret(
+                f"office_refresh_{account_id}",
+                new_refresh,
+                namespace="office_tokens",
+            )
+        except Exception as exc:
+            logger.error("Failed to store rotated refresh token in vault: %s", exc)
+
+    conn.commit()
+    conn.close()
+
+    return new_access
 
 
 def save_account(

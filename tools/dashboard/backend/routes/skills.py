@@ -40,6 +40,8 @@ class Skill(BaseModel):
     has_instructions: bool = False
     category: str = "user"  # 'built-in' or 'user'
     dependencies: list[str] = []  # Python package dependencies
+    version: str = "1.0.0"  # Semantic version from skill tracker
+    version_history: list[dict] = []  # Version change history
 
 
 class SkillsResponse(BaseModel):
@@ -61,6 +63,8 @@ class SkillDetail(BaseModel):
     instructions: str | None = None
     readme: str | None = None
     dependencies: list[str] = []  # Python package dependencies
+    version: str = "1.0.0"  # Semantic version from skill tracker
+    version_history: list[dict] = []  # Version change history
 
 
 # =============================================================================
@@ -284,6 +288,8 @@ def scan_skill_directory(skill_dir: Path) -> Skill | None:
         except Exception as e:
             logger.warning(f"Failed to read skill file {main_file}: {e}")
 
+    version, version_history = _get_skill_version_info(name)
+
     return Skill(
         name=name,
         display_name=format_skill_name(name),
@@ -293,7 +299,31 @@ def scan_skill_directory(skill_dir: Path) -> Skill | None:
         has_instructions=has_instructions,
         category=detect_skill_category(str(skill_dir), name),
         dependencies=dependencies,
+        version=version,
+        version_history=version_history,
     )
+
+
+def _get_skill_version_info(skill_name: str) -> tuple[str, list[dict]]:
+    """Get version and version history from the skill tracker.
+
+    Args:
+        skill_name: Name of the skill.
+
+    Returns:
+        Tuple of (version string, version history list).
+    """
+    try:
+        from tools.agent.skill_tracker import SkillTracker
+
+        tracker = SkillTracker()
+        if skill_name in tracker.usage:
+            skill_data = tracker.usage[skill_name]
+            return skill_data.version, skill_data.version_history
+    except Exception as e:
+        logger.debug(f"Could not load version info for {skill_name}: {e}")
+
+    return "1.0.0", []
 
 
 def get_builtin_skills_dir() -> Path:
@@ -445,6 +475,8 @@ async def get_skill(name: str):
         except Exception as e:
             logger.warning(f"Failed to read readme for {name}: {e}")
 
+    version, version_history = _get_skill_version_info(name)
+
     return SkillDetail(
         name=skill.name,
         display_name=skill.display_name,
@@ -454,6 +486,8 @@ async def get_skill(name: str):
         instructions=instructions,
         readme=readme,
         dependencies=skill.dependencies,
+        version=version,
+        version_history=version_history,
     )
 
 

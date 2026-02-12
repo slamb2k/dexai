@@ -212,12 +212,13 @@ check-secrets: ## Check for accidentally committed secrets
 		echo "$(YELLOW)Warning: Potential secrets found in staged files$(NC)" || \
 		echo "$(GREEN)No obvious secrets found$(NC)"
 
-rotate-master-key: ## Generate a new master key
-	@echo "$(YELLOW)Warning: This will invalidate all encrypted vault data$(NC)"
+rotate-master-key: ## Rotate master key and re-encrypt all secrets
+	@echo "$(YELLOW)Warning: This will re-encrypt all vault secrets with a new master key$(NC)"
 	@read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] && \
 		(NEW_KEY=$$(openssl rand -hex 32) && \
 		echo "New master key: $$NEW_KEY" && \
-		echo "Update DEXAI_MASTER_KEY in .env") || echo "Cancelled"
+		python tools/security/vault.py --action rotate-key --old-key "$$DEXAI_MASTER_KEY" --new-key "$$NEW_KEY" && \
+		echo "$(GREEN)Secrets re-encrypted. Update DEXAI_MASTER_KEY in .env to: $$NEW_KEY$(NC)") || echo "Cancelled"
 
 # ==============================================================================
 # Utilities
