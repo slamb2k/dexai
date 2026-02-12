@@ -460,10 +460,26 @@ def create_file_path_security_hook(
         # --- Path resolution (handles symlinks AND traversal) ---
         # Always resolve to canonical path before checking protected paths
         try:
-            path_obj = Path(file_path)
+            # Expand ~ to home directory before resolving
+            path_obj = Path(file_path).expanduser()
             resolved_target = path_obj.resolve(strict=False)
             resolved_str = str(resolved_target)
-            is_symlink = path_obj.is_symlink()
+
+            # Detect symlinks (separate try/except to avoid skipping checks)
+            is_symlink = False
+            try:
+                is_symlink = path_obj.is_symlink()
+            except OSError:
+                pass  # Permission denied or similar — not a symlink concern
+
+            # If workspace_path is set and the resolved path is inside it, allow it
+            if workspace_path:
+                try:
+                    workspace_resolved = str(workspace_path.resolve(strict=False))
+                    if resolved_str.startswith(workspace_resolved + "/") or resolved_str == workspace_resolved:
+                        return {}  # Path is within workspace — allowed
+                except OSError:
+                    pass
 
             # Check if the resolved path falls within a protected path
             for protected in PROTECTED_PATHS:
