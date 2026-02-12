@@ -47,12 +47,8 @@ token.json
 *.vault_salt
 .vault_salt
 
-# Databases (contain user data)
-data/*.db
-data/*.db-journal
-
-# User workspaces (per-user isolated directories)
-data/workspaces/
+# Runtime data (databases, workspaces — all generated at runtime)
+data/
 
 # Temporary files
 .tmp/
@@ -78,6 +74,9 @@ next-env.d.ts
 # Claude Code
 .claude/
 *.backup
+
+# Sidecar tooling
+.sidecar/
 
 # Next.js / Frontend
 tools/dashboard/frontend/.next/
