@@ -245,6 +245,19 @@ class Session:
 
                 self._total_cost += result.cost_usd
 
+                # Record cost for budget tracking
+                try:
+                    from tools.ops.cost_tracker import record_cost
+                    record_cost(
+                        model=result.model or "unknown",
+                        cost_usd=result.cost_usd,
+                        channel=self.channel,
+                        session_key=self.sdk_session_id,
+                        complexity=result.complexity,
+                    )
+                except Exception:
+                    pass
+
                 return {
                     "success": True,
                     "content": result.text,
