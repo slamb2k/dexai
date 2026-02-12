@@ -21,7 +21,6 @@ import argparse
 import asyncio
 import json
 import logging
-import secrets
 import sys
 import uuid
 from pathlib import Path
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.channels.models import Attachment, ChannelUser, UnifiedMessage
+from tools.channels.models import Attachment, UnifiedMessage
 from tools.channels.router import ChannelAdapter, get_router
 
 
@@ -488,60 +487,13 @@ class TelegramAdapter(ChannelAdapter):
             pass
 
     async def _handle_pair(self, update, context) -> None:
-        """Generate pairing code for account linking."""
-        # Generate secure code
-        code = secrets.token_urlsafe(8).upper()[:8]
-
-        # Get or create user
-        channel_user_id = str(update.message.from_user.id)
-
-        try:
-            from tools.channels import inbox
-
-            # Get existing user or create new one
-            user = inbox.get_user_by_channel("telegram", channel_user_id)
-
-            if not user:
-                user = ChannelUser(
-                    id=ChannelUser.generate_id(),
-                    channel="telegram",
-                    channel_user_id=channel_user_id,
-                    display_name=update.message.from_user.first_name or "Unknown",
-                    username=update.message.from_user.username,
-                )
-                inbox.create_or_update_user(user)
-            else:
-                # Convert to ChannelUser if it's a dict
-                if isinstance(user, dict):
-                    user = ChannelUser.from_dict(user)
-
-            # Create pairing code (10 min TTL)
-            result = inbox.create_pairing_code(
-                user_id=user.id,
-                channel="telegram",
-                channel_user_id=channel_user_id,
-                code=code,
-                ttl_seconds=600,
-            )
-
-            if result.get("success"):
-                await update.message.reply_text(
-                    f"Your pairing code:\n\n"
-                    f"`{code}`\n\n"
-                    f"Enter this code in your main interface to link accounts.\n"
-                    f"Expires in 10 minutes.",
-                    parse_mode="Markdown",
-                )
-            else:
-                await update.message.reply_text(
-                    "Could not generate pairing code. Please try again."
-                )
-
-        except Exception as e:
-            print(f"[ERROR] Pairing failed: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            await update.message.reply_text("Error generating pairing code. Please try again.")
+        """Handle /pair command (deprecated in single-tenant mode)."""
+        await update.message.reply_text(
+            "Account pairing is no longer needed.\n\n"
+            "Your Telegram user ID is automatically recognized. "
+            "If you're not getting responses, ask the owner to add your "
+            "Telegram user ID to the allowed users list."
+        )
 
     async def _handle_help(self, update, context) -> None:
         """Show available commands."""
@@ -562,27 +514,11 @@ class TelegramAdapter(ChannelAdapter):
         """Check connection status."""
         channel_user_id = str(update.message.from_user.id)
 
-        try:
-            from tools.channels import inbox
-
-            user = inbox.get_user_by_channel("telegram", channel_user_id)
-
-            if user:
-                is_paired = (
-                    user.is_paired if hasattr(user, "is_paired") else user.get("is_paired", False)
-                )
-                status = "paired and ready" if is_paired else "not paired"
-            else:
-                status = "new user"
-
-            await update.message.reply_text(
-                f"Connection Status: Connected\n"
-                f"Account Status: {status}\n"
-                f"Platform: Telegram\n\n"
-                f"Use /pair to link your account."
-            )
-        except Exception:
-            await update.message.reply_text("Connection Status: Connected\nPlatform: Telegram")
+        await update.message.reply_text(
+            f"Connection Status: Connected\n"
+            f"Your Telegram ID: {channel_user_id}\n"
+            f"Platform: Telegram"
+        )
 
     # =========================================================================
     # Message Handlers

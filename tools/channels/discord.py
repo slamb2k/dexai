@@ -20,7 +20,7 @@ Secrets (via vault, namespace: channels):
 import argparse
 import asyncio
 import json
-import secrets
+import logging
 import sys
 import uuid
 from pathlib import Path
@@ -28,12 +28,14 @@ from typing import Any
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.channels.models import Attachment, ChannelUser, UnifiedMessage
+from tools.channels.models import Attachment, UnifiedMessage
 from tools.channels.router import ChannelAdapter, get_router
 
 
@@ -579,56 +581,14 @@ class DiscordAdapter(ChannelAdapter):
             )
 
     async def _handle_pair(self, interaction) -> None:
-        """Handle /pair command."""
-        # Generate secure code
-        code = secrets.token_urlsafe(8).upper()[:8]
-        channel_user_id = str(interaction.user.id)
-
-        try:
-            from tools.channels import inbox
-
-            # Get existing user or create new one
-            user = inbox.get_user_by_channel("discord", channel_user_id)
-
-            if not user:
-                user = ChannelUser(
-                    id=ChannelUser.generate_id(),
-                    channel="discord",
-                    channel_user_id=channel_user_id,
-                    display_name=interaction.user.display_name,
-                    username=interaction.user.name,
-                )
-                inbox.create_or_update_user(user)
-            else:
-                if isinstance(user, dict):
-                    user = ChannelUser.from_dict(user)
-
-            # Create pairing code (10 min TTL)
-            result = inbox.create_pairing_code(
-                user_id=user.id,
-                channel="discord",
-                channel_user_id=channel_user_id,
-                code=code,
-                ttl_seconds=600,
-            )
-
-            if result.get("success"):
-                await interaction.response.send_message(
-                    f"Your pairing code:\n\n"
-                    f"**`{code}`**\n\n"
-                    f"Enter this code in your main interface to link accounts.\n"
-                    f"Expires in 10 minutes.",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.response.send_message(
-                    "Could not generate pairing code. Please try again.", ephemeral=True
-                )
-
-        except Exception:
-            await interaction.response.send_message(
-                "Error generating pairing code. Please try again.", ephemeral=True
-            )
+        """Handle /pair command (deprecated in single-tenant mode)."""
+        await interaction.response.send_message(
+            "Account pairing is no longer needed.\n\n"
+            "Your Discord user ID is automatically recognized. "
+            "If you're not getting responses, ask the owner to add your "
+            "Discord user ID to the allowed users list.",
+            ephemeral=True,
+        )
 
     async def _handle_help(self, interaction) -> None:
         """Handle /help command."""
@@ -665,30 +625,13 @@ class DiscordAdapter(ChannelAdapter):
         """Handle /status command."""
         channel_user_id = str(interaction.user.id)
 
-        try:
-            from tools.channels import inbox
+        await interaction.response.send_message(
+            f"**Connection Status:** Connected\n"
+            f"**Your Discord ID:** {channel_user_id}\n"
+            f"**Platform:** Discord",
+            ephemeral=True,
+        )
 
-            user = inbox.get_user_by_channel("discord", channel_user_id)
-
-            if user:
-                is_paired = (
-                    user.is_paired if hasattr(user, "is_paired") else user.get("is_paired", False)
-                )
-                status = "Paired and ready" if is_paired else "Not paired"
-            else:
-                status = "New user"
-
-            await interaction.response.send_message(
-                f"**Connection Status:** Connected\n"
-                f"**Account Status:** {status}\n"
-                f"**Platform:** Discord\n\n"
-                f"Use `/pair` to link your account.",
-                ephemeral=True,
-            )
-        except Exception:
-            await interaction.response.send_message(
-                "**Connection Status:** Connected\n**Platform:** Discord", ephemeral=True
-            )
 
 
 # =============================================================================

@@ -55,7 +55,6 @@ class Session:
 
     def __init__(
         self,
-        user_id: str,
         channel: str,
         session_type: str = "main",
         sdk_session_id: Optional[str] = None,
@@ -66,14 +65,12 @@ class Session:
         Initialize a session.
 
         Args:
-            user_id: User identifier
             channel: Communication channel (telegram, discord, slack, cli)
             session_type: Session type (main, subagent, heartbeat, cron)
             sdk_session_id: Optional SDK session ID to resume
             ask_user_handler: Optional handler for AskUserQuestion
             workspace_path: Optional workspace path (auto-created if None)
         """
-        self.user_id = user_id
         self.channel = channel
         self.session_type = session_type
         self.sdk_session_id = sdk_session_id
@@ -108,13 +105,11 @@ class Session:
         if self.workspace_path is None:
             workspace_manager = get_workspace_manager()
             self.workspace_path = workspace_manager.get_workspace(
-                user_id=self.user_id,
                 channel=self.channel,
             )
 
         # Create new client with workspace as working directory
         self._client = DexAIClient(
-            user_id=self.user_id,
             working_dir=str(self.workspace_path),
             session_type=self.session_type,
             channel=self.channel,
@@ -125,7 +120,7 @@ class Session:
         # Enter the async context to start the client
         await self._client.__aenter__()
         self._client_active = True
-        logger.debug(f"Initialized persistent client for session {self.user_id}:{self.channel} "
+        logger.debug(f"Initialized persistent client for session {self.channel} "
                      f"with workspace {self.workspace_path}")
 
     async def _cleanup_client(self) -> None:
@@ -194,7 +189,7 @@ class Session:
                 }
 
             except Exception as e:
-                logger.error(f"Session query error for {self.user_id}: {e}")
+                logger.error(f"Session query error for {self.channel}: {e}")
                 # Clean up client on error - will be recreated on next message
                 await self._cleanup_client()
                 return {
@@ -235,7 +230,7 @@ class Session:
                     yield msg
 
             except Exception as e:
-                logger.error(f"Session stream error for {self.user_id}: {e}")
+                logger.error(f"Session stream error for {self.channel}: {e}")
                 await self._cleanup_client()
                 raise
 
@@ -287,7 +282,7 @@ class Session:
                     yield msg
 
             except Exception as e:
-                logger.error(f"Session stream input error for {self.user_id}: {e}")
+                logger.error(f"Session stream input error for {self.channel}: {e}")
                 await self._cleanup_client()
                 raise
 
@@ -305,11 +300,11 @@ class Session:
             try:
                 from tools.agent.workspace_manager import get_workspace_manager
                 workspace_manager = get_workspace_manager()
-                workspace_manager.mark_session_end(self.user_id, self.channel)
+                workspace_manager.mark_session_end(self.channel)
             except Exception as e:
                 logger.debug(f"Failed to mark workspace session end: {e}")
 
-        logger.debug(f"Closed session for {self.user_id}:{self.channel}")
+        logger.debug(f"Closed session for {self.channel}")
 
     @property
     def is_stale(self) -> bool:
@@ -325,7 +320,6 @@ class Session:
     def to_dict(self) -> dict[str, Any]:
         """Serialize session state for persistence."""
         return {
-            "user_id": self.user_id,
             "channel": self.channel,
             "session_type": self.session_type,
             "sdk_session_id": self.sdk_session_id,
@@ -345,8 +339,7 @@ class Session:
             workspace_path = Path(data["workspace_path"])
 
         session = cls(
-            user_id=data["user_id"],
-            channel=data["channel"],
+            channel=data.get("channel", data.get("user_id", "unknown")),
             session_type=data.get("session_type", "main"),
             sdk_session_id=data.get("sdk_session_id"),
             ask_user_handler=ask_user_handler,
@@ -393,22 +386,20 @@ class SessionManager:
         if persist:
             self._load_sessions()
 
-    def _session_key(self, user_id: str, channel: str) -> str:
-        """Generate session key from user and channel."""
-        return f"{user_id}:{channel}"
+    def _session_key(self, channel: str) -> str:
+        """Generate session key from channel."""
+        return channel
 
     def get_session(
         self,
-        user_id: str,
         channel: str,
         session_type: str = "main",
         ask_user_handler: Optional[Callable] = None,
     ) -> Session:
         """
-        Get or create a session for a user.
+        Get or create a session.
 
         Args:
-            user_id: User identifier
             channel: Communication channel
             session_type: Session type (main, subagent, heartbeat, cron)
             ask_user_handler: Optional handler for AskUserQuestion
@@ -418,7 +409,7 @@ class SessionManager:
         """
         self._cleanup_stale_sessions()
 
-        key = self._session_key(user_id, channel)
+        key = self._session_key(channel)
 
         if key in self._sessions:
             session = self._sessions[key]
@@ -429,7 +420,6 @@ class SessionManager:
 
         # Create new session
         session = Session(
-            user_id=user_id,
             channel=channel,
             session_type=session_type,
             ask_user_handler=ask_user_handler,
@@ -441,12 +431,12 @@ class SessionManager:
 
     async def handle_message(
         self,
-        user_id: str,
         channel: str,
         content: str,
         session_type: str = "main",
         context: Optional[dict] = None,
         ask_user_handler: Optional[Callable] = None,
+        **kwargs,
     ) -> dict[str, Any]:
         """
         Handle an incoming message.
@@ -454,7 +444,6 @@ class SessionManager:
         Gets or creates session and sends the message.
 
         Args:
-            user_id: User identifier
             channel: Communication channel
             content: Message content
             session_type: Session type
@@ -469,7 +458,6 @@ class SessionManager:
             session_type = self._detect_session_type(context, session_type)
 
         session = self.get_session(
-            user_id=user_id,
             channel=channel,
             session_type=session_type,
             ask_user_handler=ask_user_handler,
@@ -485,11 +473,11 @@ class SessionManager:
 
     async def stream_message(
         self,
-        user_id: str,
         channel: str,
         content: Union[str, AsyncGenerator[Union[str, dict], None]],
         session_type: str = "main",
         ask_user_handler: Optional[Callable] = None,
+        **kwargs,
     ) -> AsyncIterator[Any]:
         """
         Handle a message with streaming response.
@@ -498,7 +486,6 @@ class SessionManager:
         (AsyncGenerator) for streaming input mode.
 
         Args:
-            user_id: User identifier
             channel: Communication channel
             content: Message content (str) or message generator (AsyncGenerator)
             session_type: Session type
@@ -506,22 +493,8 @@ class SessionManager:
 
         Yields:
             SDK message objects
-
-        Example with static message:
-            async for msg in manager.stream_message(user_id, channel, "Hello"):
-                print(msg)
-
-        Example with streaming input:
-            async def messages():
-                yield "Initial question"
-                await asyncio.sleep(2)
-                yield "More context"
-
-            async for msg in manager.stream_message(user_id, channel, messages()):
-                print(msg)
         """
         session = self.get_session(
-            user_id=user_id,
             channel=channel,
             session_type=session_type,
             ask_user_handler=ask_user_handler,
@@ -551,18 +524,17 @@ class SessionManager:
             return "subagent"
         return default
 
-    async def clear_session(self, user_id: str, channel: str) -> bool:
+    async def clear_session(self, channel: str) -> bool:
         """
         Clear a specific session and clean up resources.
 
         Args:
-            user_id: User identifier
             channel: Communication channel
 
         Returns:
             True if session was cleared, False if not found
         """
-        key = self._session_key(user_id, channel)
+        key = self._session_key(channel)
         if key in self._sessions:
             session = self._sessions[key]
             await session.close()
@@ -572,23 +544,14 @@ class SessionManager:
             return True
         return False
 
-    async def clear_all_sessions(self, user_id: Optional[str] = None) -> int:
+    async def clear_all_sessions(self) -> int:
         """
-        Clear sessions and clean up resources.
-
-        Args:
-            user_id: Optional user ID to clear only their sessions
+        Clear all sessions and clean up resources.
 
         Returns:
             Number of sessions cleared
         """
-        if user_id:
-            keys_to_remove = [
-                k for k in self._sessions.keys()
-                if k.startswith(f"{user_id}:")
-            ]
-        else:
-            keys_to_remove = list(self._sessions.keys())
+        keys_to_remove = list(self._sessions.keys())
 
         for key in keys_to_remove:
             session = self._sessions[key]

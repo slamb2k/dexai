@@ -34,6 +34,7 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from tools.agent.constants import OWNER_USER_ID
 from tools.channels.models import UnifiedMessage
 from tools.channels.session_manager import get_session_manager, SessionManager
 
@@ -89,7 +90,7 @@ def create_ask_user_handler(
         question_text = _format_questions_for_display(formatted_questions)
 
         # Create unique key for this question session
-        question_key = f"{user_id}:{channel}:{uuid.uuid4().hex[:8]}"
+        question_key = f"{OWNER_USER_ID}:{channel}:{uuid.uuid4().hex[:8]}"
 
         # Create future to wait for response
         response_future: asyncio.Future = asyncio.get_event_loop().create_future()
@@ -142,7 +143,6 @@ def create_ask_user_handler(
 
 
 def submit_question_response(
-    user_id: str,
     channel: str,
     response_content: str,
 ) -> bool:
@@ -152,7 +152,6 @@ def submit_question_response(
     Called by channel adapters when they detect a response to a question.
 
     Args:
-        user_id: User who responded
         channel: Channel of response
         response_content: The user's response text
 
@@ -160,7 +159,7 @@ def submit_question_response(
         True if response was matched to a pending question
     """
     # Find matching pending question
-    prefix = f"{user_id}:{channel}:"
+    prefix = f"{OWNER_USER_ID}:{channel}:"
     for key, future in list(_pending_questions.items()):
         if key.startswith(prefix) and not future.done():
             # Parse response into answers dict
@@ -171,9 +170,9 @@ def submit_question_response(
     return False
 
 
-def has_pending_question(user_id: str, channel: str) -> bool:
-    """Check if user has a pending question awaiting response."""
-    prefix = f"{user_id}:{channel}:"
+def has_pending_question(channel: str) -> bool:
+    """Check if there is a pending question awaiting response on this channel."""
+    prefix = f"{OWNER_USER_ID}:{channel}:"
     return any(
         key.startswith(prefix) and not future.done()
         for key, future in _pending_questions.items()
@@ -350,7 +349,6 @@ async def sdk_handler(message: UnifiedMessage, context: dict) -> dict[str, Any]:
 
     # Handle message through session manager
     result = await manager.handle_message(
-        user_id=message.user_id,
         channel=message.channel,
         content=enhanced_content,
         context=context,
@@ -853,7 +851,6 @@ async def sdk_handler_streaming(
     try:
         full_response = []
         async for msg in manager.stream_message(
-            user_id=message.user_id,
             channel=message.channel,
             content=message.content,
             ask_user_handler=ask_handler,
@@ -965,7 +962,6 @@ async def sdk_handler_slack_streaming(
 
     try:
         async for msg in manager.stream_message(
-            user_id=message.user_id,
             channel=message.channel,
             content=message.content,
             ask_user_handler=ask_handler,
@@ -1108,7 +1104,6 @@ async def sdk_handler_discord_streaming(
 
     try:
         async for msg in manager.stream_message(
-            user_id=message.user_id,
             channel=message.channel,
             content=message.content,
             ask_user_handler=ask_handler,
@@ -1276,7 +1271,6 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="SDK Handler Test")
-    parser.add_argument("--user", default="test_user", help="User ID")
     parser.add_argument("--message", help="Message to send")
     parser.add_argument("--channel", default="cli", help="Channel name")
     parser.add_argument("--session", default="main",
@@ -1290,7 +1284,7 @@ def main():
         if args.interactive:
             print("SDK Handler Interactive Test")
             print("-" * 40)
-            print(f"User: {args.user}, Channel: {args.channel}, Session: {args.session}")
+            print(f"Channel: {args.channel}, Session: {args.session}")
             print("Type 'exit' to quit\n")
 
             while True:
@@ -1306,8 +1300,8 @@ def main():
                         id=str(uuid.uuid4()),
                         channel=args.channel,
                         channel_message_id="test",
-                        user_id=args.user,
-                        channel_user_id=args.user,
+                        user_id=OWNER_USER_ID,
+                        channel_user_id=OWNER_USER_ID,
                         direction="inbound",
                         content=user_input,
                         content_type="text",
@@ -1332,8 +1326,8 @@ def main():
                 id=str(uuid.uuid4()),
                 channel=args.channel,
                 channel_message_id="test",
-                user_id=args.user,
-                channel_user_id=args.user,
+                user_id=OWNER_USER_ID,
+                channel_user_id=OWNER_USER_ID,
                 direction="inbound",
                 content=args.message,
                 content_type="text",

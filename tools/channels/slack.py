@@ -22,7 +22,7 @@ Secrets (via vault, namespace: channels):
 import argparse
 import asyncio
 import json
-import secrets
+import logging
 import sys
 import uuid
 from datetime import datetime
@@ -31,12 +31,14 @@ from typing import Any
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.channels.models import Attachment, ChannelUser, UnifiedMessage
+from tools.channels.models import Attachment, UnifiedMessage
 from tools.channels.router import ChannelAdapter, get_router
 
 
@@ -590,61 +592,16 @@ class SlackAdapter(ChannelAdapter):
             await respond("Your question has been received and is being processed.")
 
     async def _handle_pair(self, command, respond) -> None:
-        """Handle /pair command."""
-        # Generate secure code
-        code = secrets.token_urlsafe(8).upper()[:8]
-        channel_user_id = command.get("user_id", "")
-
-        try:
-            from tools.channels import inbox
-
-            # Get existing user or create new one
-            user = inbox.get_user_by_channel("slack", channel_user_id)
-
-            if not user:
-                user = ChannelUser(
-                    id=ChannelUser.generate_id(),
-                    channel="slack",
-                    channel_user_id=channel_user_id,
-                    display_name=command.get("user_name", "Unknown"),
-                    username=command.get("user_name"),
-                )
-                inbox.create_or_update_user(user)
-            else:
-                if isinstance(user, dict):
-                    user = ChannelUser.from_dict(user)
-
-            # Create pairing code (10 min TTL)
-            result = inbox.create_pairing_code(
-                user_id=user.id,
-                channel="slack",
-                channel_user_id=channel_user_id,
-                code=code,
-                ttl_seconds=600,
-            )
-
-            if result.get("success"):
-                await respond(
-                    {
-                        "response_type": "ephemeral",
-                        "blocks": [
-                            {
-                                "type": "section",
-                                "text": {
-                                    "type": "mrkdwn",
-                                    "text": f"Your pairing code:\n\n*`{code}`*\n\n"
-                                    f"Enter this code in your main interface to link accounts.\n"
-                                    f"Expires in 10 minutes.",
-                                },
-                            }
-                        ],
-                    }
-                )
-            else:
-                await respond("Could not generate pairing code. Please try again.")
-
-        except Exception:
-            await respond("Error generating pairing code. Please try again.")
+        """Handle /pair command (deprecated in single-tenant mode)."""
+        await respond(
+            {
+                "response_type": "ephemeral",
+                "text": "Account pairing is no longer needed.\n\n"
+                "Your Slack user ID is automatically recognized. "
+                "If you're not getting responses, ask the owner to add your "
+                "Slack user ID to the allowed users list.",
+            }
+        )
 
     async def _handle_help(self, command, respond) -> None:
         """Handle /ai-help command."""
@@ -682,35 +639,14 @@ class SlackAdapter(ChannelAdapter):
         """Handle /ai-status command."""
         channel_user_id = command.get("user_id", "")
 
-        try:
-            from tools.channels import inbox
-
-            user = inbox.get_user_by_channel("slack", channel_user_id)
-
-            if user:
-                is_paired = (
-                    user.is_paired if hasattr(user, "is_paired") else user.get("is_paired", False)
-                )
-                status = "Paired and ready" if is_paired else "Not paired"
-            else:
-                status = "New user"
-
-            await respond(
-                {
-                    "response_type": "ephemeral",
-                    "text": f"*Connection Status:* Connected\n"
-                    f"*Account Status:* {status}\n"
-                    f"*Platform:* Slack\n\n"
-                    f"Use `/pair` to link your account.",
-                }
-            )
-        except Exception:
-            await respond(
-                {
-                    "response_type": "ephemeral",
-                    "text": "*Connection Status:* Connected\n*Platform:* Slack",
-                }
-            )
+        await respond(
+            {
+                "response_type": "ephemeral",
+                "text": f"*Connection Status:* Connected\n"
+                f"*Your Slack ID:* {channel_user_id}\n"
+                f"*Platform:* Slack",
+            }
+        )
 
     async def _handle_error(self, error, body) -> None:
         """Handle errors."""
