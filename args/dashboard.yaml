@@ -36,7 +36,7 @@ dashboard:
   # Security
   # =============================================================================
   security:
-    require_auth: true                     # Require authentication
+    require_auth: false                    # Set true to require master key login
     session_cookie_name: "dexai_session"   # Cookie name for sessions
     allowed_origins:                        # CORS allowed origins
       - "http://localhost:3000"

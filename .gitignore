@@ -40,6 +40,10 @@ env/lib/
 .env
 .env.*
 !.env.example
+
+# User-specific config (contains personal data)
+args/user.yaml
+!args/user.yaml.example
 *.pem
 *.key
 credentials.json

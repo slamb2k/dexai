@@ -1,0 +1,28 @@
+# User Configuration — created on first setup
+# Copy to user.yaml and fill in your details, or let the dashboard onboarding do it.
+
+user:
+  name: ""
+  timezone: ""
+active_hours:
+  start: "09:00"
+  end: "17:00"
+  days: [mon, tue, wed, thu, fri]
+preferences:
+  notification_style: persistent
+  brevity_default: false
+  work_focus_areas: []
+  energy_pattern: morning
+  adhd_challenges: []
+  encouragement_level: full
+onboarding:
+  optional_index: 0
+  version: 1
+  skipped_fields: []
+  optional_completed: false
+channels:
+  primary: ""
+  allowed_channel_user_ids:
+    telegram: []
+    discord: []
+    slack: []

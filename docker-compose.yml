@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     mem_limit: 4g
     ports:
-      - "127.0.0.1:${DEXAI_BACKEND_PORT:-8080}:8080"
+      - "${DEXAI_BACKEND_PORT:-8080}:8080"
     environment:
       - PYTHONPATH=/app
       - DEXAI_ENV=production
@@ -66,7 +66,7 @@ services:
     restart: unless-stopped
     mem_limit: 8g
     ports:
-      - "127.0.0.1:${DEXAI_FRONTEND_PORT:-3000}:3000"
+      - "${DEXAI_FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - NODE_OPTIONS=--max-old-space-size=4096
