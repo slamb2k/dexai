@@ -66,6 +66,8 @@ Pluggable memory backend system supporting multiple storage providers.
 | `ratelimit.py` | Token bucket rate limiting with cost tracking |
 | `session.py` | Session management with secure tokens and idle timeout |
 | `permissions.py` | Role-based access control (RBAC) with 5 default roles |
+| `container_executor.py` | Container-based execution isolation per user session (opt-in via DEXAI_CONTAINER_ISOLATION) |
+| `advisory_feed.py` | Dynamic malicious package feed from OSV and PyPI advisory APIs with 24h SQLite cache |
 
 ---
 
@@ -77,6 +79,9 @@ Pluggable memory backend system supporting multiple storage providers.
 | `cost_tracker.py` | Per-API-call cost recording and query with conversation-level aggregation |
 | `budget_alerter.py` | Budget threshold alerting at 80%/95%/100% with audit logging and dashboard events |
 | `backup.py` | WAL-safe SQLite backup with gzip compression and configurable retention |
+| `circuit_breaker.py` | Circuit breaker for external APIs (closed/open/half_open states, provider fallback, per-provider tracking) |
+| `prometheus.py` | Prometheus-compatible metrics endpoint (/metrics, auth-exempt, text exposition format) |
+| `transparency.py` | "Show Your Work" transparency mode — per-conversation toggle exposing tool calls, routing, and cost |
 
 ---
 
@@ -213,6 +218,8 @@ Pluggable memory backend system supporting multiple storage providers.
 | `backend/routes/activity.py` | GET/POST /api/activity — Activity feed with pagination |
 | `backend/routes/metrics.py` | GET /api/metrics/summary, /timeseries — Usage stats and charts |
 | `backend/routes/settings.py` | GET/PATCH /api/settings — Configuration management |
+| `backend/routes/transparency.py` | GET/POST /api/transparency — "Show Your Work" mode toggle and reasoning trace retrieval |
+| `backend/routes/skills.py` | GET/POST /api/skills — Skill listing, validation, and testing endpoints |
 
 ### Frontend (Next.js 14)
 
@@ -243,7 +250,7 @@ Pluggable memory backend system supporting multiple storage providers.
 
 | Tool | Description |
 |------|-------------|
-| `cli.py` | Main CLI entry point — `dexai setup`, `dexai dashboard`, `dexai --version` |
+| `cli.py` | Main CLI entry point — `dexai setup`, `dexai dashboard`, `dexai doctor`, `dexai skill validate/test/list`, `dexai --version` |
 
 ---
 
@@ -252,6 +259,7 @@ Pluggable memory backend system supporting multiple storage providers.
 | Tool | Description |
 |------|-------------|
 | `wizard.py` | Core setup state management, channel validation, test messaging, and configuration generation (Phase 8) |
+| `setup_core.py` | Core install.sh helper — shared setup functions extracted from install.sh rewrite (prerequisites, env, DB init) |
 | `tui/main.py` | Textual-based terminal UI wizard with all setup screens (Phase 8) |
 | `guides/telegram.md` | Step-by-step Telegram bot setup instructions |
 | `guides/discord.md` | Step-by-step Discord bot setup instructions |
@@ -675,6 +683,7 @@ Core integration layer for Claude Agent SDK with DexAI's ADHD features.
 | `schemas.py` | JSON schemas for structured SDK output (task_decomposition, energy_assessment, commitment_list, friction_check, current_step) |
 | `model_selector.py` | ModelSelector for subagent model selection: complexity scoring (0-10), heuristic analysis (technical terms, multi-step, codebase refs), agent-specific defaults |
 | `workspace_manager.py` | Per-user isolated workspaces with bootstrap files, scope-based lifecycle management, and security boundaries |
+| `skill_validator.py` | Skill testing and validation framework — shared core for MCP tools and CLI (syntax, security, execution checks) |
 
 ### System Prompt Architecture
 
@@ -794,6 +803,14 @@ Provider-agnostic memory tools using MemoryService facade. Works with any config
 | `dexai_calendar_propose` | Propose meeting (requires confirmation to create) |
 | `dexai_calendar_availability` | Find available meeting time slots |
 
+#### Skill MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `dexai_validate_skill` | Validate a skill file (syntax, security, metadata checks) |
+| `dexai_test_skill` | Run a skill in a sandboxed environment and return results |
+| `dexai_list_skills` | List all installed skills with version and validation status |
+
 #### Channel MCP Tools
 
 | Tool | Description |
@@ -870,6 +887,7 @@ Note: `tools/system/browser.py` is deprecated but retained for advanced features
 | File | Description |
 |------|-------------|
 | `HARDENING.md` | Security hardening guide (system, AI, gateway, client, monitoring) |
+| `RUNBOOK.md` | Operational runbooks for 9 incident/maintenance scenarios (alerts, recovery, rotation, backup) |
 
 ---
 
