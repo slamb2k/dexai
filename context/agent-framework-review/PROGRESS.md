@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-02-12
 > **Total findings across 6 reviews:** ~174 distinct items
-> **Completed:** ~42 items | **Remaining:** ~79 actionable items | **Accepted risk:** ~9 items
+> **Completed:** ~50 items | **Remaining:** ~71 actionable items | **Accepted risk:** ~9 items
 
 **Source documents** (relative to `context/agent-framework-review/`):
 
@@ -82,6 +82,20 @@
 | OAUTH-1 | PKCE (S256) added to OAuth authorization + token exchange | `05:292, 397-403` |
 | MCP-1 | Per-tool MCP authorization replaces wildcard `mcp__dexai__*` | `05:172-174, 417-428` |
 
+### PR #94 — Tier 3 Architecture + Tier 4 Observability & Operations (2026-02-12)
+**Impact:** 15 files modified, 3 new modules created — migration framework, structured logging, consolidated audit, memory auditing, hook metrics persistence, cost tracking, budget alerting, SQLite backup
+
+| ID | Item | Source |
+|----|------|--------|
+| OPS-3 | Database migration framework (forward-only, numbered SQL files) | `06:287-293, 467-471` |
+| OBS-P0-3/LOG-1 | Structured JSON logging via structlog wrapping stdlib | `06:81-82, 416-421` |
+| OBS-P1-4/AUDIT-2 | Consolidated dual audit trail into single source (security/audit.py) | `06:130-147, 424-430` |
+| OBS-P1-7 | Memory access auditing for all 6 memory MCP tools | `06:114-119, 444-449` |
+| OBS-P1-5/LOG-4 | Hook metrics persistence with 60s periodic flush | `06:93-95, 431-437` |
+| COST-1 | Persistent per-conversation cost tracking (per-API-call) | `06:175-176, 482` |
+| OBS-P1-6/COST-2 | Budget alerting at 80%/95%/100% thresholds (audit + dashboard) | `06:177-178, 437-443` |
+| OPS-4/OPS-5 | WAL-safe SQLite backup with gzip compression and retention | `06:295-306, 459-466` |
+
 ---
 
 ## Remaining Work — By Priority Tier
@@ -98,18 +112,9 @@
 | AD-4/R-4 | Add config validation (Pydantic models for args/*.yaml) | Medium | Low | New module | `01:444, 545-556` |
 | WS-4 | Crash recovery for extraction queue | Medium | Low | daemon.py | `04:653-654` |
 
-### Tier 4: Observability & Operations (Medium Impact, Low-Medium Effort)
+### Tier 4: Observability & Operations — COMPLETED (PR #94)
 
-| ID | Item | Severity | Effort | Files | Source |
-|----|------|----------|--------|-------|--------|
-| OBS-P0-3/LOG-1 | Switch to structured JSON logging (structlog) | High | ~1 hour | All files | `06:81-82, 416-421` |
-| OBS-P1-4/AUDIT-2 | Consolidate dual audit trail systems | High | ~4 hours | audit.py | `06:130-147, 424-430` |
-| OBS-P1-5/LOG-4 | Persist hook metrics to database (currently in-memory only) | High | ~2 hours | hooks.py | `06:93-95, 431-437` |
-| OBS-P1-6/COST-2 | Budget alerting (notification on threshold approach) | High | ~4 hours | model_router | `06:177-178, 437-443` |
-| OBS-P1-7 | Memory access auditing (reads/writes not logged) | High | ~3 hours | memory tools | `06:114-119, 444-449` |
-| COST-1 | Persistent per-conversation cost tracking | High | ~2 hours | New | `06:175-176, 482` |
-| OPS-3 | Database migration framework | High | ~4 hours | New | `06:287-293, 467-471` |
-| OPS-4/OPS-5 | Automated backup with WAL-safe SQLite backup | High | ~2 hours | New | `06:295-306, 459-466` |
+All 8 items completed. See Completed Work section above.
 
 ### Tier 5: Deployment & Ergonomics (Low-Medium Impact, Low Effort)
 
@@ -171,9 +176,9 @@ Review 02 (Installation/Deploy):   2/17 items addressed  (12%)
 Review 03 (Sandbox/Security):     23/58 items addressed  (40%)  ← Tier 2 PR
 Review 04 (Session/State):         8/12 items addressed  (67%)  ← Single-tenant PR
 Review 05 (Extensibility):         4/17 items addressed  (24%)  ← PKCE + MCP auth
-Review 06 (Observability):         2/39 items addressed  ( 5%)
+Review 06 (Observability):        10/39 items addressed  (26%)  ← Tier 4 PR
                                   ─────────────────────────────
-Overall:                          ~42/156 items addressed (27%)
+Overall:                          ~50/156 items addressed (32%)
 ```
 
 ### What's been done well
@@ -184,11 +189,12 @@ Overall:                          ~42/156 items addressed (27%)
 - **Fail-closed security model** in new code (office tools, workspace hooks, egress filter)
 - **OAuth hardened with PKCE (S256)** — code_challenge/code_verifier flow for Google and Microsoft
 - **MCP tool access scoped** — per-tool authorization replaces wildcard pattern
+- **Full Tier 4 Observability shipped** — structured logging, consolidated audit, cost tracking, budget alerting, migration framework, backup system
 
 ### Highest-value next steps
-1. **Tier 4 Observability** — Structured logging and consolidated audit trail are low-effort, high-visibility
-2. **Tier 5 Quick Fixes** — `.env.dev` cleanup (SR-3), sandbox default fix (V-19), dependency dedup (FP-7) are minutes each
-3. **Tier 3 Architecture** — `sdk_client.py` split and session SQLite migration reduce maintenance burden
+1. **Tier 5 Quick Fixes** — `.env.dev` cleanup (SR-3), sandbox default fix (V-19), dependency dedup (FP-7) are minutes each
+2. **Tier 3 Architecture** — `sdk_client.py` split and session SQLite migration reduce maintenance burden
+3. **Tier 6 Advanced** — Operational runbooks (OBS-P2-8) and "Show Your Work" mode (OBS-P2-11) build on the new observability foundation
 
 ---
 
@@ -211,4 +217,4 @@ For items spanning multiple reviews, read the source from each listed file. The 
 
 ---
 
-*Generated from cross-referencing 6 review documents against git history (PRs #65–67, #87, #89–91).*
+*Generated from cross-referencing 6 review documents against git history (PRs #65–67, #87, #89–91, #93–94).*
