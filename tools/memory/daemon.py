@@ -135,6 +135,9 @@ class MemoryDaemon:
             extraction_model=extraction_cfg.get("extraction_model", "claude-haiku-4-5-20251001"),
         )
 
+        # Recover any pending items from previous crash
+        await self._extraction_queue.recover()
+
         # Start background tasks
         self._tasks.append(
             asyncio.create_task(self._extraction_queue.run(), name="extraction_queue")
