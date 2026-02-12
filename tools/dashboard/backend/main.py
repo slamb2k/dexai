@@ -191,7 +191,75 @@ app.add_middleware(
 
 
 # =============================================================================
-# Authentication Dependency
+# Authentication Middleware
+# =============================================================================
+
+# Routes that don't require authentication
+PUBLIC_ROUTES = (
+    "/api/health",
+    "/api/auth/",
+    "/api/setup/",
+    "/api/status",
+    "/api/docs",
+    "/api/redoc",
+    "/api/openapi.json",
+    "/ws/",
+)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Enforce authentication on non-public API routes."""
+    path = request.url.path
+
+    # Skip auth for non-API routes and public endpoints
+    if not path.startswith("/api/") or any(path.startswith(r) for r in PUBLIC_ROUTES):
+        return await call_next(request)
+
+    # Skip auth if disabled in config
+    require_auth = security_config.get("require_auth", True)
+    if not require_auth:
+        return await call_next(request)
+
+    # Check for session token
+    cookie_name = security_config.get("session_cookie_name", "dexai_session")
+    token = request.cookies.get(cookie_name)
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
+    if not token:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Authentication required", "code": "AUTH_REQUIRED"},
+        )
+
+    # Validate session
+    try:
+        from tools.security.session import validate_session
+
+        result = validate_session(token, update_activity=True)
+        if not result.get("valid"):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": "Session expired", "code": "SESSION_EXPIRED"},
+            )
+    except ImportError:
+        # Session module not available — allow in dev
+        logger.warning("Session module not available, skipping auth")
+    except Exception as e:
+        logger.error(f"Auth middleware error: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Authentication failed", "code": "AUTH_FAILED"},
+        )
+
+    return await call_next(request)
+
+
+# =============================================================================
+# Authentication Dependency (for route-level auth when needed)
 # =============================================================================
 
 

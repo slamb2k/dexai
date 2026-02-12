@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from .actions import router as actions_router
 from .activity import router as activity_router
+from .auth import router as auth_router
 from .audit import router as audit_router
 from .chat import router as chat_router
 from .debug import router as debug_router
@@ -30,6 +31,7 @@ from .voice import router as voice_router
 api_router = APIRouter(prefix="/api")
 
 # Include all sub-routers
+api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(status_router, tags=["status"])
 api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
 api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
