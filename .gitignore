@@ -83,3 +83,4 @@ next-env.d.ts
 tools/dashboard/frontend/.next/
 tools/dashboard/frontend/node_modules/
 tools/dashboard/frontend/out/
+.todos/

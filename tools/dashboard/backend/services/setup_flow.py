@@ -466,6 +466,182 @@ class SetupFlowService:
         return idx >= 0 and not state.get("optional_completed", False)
 
     # ------------------------------------------------------------------
+    # Welcome bundle (REST endpoint support)
+    # ------------------------------------------------------------------
+
+    def get_welcome_bundle(self) -> dict[str, Any]:
+        """Return the welcome state as structured data for the REST endpoint.
+
+        Determines the current onboarding scenario and returns the appropriate
+        greeting text and optional control, without streaming.  This lets the
+        frontend render the greeting instantly instead of waiting for a
+        WebSocket round-trip.
+
+        Returns dict with keys:
+            scenario: str   — "no_api_key" | "needs_name" | "needs_timezone"
+                              | "optional_pending" | "ready"
+            greeting: str   — Markdown greeting text
+            control:  dict | None — Inline control definition (select / secure_input)
+            user_name: str | None — Known user name (if any)
+        """
+        missing = self._get_missing()
+        known_name = self._get_known_user_name()
+        hey = f"Hey {known_name}!" if known_name else "Hey!"
+
+        # --- Required fields still missing ---
+        if missing:
+            next_field = missing[0]
+            field_name = next_field["field"]
+
+            if field_name == "anthropic_api_key":
+                greeting = (
+                    f"{hey} I'm Dex, your ADHD-friendly AI assistant. "
+                    "Before we can chat properly, I need a few things from you.\n\n"
+                    "First up — your **Anthropic API Key**. "
+                    "You can get one from "
+                    "[console.anthropic.com](https://console.anthropic.com/settings/keys). "
+                    "Paste it below and I'll verify it works."
+                )
+                return {
+                    "scenario": "no_api_key",
+                    "greeting": greeting,
+                    "control": {
+                        "control_type": "secure_input",
+                        "control_id": "setup_anthropic_api_key",
+                        "field": "anthropic_api_key",
+                        "label": next_field.get("label", "API Key"),
+                        "placeholder": next_field.get("placeholder", "sk-ant-..."),
+                        "required": True,
+                    },
+                    "user_name": known_name,
+                }
+
+            if field_name == "user_name":
+                greeting = (
+                    f"{hey} I'm Dex, your ADHD-friendly AI assistant. "
+                    "I just need a couple of things to personalise your experience.\n\n"
+                    "What should I call you? Type your **name** below."
+                )
+                return {
+                    "scenario": "needs_name",
+                    "greeting": greeting,
+                    "control": None,
+                    "user_name": known_name,
+                }
+
+            if field_name == "timezone":
+                greeting = (
+                    f"{hey} I'm Dex, your ADHD-friendly AI assistant. "
+                    "I just need one more thing.\n\n"
+                    "Pick your **timezone** from the options below. "
+                    "If yours isn't listed, choose **Something else** and I'll help you find yours."
+                )
+                control = {
+                    "control_type": "select",
+                    "control_id": "setup_timezone",
+                    "field": "timezone",
+                    "label": next_field.get("label", "Timezone"),
+                    "required": True,
+                }
+                if "options" in next_field:
+                    control["options"] = next_field["options"]
+                if "default_value" in next_field:
+                    control["default_value"] = next_field["default_value"]
+                return {
+                    "scenario": "needs_timezone",
+                    "greeting": greeting,
+                    "control": control,
+                    "user_name": known_name,
+                }
+
+        # --- Required fields done — check optional phase ---
+        state = self._get_onboarding_state()
+        optional_completed = state.get("optional_completed", False)
+        idx = state.get("optional_index", -1)
+
+        if not optional_completed:
+            scope = state.get("optional_scope", "all")
+            fields = self._get_optional_fields_for_scope(scope)
+
+            # Haven't started optional phase yet — start it
+            if idx < 0:
+                self._update_onboarding_state(optional_index=0, version=1)
+                idx = 0
+
+            # Skip dependent fields that should be auto-skipped
+            while idx < len(fields):
+                if self._should_skip_dependent(fields[idx], state):
+                    skipped = state.get("skipped_fields", [])
+                    if fields[idx]["field"] not in skipped:
+                        skipped.append(fields[idx]["field"])
+                        self._update_onboarding_state(skipped_fields=skipped)
+                        state["skipped_fields"] = skipped
+                    idx += 1
+                    self._update_onboarding_state(optional_index=idx)
+                else:
+                    break
+
+            if idx < len(fields):
+                field_def = fields[idx]
+                intro = ""
+                if idx == 0 and state.get("optional_index", -1) <= 0:
+                    intro = (
+                        "You're all set to use Dex! I have a few quick questions "
+                        "that help me work better for you. **No pressure — skip any of them.**\n\n"
+                    )
+                greeting = f"{hey} {intro}{field_def['label']}"
+
+                control: dict[str, Any] = {
+                    "control_type": field_def["type"],
+                    "control_id": f"setup_{field_def['field']}",
+                    "field": field_def["field"],
+                    "label": field_def.get("label", field_def["field"]),
+                    "required": False,
+                    "skippable": True,
+                }
+                if "options" in field_def:
+                    control["options"] = field_def["options"]
+                if "placeholder" in field_def:
+                    control["placeholder"] = field_def["placeholder"]
+                if field_def.get("multi_select"):
+                    control["multi_select"] = True
+                if field_def.get("allow_custom"):
+                    control["allow_custom"] = True
+                existing = self._read_optional_field_value(field_def["field"])
+                if existing:
+                    control["default_value"] = existing
+
+                # Finalize workspace files since required fields are done
+                self._finalize_workspace_files()
+
+                return {
+                    "scenario": "optional_pending",
+                    "greeting": greeting,
+                    "control": control,
+                    "user_name": known_name,
+                }
+            else:
+                # All optional fields exhausted — mark complete
+                self._update_onboarding_state(
+                    optional_completed=True,
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                )
+                self._finalize_workspace_files()
+
+        # --- Everything complete ---
+        self._finalize_workspace_files()
+        greeting = (
+            f"{hey} I'm Dex, your ADHD-friendly AI assistant. "
+            "How can I help?"
+        )
+        return {
+            "scenario": "ready",
+            "greeting": greeting,
+            "control": None,
+            "user_name": known_name,
+        }
+
+    # ------------------------------------------------------------------
     # Message handling
     # ------------------------------------------------------------------
 
@@ -1154,8 +1330,9 @@ class SetupFlowService:
             "conversation_id": self.conversation_id,
         }
 
-        async for chunk in self._prompt_next_field():
-            yield chunk
+        # Signal the frontend to reload (clear chat, re-fetch welcome bundle)
+        # instead of continuing the setup flow inline.
+        yield {"type": "done", "conversation_id": self.conversation_id, "action": "reload"}
 
     def _store_user_yaml_value(self, *keys_and_value: str) -> None:
         """Write a string value into args/user.yaml. Last argument is the value, rest are keys."""
