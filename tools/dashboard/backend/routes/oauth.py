@@ -38,6 +38,26 @@ def load_oauth_config() -> dict:
     return {}
 
 
+def _parse_oauth_state(state: str | None) -> dict:
+    """Parse OAuth state JSON to extract PKCE verifier, user_id, and level.
+
+    Returns dict with keys: code_verifier, user_id, integration_level.
+    All values have safe defaults if state is missing or malformed.
+    """
+    result = {"code_verifier": None, "user_id": "default", "integration_level": 2}
+    if not state:
+        return result
+    try:
+        state_data = json.loads(state)
+        if isinstance(state_data, dict):
+            result["code_verifier"] = state_data.get("code_verifier")
+            result["user_id"] = state_data.get("user_id", "default")
+            result["integration_level"] = state_data.get("level", 2)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return result
+
+
 # =============================================================================
 # Response Models
 # =============================================================================
@@ -99,7 +119,10 @@ async def google_oauth_callback(
     try:
         from tools.office.oauth_manager import exchange_code_for_tokens
 
-        result = await exchange_code_for_tokens("google", code)
+        parsed_state = _parse_oauth_state(state)
+        result = await exchange_code_for_tokens(
+            "google", code, code_verifier=parsed_state["code_verifier"]
+        )
 
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Token exchange failed"))
@@ -115,16 +138,8 @@ async def google_oauth_callback(
         user_info = await get_user_info_from_token("google", access_token)
         email = user_info.get("email", "")
 
-        # Parse state for user_id and level
-        user_id = "default"
-        integration_level = 2  # Default to read-only
-        if state:
-            try:
-                state_data = json.loads(state)
-                user_id = state_data.get("user_id", "default")
-                integration_level = state_data.get("level", 2)
-            except json.JSONDecodeError:
-                pass
+        user_id = parsed_state["user_id"]
+        integration_level = parsed_state["integration_level"]
 
         # Create account record
         account_id = str(uuid.uuid4())
@@ -255,7 +270,10 @@ async def microsoft_oauth_callback(
     try:
         from tools.office.oauth_manager import exchange_code_for_tokens
 
-        result = await exchange_code_for_tokens("microsoft", code)
+        parsed_state = _parse_oauth_state(state)
+        result = await exchange_code_for_tokens(
+            "microsoft", code, code_verifier=parsed_state["code_verifier"]
+        )
 
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Token exchange failed"))
@@ -271,16 +289,8 @@ async def microsoft_oauth_callback(
         user_info = await get_user_info_from_token("microsoft", access_token)
         email = user_info.get("email") or user_info.get("userPrincipalName", "")
 
-        # Parse state
-        user_id = "default"
-        integration_level = 2
-        if state:
-            try:
-                state_data = json.loads(state)
-                user_id = state_data.get("user_id", "default")
-                integration_level = state_data.get("level", 2)
-            except json.JSONDecodeError:
-                pass
+        user_id = parsed_state["user_id"]
+        integration_level = parsed_state["integration_level"]
 
         # Create account record
         account_id = str(uuid.uuid4())

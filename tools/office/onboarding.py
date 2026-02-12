@@ -383,8 +383,18 @@ def complete_oauth(
 
     from tools.office.oauth_manager import exchange_code_for_tokens, save_account
 
+    # OAUTH-1: Extract PKCE code_verifier from saved OAuth state
+    code_verifier = None
+    if state.oauth_state:
+        try:
+            state_data = json.loads(state.oauth_state)
+            if isinstance(state_data, dict):
+                code_verifier = state_data.get("code_verifier")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     provider = state.selected_provider
-    result = asyncio.run(exchange_code_for_tokens(provider, code))
+    result = asyncio.run(exchange_code_for_tokens(provider, code, code_verifier=code_verifier))
 
     if not result["success"]:
         return result

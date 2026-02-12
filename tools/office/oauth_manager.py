@@ -121,6 +121,28 @@ def load_oauth_config() -> dict[str, Any]:
     return {}
 
 
+def _generate_pkce_pair() -> tuple[str, str]:
+    """
+    Generate PKCE code verifier and challenge pair per RFC 7636.
+
+    Returns:
+        Tuple of (code_verifier, code_challenge)
+    """
+    import base64
+    import hashlib
+    import secrets
+
+    # Generate 43 random bytes, base64url-encode
+    verifier_bytes = secrets.token_bytes(43)
+    code_verifier = base64.urlsafe_b64encode(verifier_bytes).rstrip(b"=").decode("ascii")
+
+    # SHA256 hash the verifier, base64url-encode
+    challenge_bytes = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(challenge_bytes).rstrip(b"=").decode("ascii")
+
+    return code_verifier, code_challenge
+
+
 def get_google_credentials() -> tuple[str, str]:
     """
     Get Google OAuth credentials from environment or vault.
@@ -257,6 +279,17 @@ def generate_authorization_url(
     if not state:
         state = str(uuid.uuid4())
 
+    # OAUTH-1: Generate PKCE pair per RFC 7636
+    code_verifier, code_challenge = _generate_pkce_pair()
+
+    # Embed PKCE verifier in state for stateless retrieval
+    try:
+        state_dict = json.loads(state) if state else {}
+    except (json.JSONDecodeError, TypeError):
+        state_dict = {"original_state": state}
+    state_dict["code_verifier"] = code_verifier
+    state_with_verifier = json.dumps(state_dict)
+
     scopes = get_scopes_for_level(provider, level)
     redirect = redirect_uri or get_redirect_uri(provider)
 
@@ -268,9 +301,11 @@ def generate_authorization_url(
                 "redirect_uri": redirect,
                 "response_type": "code",
                 "scope": " ".join(scopes),
-                "state": state,
+                "state": state_with_verifier,
                 "access_type": "offline",  # Get refresh token
                 "prompt": "consent",  # Force consent to ensure refresh token
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
             }
             url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
@@ -281,8 +316,10 @@ def generate_authorization_url(
                 "redirect_uri": redirect,
                 "response_type": "code",
                 "scope": " ".join(scopes),
-                "state": state,
+                "state": state_with_verifier,
                 "response_mode": "query",
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
             }
             auth_url = MICROSOFT_AUTH_URL.format(tenant=tenant)
             url = f"{auth_url}?{urlencode(params)}"
@@ -293,7 +330,8 @@ def generate_authorization_url(
         return {
             "success": True,
             "authorization_url": url,
-            "state": state,
+            "state": state_with_verifier,
+            "code_verifier": code_verifier,
             "provider": provider,
             "level": level.value,
             "scopes": scopes,
@@ -307,6 +345,7 @@ async def exchange_code_for_tokens(
     provider: str,
     code: str,
     redirect_uri: str | None = None,
+    code_verifier: str | None = None,
 ) -> dict[str, Any]:
     """
     Exchange authorization code for access and refresh tokens.
@@ -315,6 +354,7 @@ async def exchange_code_for_tokens(
         provider: 'google' or 'microsoft'
         code: Authorization code from callback
         redirect_uri: Redirect URI used in authorization
+        code_verifier: PKCE code verifier (RFC 7636) for proof of possession
 
     Returns:
         dict with tokens and user info
@@ -336,6 +376,9 @@ async def exchange_code_for_tokens(
                 "redirect_uri": redirect,
                 "grant_type": "authorization_code",
             }
+            # OAUTH-1: Include PKCE verifier for proof of possession
+            if code_verifier:
+                token_data["code_verifier"] = code_verifier
 
             async with aiohttp.ClientSession() as session:
                 # Exchange code for tokens
@@ -373,6 +416,9 @@ async def exchange_code_for_tokens(
                 "redirect_uri": redirect,
                 "grant_type": "authorization_code",
             }
+            # OAUTH-1: Include PKCE verifier for proof of possession
+            if code_verifier:
+                token_data["code_verifier"] = code_verifier
 
             token_url = MICROSOFT_TOKEN_URL.format(tenant=tenant)
 
