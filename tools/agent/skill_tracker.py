@@ -60,7 +60,7 @@ SKILLS_DIR = PROJECT_ROOT / ".claude" / "skills"
 DEFAULT_DATA_FILE = DATA_DIR / "skill_usage.json"
 
 # Schema version for future migrations
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Known skill names
 KNOWN_SKILLS = [
@@ -91,6 +91,9 @@ class SkillUsageData:
         user_ratings: List of explicit feedback scores (1-5 scale)
         trigger_patterns: Mapping of trigger reasons to activation counts
         last_activated: ISO timestamp of most recent activation
+        version: Current semantic version of the skill (e.g., '1.0.0')
+        content_hash: SHA-256 hash of skill file contents for change detection
+        version_history: List of version history entries
     """
     skill_name: str
     total_activations: int = 0
@@ -99,6 +102,9 @@ class SkillUsageData:
     user_ratings: list[int] = field(default_factory=list)
     trigger_patterns: dict[str, int] = field(default_factory=dict)
     last_activated: str | None = None
+    version: str = "1.0.0"
+    content_hash: str | None = None
+    version_history: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def success_rate(self) -> float | None:
@@ -138,6 +144,9 @@ class SkillUsageData:
             user_ratings=data.get("user_ratings", []),
             trigger_patterns=data.get("trigger_patterns", {}),
             last_activated=data.get("last_activated"),
+            version=data.get("version", "1.0.0"),
+            content_hash=data.get("content_hash"),
+            version_history=data.get("version_history", []),
         )
 
 
@@ -594,6 +603,170 @@ class SkillTracker:
             "success": True,
             "skill_name": skill_name,
             "message": f"Statistics reset for {skill_name}",
+        }
+
+    def _increment_patch_version(self, version: str) -> str:
+        """Increment the patch component of a semantic version string.
+
+        Args:
+            version: Semantic version string (e.g., '1.0.0').
+
+        Returns:
+            Version string with patch incremented (e.g., '1.0.1').
+        """
+        try:
+            parts = version.split(".")
+            if len(parts) != 3:
+                return "1.0.1"
+            major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+            return f"{major}.{minor}.{patch + 1}"
+        except (ValueError, IndexError):
+            return "1.0.1"
+
+    def update_skill_version(
+        self,
+        skill_name: str,
+        new_version: str,
+        changes: str = "",
+    ) -> dict[str, Any]:
+        """Explicitly update a skill's version.
+
+        Args:
+            skill_name: Name of the skill to update.
+            new_version: New semantic version string (e.g., '1.1.0').
+            changes: Description of what changed in this version.
+
+        Returns:
+            Dict with success status and version info.
+        """
+        skill = self._get_or_create_skill(skill_name)
+        old_version = skill.version
+
+        # Record in history
+        skill.version_history.append({
+            "version": new_version,
+            "previous_version": old_version,
+            "updated_at": datetime.now().isoformat(),
+            "changes": changes,
+        })
+
+        skill.version = new_version
+
+        # Update content hash if skill file exists
+        try:
+            from tools.agent.skill_validator import compute_skill_hash
+            new_hash = compute_skill_hash(skill_name)
+            if new_hash:
+                skill.content_hash = new_hash
+        except ImportError:
+            pass
+
+        self._save()
+
+        return {
+            "success": True,
+            "skill_name": skill_name,
+            "old_version": old_version,
+            "new_version": new_version,
+            "changes": changes,
+        }
+
+    def get_skill_version_history(
+        self,
+        skill_name: str,
+    ) -> list[dict[str, Any]]:
+        """Get version history for a skill.
+
+        Args:
+            skill_name: Name of the skill.
+
+        Returns:
+            List of version history entries (newest first).
+        """
+        if skill_name not in self.usage:
+            return []
+
+        skill = self.usage[skill_name]
+        # Return newest first
+        return list(reversed(skill.version_history))
+
+    def check_skill_content_changed(
+        self,
+        skill_name: str,
+    ) -> dict[str, Any]:
+        """Check if a skill's content has changed since last tracked version.
+
+        If the content hash has changed, auto-increments the patch version
+        and records it in history.
+
+        Args:
+            skill_name: Name of the skill to check.
+
+        Returns:
+            Dict with change detection result.
+        """
+        try:
+            from tools.agent.skill_validator import compute_skill_hash
+        except ImportError:
+            return {
+                "success": False,
+                "error": "skill_validator module not available",
+            }
+
+        new_hash = compute_skill_hash(skill_name)
+        if new_hash is None:
+            return {
+                "success": False,
+                "error": f"Could not compute hash for skill: {skill_name}",
+            }
+
+        skill = self._get_or_create_skill(skill_name)
+        old_hash = skill.content_hash
+
+        if old_hash is None:
+            # First time tracking this skill's content
+            skill.content_hash = new_hash
+            self._save()
+            return {
+                "success": True,
+                "skill_name": skill_name,
+                "changed": False,
+                "message": "Initial content hash recorded",
+                "version": skill.version,
+            }
+
+        if old_hash == new_hash:
+            return {
+                "success": True,
+                "skill_name": skill_name,
+                "changed": False,
+                "version": skill.version,
+            }
+
+        # Content changed - auto-increment patch version
+        old_version = skill.version
+        new_version = self._increment_patch_version(old_version)
+
+        skill.version_history.append({
+            "version": new_version,
+            "previous_version": old_version,
+            "updated_at": datetime.now().isoformat(),
+            "changes": "Auto-detected content change",
+            "old_hash": old_hash[:12],
+            "new_hash": new_hash[:12],
+        })
+
+        skill.version = new_version
+        skill.content_hash = new_hash
+        self._save()
+
+        return {
+            "success": True,
+            "skill_name": skill_name,
+            "changed": True,
+            "old_version": old_version,
+            "new_version": new_version,
+            "message": f"Content changed, version bumped {old_version} -> {new_version}",
         }
 
 
