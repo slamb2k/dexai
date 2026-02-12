@@ -365,13 +365,11 @@ class ChatService:
 
             manager = get_session_manager()
 
-            # Use conversation_id as part of session key for web chat
-            # This ensures each conversation maintains its own context
-            session_user_id = f"web:{self.user_id}:{conv_id}"
+            # Use conversation_id as channel qualifier for per-conversation sessions
+            session_channel = f"web:{conv_id}"
 
             result = await manager.handle_message(
-                user_id=session_user_id,
-                channel="web",
+                channel=session_channel,
                 content=message,
             )
 
@@ -531,29 +529,6 @@ class ChatService:
                     )
                 return
 
-            elif message == "__setup_init__":
-                # All fields populated — emit personalised greeting
-                known_name = setup_flow._get_known_user_name()
-                hey = f"Hey {known_name}!" if known_name else "Hey!"
-                greeting = (
-                    f"{hey} I'm Dex, your ADHD-friendly AI assistant. "
-                    "How can I help?"
-                )
-                yield {
-                    "type": "chunk",
-                    "content": greeting,
-                    "conversation_id": conv_id,
-                }
-                yield {"type": "done", "conversation_id": conv_id}
-                self.save_message(
-                    role="assistant",
-                    content=greeting,
-                    conversation_id=conv_id,
-                )
-                # Ensure workspace files are up-to-date
-                setup_flow._finalize_workspace_files()
-                return
-
             else:
                 # Setup not active and not __setup_init__ — check for re-run triggers
                 scope = _detect_setup_trigger(message)
@@ -581,6 +556,23 @@ class ChatService:
         except Exception as e:
             logger.warning(f"Setup flow check failed, falling through to LLM: {e}")
 
+        # Inject greeting into history if this is the first real user message
+        # in a fresh conversation.  The frontend already displayed it instantly
+        # via the REST /api/chat/welcome endpoint, but the backend needs the
+        # assistant greeting in the DB so conversation history stays coherent.
+        existing = self.get_conversation_history(conv_id)
+        if not any(m.get("role") == "assistant" for m in (existing or [])):
+            try:
+                from tools.dashboard.backend.services.setup_flow import SetupFlowService as _SFS
+
+                _sf = _SFS(conversation_id=conv_id)
+                _known = _sf._get_known_user_name()
+                _hey = f"Hey {_known}!" if _known else "Hey!"
+                _greeting = f"{_hey} I'm Dex, your ADHD-friendly AI assistant. How can I help?"
+                self.save_message(role="assistant", content=_greeting, conversation_id=conv_id)
+            except Exception:
+                pass
+
         # Save user message (for normal LLM flow)
         # For control responses, synthesize a user message with the value
         actual_message = message
@@ -598,8 +590,8 @@ class ChatService:
 
             manager = get_session_manager()
 
-            # Use conversation_id as part of session key for web chat
-            session_user_id = f"web:{self.user_id}:{conv_id}"
+            # Use conversation_id as channel qualifier for per-conversation sessions
+            session_channel = f"web:{conv_id}"
 
             full_response = []
             tool_uses = []
@@ -608,8 +600,7 @@ class ChatService:
             complexity = None
 
             async for msg in manager.stream_message(
-                user_id=session_user_id,
-                channel="web",
+                channel=session_channel,
                 content=actual_message,
             ):
                 if isinstance(msg, AssistantMessage):
