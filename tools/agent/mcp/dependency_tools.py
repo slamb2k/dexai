@@ -244,20 +244,17 @@ def dexai_verify_package(
 def dexai_install_package(
     package_name: str,
     version: str | None = None,
-    skip_verification: bool = False,
 ) -> dict[str, Any]:
     """
-    Install a Python package in the workspace.
-
-    IMPORTANT: Call dexai_verify_package first unless skip_verification=True.
+    Install a Python package in the workspace after security verification.
 
     Uses `uv pip install` for fast, reliable installation.
     Packages are installed in the current Python environment.
+    Security verification is always performed before installation.
 
     Args:
         package_name: Name of the package to install (e.g., "pyfiglet>=2.0")
         version: Optional version constraint (e.g., ">=2.0.0", "==1.0.0")
-        skip_verification: Skip safety verification (NOT recommended)
 
     Returns:
         {
@@ -284,19 +281,18 @@ def dexai_install_package(
             version = f">={version}"
         package_spec = f"{package_name}{version}"
 
-    # Verify first unless skipped
-    if not skip_verification:
-        verify_result = dexai_verify_package(package_name, version)
-        if not verify_result.get("safe", False):
-            return {
-                "success": False,
-                "tool": "dexai_install_package",
-                "package": package_spec,
-                "installed_version": None,
-                "message": f"Package failed security verification: {verify_result.get('warnings', ['Unknown'])}",
-                "output": "",
-                "verification_result": verify_result,
-            }
+    # Always verify before installation
+    verify_result = dexai_verify_package(package_name, version)
+    if not verify_result.get("safe", False):
+        return {
+            "success": False,
+            "tool": "dexai_install_package",
+            "package": package_spec,
+            "installed_version": None,
+            "message": f"Package failed security verification: {verify_result.get('warnings', ['Unknown'])}",
+            "output": "",
+            "verification_result": verify_result,
+        }
 
     # Log the installation attempt
     try:
@@ -410,7 +406,6 @@ DEPENDENCY_TOOLS = {
         "parameters": {
             "package_name": {"type": "string", "required": True},
             "version": {"type": "string", "required": False},
-            "skip_verification": {"type": "boolean", "required": False, "default": False},
         },
     },
 }

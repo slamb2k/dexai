@@ -433,7 +433,7 @@ async def verify_package(args: dict[str, Any]) -> dict[str, Any]:
 @tool(
     "install_package",
     "Install a Python package after security verification",
-    {"package_name": str, "version": str, "skip_verification": bool}
+    {"package_name": str, "version": str}
 )
 async def install_package(args: dict[str, Any]) -> dict[str, Any]:
     """Install a verified Python package."""
@@ -442,7 +442,6 @@ async def install_package(args: dict[str, Any]) -> dict[str, Any]:
     result = dexai_install_package(
         package_name=args["package_name"],
         version=args.get("version"),
-        skip_verification=args.get("skip_verification", False)
     )
     return _format_result(result)
 

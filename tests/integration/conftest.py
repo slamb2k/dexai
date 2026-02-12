@@ -112,13 +112,21 @@ def dashboard_app(temp_dashboard_db, temp_activity_db):
         patch("tools.dashboard.backend.routes.tasks.ACTIVITY_DB", temp_activity_db),
     ):
         # Import app after patching
+        import tools.dashboard.backend.main as main_module
         from tools.dashboard.backend.database import init_db
         from tools.dashboard.backend.main import app
 
         # Initialize the test database
         init_db()
 
+        # Disable auth for tests (tests don't set up sessions)
+        original_config = main_module.security_config
+        main_module.security_config = {**original_config, "require_auth": False}
+
         yield app
+
+        # Restore original config
+        main_module.security_config = original_config
 
 
 @pytest.fixture

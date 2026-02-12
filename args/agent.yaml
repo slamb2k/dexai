@@ -170,7 +170,7 @@ sandbox:
 
   # Allow requests to run commands unsandboxed
   # Set to false in production for maximum security
-  allow_unsandboxed_commands: true
+  allow_unsandboxed_commands: false
 
   # Network settings for sandboxed commands
   network:

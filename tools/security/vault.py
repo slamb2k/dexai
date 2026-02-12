@@ -407,15 +407,20 @@ def delete_secret(key: str, namespace: str = "default", user: str | None = None)
     return {"success": True, "message": f"Secret '{key}' deleted from namespace '{namespace}'"}
 
 
-def inject_env(namespace: str = "default") -> dict[str, Any]:
+def inject_env(
+    namespace: str = "default",
+    keys: list[str] | None = None,
+) -> dict[str, Any]:
     """
-    Load all secrets from a namespace into environment variables.
+    Load secrets from a namespace into environment variables.
 
     Args:
         namespace: Namespace to load
+        keys: Optional list of specific secret keys to inject.
+              If None, injects ALL secrets in the namespace (legacy behavior).
 
     Returns:
-        dict with list of injected keys
+        dict with list of injected keys and any skipped keys
     """
     encryption_key = get_master_key()
     if not encryption_key:
@@ -437,9 +442,16 @@ def inject_env(namespace: str = "default") -> dict[str, Any]:
     )
 
     injected = []
+    skipped = []
     errors = []
+    requested_keys = set(keys) if keys else None
 
     for row in cursor.fetchall():
+        # If specific keys requested, skip any not in the list
+        if requested_keys is not None and row["key"] not in requested_keys:
+            skipped.append(row["key"])
+            continue
+
         try:
             value = decrypt_value(row["encrypted_value"], encryption_key)
             os.environ[row["key"]] = value
@@ -452,6 +464,7 @@ def inject_env(namespace: str = "default") -> dict[str, Any]:
     return {
         "success": len(errors) == 0,
         "injected": injected,
+        "skipped": skipped,
         "errors": errors,
         "count": len(injected),
     }
@@ -499,6 +512,9 @@ def main():
     parser.add_argument(
         "--include-expired", action="store_true", help="Include expired secrets in list"
     )
+    parser.add_argument(
+        "--keys", nargs="+", help="Specific secret keys to inject (for inject-env)"
+    )
 
     args = parser.parse_args()
     result = None
@@ -534,7 +550,7 @@ def main():
         result = delete_secret(key=args.key, namespace=args.namespace, user=args.user)
 
     elif args.action == "inject-env":
-        result = inject_env(namespace=args.namespace)
+        result = inject_env(namespace=args.namespace, keys=args.keys)
 
     elif args.action == "status":
         result = check_status()
@@ -546,11 +562,10 @@ def main():
             print(f"ERROR {result.get('error')}")
             sys.exit(1)
 
-        # Don't print value in normal output (security)
+        # Redact sensitive values in output
         output = result.copy()
         if "value" in output:
             output["value"] = "***REDACTED***"
-            print(f"Value: {result['value']}")  # Print separately for CLI use
 
         print(json.dumps(output, indent=2, default=str))
 
