@@ -199,4 +199,78 @@ def __getattr__(name):
             "get_workspace_manager": get_workspace_manager,
         }[name]
 
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    # Client factory components
+    client_factory_exports = (
+        "load_config",
+        "build_system_prompt",
+        "DEFAULT_CONFIG",
+        "SKILLS_AUTHORIZATION",
+    )
+    if name in client_factory_exports:
+        from tools.agent.client_factory import (
+            load_config,
+            build_system_prompt,
+            DEFAULT_CONFIG,
+            SKILLS_AUTHORIZATION,
+        )
+        return {
+            "load_config": load_config,
+            "build_system_prompt": build_system_prompt,
+            "DEFAULT_CONFIG": DEFAULT_CONFIG,
+            "SKILLS_AUTHORIZATION": SKILLS_AUTHORIZATION,
+        }[name]
+
+    # Query engine components
+    query_engine_exports = (
+        "DexAIClient",
+        "_extract_session_id",
+    )
+    if name in query_engine_exports:
+        from tools.agent.query_engine import (
+            DexAIClient,
+            _extract_session_id,
+        )
+        return {
+            "DexAIClient": DexAIClient,
+            "_extract_session_id": _extract_session_id,
+        }[name]
+
+    # Response formatter components
+    response_formatter_exports = (
+        "QueryResult",
+        "StructuredQueryResult",
+        "strip_preamble",
+        "quick_query",
+        "quick_decompose",
+        "quick_energy_match",
+        "quick_friction_check",
+        "quick_current_step",
+    )
+    if name in response_formatter_exports:
+        from tools.agent.response_formatter import (
+            QueryResult,
+            StructuredQueryResult,
+            strip_preamble,
+            quick_query,
+            quick_decompose,
+            quick_energy_match,
+            quick_friction_check,
+            quick_current_step,
+        )
+        return {
+            "QueryResult": QueryResult,
+            "StructuredQueryResult": StructuredQueryResult,
+            "strip_preamble": strip_preamble,
+            "quick_query": quick_query,
+            "quick_decompose": quick_decompose,
+            "quick_energy_match": quick_energy_match,
+            "quick_friction_check": quick_friction_check,
+            "quick_current_step": quick_current_step,
+        }[name]
+
+    # Fall through for submodule imports (e.g., "sdk_client")
+    import importlib
+    try:
+        return importlib.import_module(f".{name}", __name__)
+    except ImportError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
