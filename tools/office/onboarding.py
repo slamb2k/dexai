@@ -442,28 +442,43 @@ def verify_connection(state: OnboardingState) -> dict[str, Any]:
 
 def _verify_standalone_connection(state: OnboardingState) -> dict[str, Any]:
     """Verify standalone IMAP connection."""
-    # TODO: Implement IMAP connection test
-    return {
-        "success": True,
-        "message": "Standalone connection configured (verification pending)",
-        "provider": "standalone",
-        "email": state.standalone_email,
-    }
+    if not getattr(state, 'standalone_imap_host', None) or not getattr(state, 'standalone_email', None):
+        return {"success": False, "error": "IMAP host or email not configured"}
+
+    try:
+        import imaplib
+        imap = imaplib.IMAP4_SSL(state.standalone_imap_host, timeout=5)
+        imap.noop()
+        imap.logout()
+        return {
+            "success": True,
+            "message": f"IMAP connection to {state.standalone_imap_host} verified",
+        }
+    except Exception as e:
+        return {"success": False, "error": f"IMAP connection failed: {e}"}
 
 
 def _verify_oauth_connection(state: OnboardingState) -> dict[str, Any]:
-    """Verify OAuth connection by making a test API call."""
-    if not state.account_id:
+    """Verify OAuth connection by retrieving a valid access token."""
+    if not getattr(state, 'account_id', None):
         return {"success": False, "error": "No account configured"}
 
-    # TODO: Make test API call based on provider
-    return {
-        "success": True,
-        "message": f"Connected to {state.selected_provider}",
-        "provider": state.selected_provider,
-        "email": state.account_email,
-        "level": state.selected_level,
-    }
+    try:
+        from tools.office.oauth_manager import get_valid_access_token
+        import asyncio
+
+        token = asyncio.run(
+            get_valid_access_token(state.selected_provider, state.account_id)
+        )
+
+        if token:
+            return {
+                "success": True,
+                "message": f"Connected to {state.selected_provider}",
+            }
+        return {"success": False, "error": f"Could not obtain valid token for {state.selected_provider}"}
+    except Exception as e:
+        return {"success": False, "error": f"Connection verification failed: {e}"}
 
 
 def get_completion_message(state: OnboardingState) -> dict[str, Any]:
