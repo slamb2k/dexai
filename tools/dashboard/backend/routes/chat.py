@@ -230,6 +230,52 @@ async def create_conversation():
 
 
 # =============================================================================
+# Welcome Bundle (instant greeting, no WebSocket needed)
+# =============================================================================
+
+
+class WelcomeControl(BaseModel):
+    """Inline control returned with the welcome greeting."""
+
+    control_type: str
+    control_id: str
+    field: str
+    label: Optional[str] = None
+    options: Optional[list[dict]] = None
+    placeholder: Optional[str] = None
+    required: Optional[bool] = None
+    skippable: Optional[bool] = None
+    multi_select: Optional[bool] = None
+    allow_custom: Optional[bool] = None
+    default_value: Optional[str] = None
+
+
+class WelcomeResponse(BaseModel):
+    """Response from GET /api/chat/welcome."""
+
+    scenario: str  # no_api_key | needs_name | needs_timezone | optional_pending | ready
+    greeting: str
+    control: Optional[WelcomeControl] = None
+    user_name: Optional[str] = None
+
+
+@router.get("/welcome", response_model=WelcomeResponse)
+async def get_welcome():
+    """
+    Return the current welcome state for the chat interface.
+
+    This endpoint replaces the old __setup_init__ WebSocket message.
+    The frontend calls it on page load to get an instant greeting
+    (and optional setup control) without opening a WebSocket first.
+    """
+    from tools.dashboard.backend.services.setup_flow import SetupFlowService
+
+    setup_flow = SetupFlowService(conversation_id=None)
+    bundle = setup_flow.get_welcome_bundle()
+    return WelcomeResponse(**bundle)
+
+
+# =============================================================================
 # WebSocket Streaming Endpoint
 # =============================================================================
 

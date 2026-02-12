@@ -223,6 +223,29 @@ export interface SetupState {
 }
 
 
+// Welcome bundle (returned by GET /api/chat/welcome)
+export interface WelcomeControl {
+  control_type: 'select' | 'secure_input';
+  control_id: string;
+  field: string;
+  label?: string;
+  options?: { value: string; label: string; description?: string }[];
+  placeholder?: string;
+  required?: boolean;
+  skippable?: boolean;
+  multi_select?: boolean;
+  allow_custom?: boolean;
+  default_value?: string;
+}
+
+export interface WelcomeResponse {
+  scenario: 'no_api_key' | 'needs_name' | 'needs_timezone' | 'optional_pending' | 'ready';
+  greeting: string;
+  control?: WelcomeControl;
+  user_name?: string;
+}
+
+
 // Office Integration types (Phase 12b)
 export interface OfficeAccount {
   id: string;
@@ -362,6 +385,8 @@ export interface ChatStreamChunk {
   multi_select?: boolean;
   allow_custom?: boolean;
   skippable?: boolean;
+  // Done-chunk action — "reload" signals frontend to clear and re-evaluate
+  action?: string;
 }
 
 export interface ChatConversation {
@@ -893,6 +918,14 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ api_key, provider }),
     });
+  }
+
+  // ==========================================================================
+  // Welcome bundle (instant greeting, no WebSocket needed)
+  // ==========================================================================
+
+  async getWelcome(): Promise<ApiResponse<WelcomeResponse>> {
+    return this.request<WelcomeResponse>('/api/chat/welcome');
   }
 
   // ==========================================================================

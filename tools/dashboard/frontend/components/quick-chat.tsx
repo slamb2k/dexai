@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, Paperclip, Loader2, X, Maximize2, Minimize2, MessageSquare, Eye, EyeOff, Check, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api, streamChatMessage, type ChatStreamChunk } from '@/lib/api';
+import { api, streamChatMessage, type ChatStreamChunk, type WelcomeResponse } from '@/lib/api';
 import { ChatHistory, ChatMessage, ChatControl } from './chat-history';
 import { VoiceInput } from './voice/voice-input';
 import { TranscriptDisplay } from './voice/transcript-display';
@@ -144,15 +144,46 @@ export function QuickChat({
     }
   }, [externalConversationId]);
 
-  // Auto-trigger setup/greeting on mount.
-  // The backend checks args/user.yaml fields directly to decide whether to
-  // run the onboarding flow or emit a personalised greeting.
-  const setupCheckedRef = useRef(false);
-  useEffect(() => {
-    if (setupCheckedRef.current) return;
-    setupCheckedRef.current = true;
-    sendMessage('__setup_init__', true);
+  // Load welcome greeting via REST (instant, no WebSocket needed).
+  // Replaces the old __setup_init__ WebSocket message.
+  const welcomeLoadedRef = useRef(false);
+
+  const loadWelcome = useCallback(async () => {
+    try {
+      const response = await api.getWelcome();
+      if (response.success && response.data) {
+        const { greeting, control } = response.data;
+
+        // Render greeting immediately (no streaming animation)
+        const greetingMessage: ChatMessage = {
+          id: `assistant-welcome-${Date.now()}`,
+          role: 'assistant',
+          content: greeting,
+          created_at: new Date().toISOString(),
+        };
+        setMessages([greetingMessage]);
+
+        // Set control if any (secure_input, select, etc.)
+        if (control) {
+          setActiveControl(control as ChatControl);
+        }
+      }
+    } catch {
+      // Fallback greeting on error
+      setMessages([{
+        id: `assistant-welcome-${Date.now()}`,
+        role: 'assistant',
+        content: "Hey! I'm Dex, your ADHD-friendly AI assistant. How can I help?",
+        created_at: new Date().toISOString(),
+      }]);
+    }
   }, []);
+
+  useEffect(() => {
+    if (welcomeLoadedRef.current) return;
+    welcomeLoadedRef.current = true;
+    loadWelcome();
+  }, [loadWelcome]);
 
   const loadHistory = async (convId: string) => {
     setIsLoadingHistory(true);
@@ -240,6 +271,31 @@ export function QuickChat({
           if (chunk.conversation_id && chunk.conversation_id !== conversationId) {
             setConversationId(chunk.conversation_id);
             onConversationChange?.(chunk.conversation_id);
+          }
+
+          // Check for reload signal (e.g. after API key stored)
+          if (chunk.action === 'reload') {
+            stopStreamReveal();
+            setIsTyping(false);
+
+            if (fullContent) {
+              setMessages(prev => [...prev, {
+                id: `assistant-${Date.now()}`,
+                role: 'assistant',
+                content: fullContent,
+                created_at: new Date().toISOString(),
+              }]);
+            }
+
+            setTimeout(() => {
+              clearConversation();
+              welcomeLoadedRef.current = false;
+              loadWelcome();
+            }, 1500);
+
+            setIsProcessing(false);
+            onStateChange?.('idle');
+            return;
           }
         } else if (chunk.type === 'error') {
           setError(chunk.error || 'Unknown error');
@@ -376,6 +432,31 @@ export function QuickChat({
             setConversationId(chunk.conversation_id);
             onConversationChange?.(chunk.conversation_id);
           }
+
+          // Check for reload signal (e.g. after API key stored)
+          if (chunk.action === 'reload') {
+            stopStreamReveal();
+            setIsTyping(false);
+
+            if (fullContent) {
+              setMessages(prev => [...prev, {
+                id: `assistant-${Date.now()}`,
+                role: 'assistant',
+                content: fullContent,
+                created_at: new Date().toISOString(),
+              }]);
+            }
+
+            setTimeout(() => {
+              clearConversation();
+              welcomeLoadedRef.current = false;
+              loadWelcome();
+            }, 1500);
+
+            setIsProcessing(false);
+            onStateChange?.('idle');
+            return;
+          }
         } else if (chunk.type === 'error') {
           setError(chunk.error || 'Unknown error');
           if (!fullContent) fullContent = chunk.error || 'An error occurred.';
@@ -412,7 +493,7 @@ export function QuickChat({
     setIsProcessing(false);
     onStateChange?.('idle');
     setTimeout(() => inputRef.current?.focus(), 0);
-  }, [conversationId, onStateChange, onConversationChange]);
+  }, [conversationId, onStateChange, onConversationChange, loadWelcome]);
 
   // Submit the active control value
   const submitActiveControl = useCallback((value: string, displayLabel?: string) => {
