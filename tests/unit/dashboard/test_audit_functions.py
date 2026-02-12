@@ -1,7 +1,6 @@
 """Tests for dashboard audit functions: record_tool_use() and log_audit()."""
 import json
 import sqlite3
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
