@@ -8,7 +8,9 @@ Provides endpoints for OAuth 2.0 flows:
 - POST /oauth/revoke - Revoke OAuth tokens
 """
 
+import html
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,6 +19,8 @@ import yaml
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from tools.office import get_connection
 
@@ -53,8 +57,8 @@ def _parse_oauth_state(state: str | None) -> dict:
             result["code_verifier"] = state_data.get("code_verifier")
             result["user_id"] = state_data.get("user_id", "default")
             result["integration_level"] = state_data.get("level", 2)
-    except (json.JSONDecodeError, TypeError):
-        pass
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning(f"Failed to parse OAuth state (PKCE verification may be disabled): {e}")
     return result
 
 
@@ -104,7 +108,7 @@ async def google_oauth_callback(
             <head><title>OAuth Error</title></head>
             <body>
                 <h1>Authentication Failed</h1>
-                <p>Error: {error}</p>
+                <p>Error: {html.escape(error)}</p>
                 <p><a href="/office">Return to Services</a></p>
             </body>
             </html>
@@ -129,6 +133,8 @@ async def google_oauth_callback(
 
         # Store tokens in database
         access_token = result.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=500, detail="Token exchange did not return access token")
         refresh_token = result.get("refresh_token")
         expires_in = result.get("expires_in", 3600)
         scopes = result.get("scope", "").split()
@@ -140,6 +146,22 @@ async def google_oauth_callback(
 
         user_id = parsed_state["user_id"]
         integration_level = parsed_state["integration_level"]
+
+        # Encrypt tokens via vault before storage
+        encrypted_access = access_token
+        encrypted_refresh = refresh_token
+        try:
+            from tools.security.vault import set_secret
+            vault_key_access = f"google_{email}_access"
+            set_secret(vault_key_access, access_token, namespace="office_tokens")
+            encrypted_access = f"vault:google_{email}_access"
+
+            if refresh_token:
+                vault_key_refresh = f"google_{email}_refresh"
+                set_secret(vault_key_refresh, refresh_token, namespace="office_tokens")
+                encrypted_refresh = f"vault:google_{email}_refresh"
+        except Exception:
+            pass  # Fall back to raw storage if vault unavailable
 
         # Create account record
         account_id = str(uuid.uuid4())
@@ -170,8 +192,8 @@ async def google_oauth_callback(
                 WHERE id = ?
                 """,
                 (
-                    access_token,  # TODO: Encrypt
-                    refresh_token,
+                    encrypted_access,
+                    encrypted_refresh,
                     token_expiry.isoformat(),
                     json.dumps(scopes),
                     integration_level,
@@ -195,8 +217,8 @@ async def google_oauth_callback(
                     "google",
                     integration_level,
                     email,
-                    access_token,  # TODO: Encrypt
-                    refresh_token,
+                    encrypted_access,
+                    encrypted_refresh,
                     token_expiry.isoformat(),
                     json.dumps(scopes),
                     datetime.now().isoformat(),
@@ -255,8 +277,8 @@ async def microsoft_oauth_callback(
             <head><title>OAuth Error</title></head>
             <body>
                 <h1>Authentication Failed</h1>
-                <p>Error: {error}</p>
-                <p>{error_description or ''}</p>
+                <p>Error: {html.escape(error)}</p>
+                <p>{html.escape(error_description or '')}</p>
                 <p><a href="/office">Return to Services</a></p>
             </body>
             </html>
@@ -280,6 +302,8 @@ async def microsoft_oauth_callback(
 
         # Store tokens
         access_token = result.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=500, detail="Token exchange did not return access token")
         refresh_token = result.get("refresh_token")
         expires_in = result.get("expires_in", 3600)
         scopes = result.get("scope", "").split()
@@ -291,6 +315,22 @@ async def microsoft_oauth_callback(
 
         user_id = parsed_state["user_id"]
         integration_level = parsed_state["integration_level"]
+
+        # Encrypt tokens via vault before storage
+        encrypted_access = access_token
+        encrypted_refresh = refresh_token
+        try:
+            from tools.security.vault import set_secret
+            vault_key_access = f"microsoft_{email}_access"
+            set_secret(vault_key_access, access_token, namespace="office_tokens")
+            encrypted_access = f"vault:microsoft_{email}_access"
+
+            if refresh_token:
+                vault_key_refresh = f"microsoft_{email}_refresh"
+                set_secret(vault_key_refresh, refresh_token, namespace="office_tokens")
+                encrypted_refresh = f"vault:microsoft_{email}_refresh"
+        except Exception:
+            pass  # Fall back to raw storage if vault unavailable
 
         # Create account record
         account_id = str(uuid.uuid4())
@@ -320,8 +360,8 @@ async def microsoft_oauth_callback(
                 WHERE id = ?
                 """,
                 (
-                    access_token,
-                    refresh_token,
+                    encrypted_access,
+                    encrypted_refresh,
                     token_expiry.isoformat(),
                     json.dumps(scopes),
                     integration_level,
@@ -344,8 +384,8 @@ async def microsoft_oauth_callback(
                     "microsoft",
                     integration_level,
                     email,
-                    access_token,
-                    refresh_token,
+                    encrypted_access,
+                    encrypted_refresh,
                     token_expiry.isoformat(),
                     json.dumps(scopes),
                     datetime.now().isoformat(),
