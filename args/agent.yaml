@@ -162,7 +162,6 @@ sandbox:
   # Commands that bypass sandbox (run unsandboxed)
   # These are trusted operations that need full system access
   excluded_commands:
-    - docker
     - git
     - uv
     - npm
