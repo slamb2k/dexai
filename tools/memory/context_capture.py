@@ -45,6 +45,7 @@ from typing import Any
 
 import yaml
 
+from tools.agent.constants import OWNER_USER_ID
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -140,7 +141,6 @@ def parse_duration(duration_str: str) -> timedelta | None:
 
 
 def capture_context(
-    user_id: str,
     trigger: str,
     active_file: str | None = None,
     last_action: str | None = None,
@@ -149,12 +149,12 @@ def capture_context(
     metadata: dict | None = None,
     summary: str | None = None,
     ttl_hours: int | None = None,
+    user_id: str = OWNER_USER_ID,
 ) -> dict[str, Any]:
     """
     Capture a context snapshot.
 
     Args:
-        user_id: User identifier
         trigger: What triggered the capture ('switch', 'timeout', 'manual')
         active_file: Path to the file user was working on
         last_action: Description of what user just did
@@ -232,17 +232,16 @@ def capture_context(
 
 
 def list_snapshots(
-    user_id: str,
     limit: int = 10,
     offset: int = 0,
     trigger: str | None = None,
     include_expired: bool = False,
+    user_id: str = OWNER_USER_ID,
 ) -> dict[str, Any]:
     """
     List context snapshots for a user.
 
     Args:
-        user_id: User identifier
         limit: Maximum results to return
         offset: Pagination offset
         trigger: Filter by trigger type
@@ -324,7 +323,7 @@ def get_snapshot(snapshot_id: str) -> dict[str, Any]:
     return {"success": True, "data": snapshot}
 
 
-def get_latest_snapshot(user_id: str) -> dict[str, Any]:
+def get_latest_snapshot(user_id: str = OWNER_USER_ID) -> dict[str, Any]:
     """
     Get the most recent context snapshot for a user.
 
