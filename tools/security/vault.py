@@ -30,9 +30,11 @@ Security Notes:
 
 import argparse
 import json
+import logging
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -40,18 +42,23 @@ from typing import Any
 try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
+
 # Database path
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "vault.db"
 
-# Salt for key derivation (fixed, but unique per installation)
-# In production, this would be generated once and stored securely
+# Legacy salt file path (for migration from pre-HKDF installations)
 SALT_PATH = Path(__file__).parent.parent.parent / "data" / ".vault_salt"
+
+# HKDF purpose string for deterministic salt derivation
+HKDF_SALT_INFO = b"dexai-vault-salt-v2"
 
 # Master key env var
 MASTER_KEY_ENV = "DEXAI_MASTER_KEY"
@@ -60,32 +67,96 @@ MASTER_KEY_ENV = "DEXAI_MASTER_KEY"
 KDF_ITERATIONS = 100000
 
 
-def get_or_create_salt() -> bytes:
-    """Get or create the vault salt."""
-    if SALT_PATH.exists():
-        return SALT_PATH.read_bytes()
-    else:
-        import secrets
-
-        salt = secrets.token_bytes(32)
-        SALT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        SALT_PATH.write_bytes(salt)
-        return salt
-
-
-def derive_key(master_password: str) -> bytes:
-    """Derive encryption key from master password using PBKDF2."""
+def _derive_salt(master_key: str) -> bytes:
+    """Derive a deterministic salt from the master key using HKDF."""
     if not CRYPTO_AVAILABLE:
         raise RuntimeError("cryptography package not installed. Run: pip install cryptography")
 
-    salt = get_or_create_salt()
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=HKDF_SALT_INFO,
+    )
+    return hkdf.derive(master_key.encode())
+
+
+def _derive_key_with_salt(master_password: str, salt: bytes) -> bytes:
+    """Derive encryption key from master password and a given salt using PBKDF2."""
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
-        length=32,  # 256 bits for AES-256
+        length=32,
         salt=salt,
         iterations=KDF_ITERATIONS,
     )
     return kdf.derive(master_password.encode())
+
+
+def _migrate_salt(master_password: str) -> None:
+    """Detect old salt file and migrate secrets to HKDF-derived salt."""
+    if not SALT_PATH.exists():
+        return
+
+    logger.info("Legacy salt file detected, migrating to HKDF-derived salt")
+
+    old_salt = SALT_PATH.read_bytes()
+    old_key = _derive_key_with_salt(master_password, old_salt)
+
+    new_salt = _derive_salt(master_password)
+    new_key = _derive_key_with_salt(master_password, new_salt)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("SELECT id, namespace, key, encrypted_value FROM secrets")
+        rows = cursor.fetchall()
+
+        migrated = 0
+        for row in rows:
+            plaintext = decrypt_value(row["encrypted_value"], old_key)
+            new_encrypted = encrypt_value(plaintext, new_key)
+            cursor.execute(
+                "UPDATE secrets SET encrypted_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (new_encrypted, row["id"]),
+            )
+            migrated += 1
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        logger.error("Salt migration failed, rolled back all changes")
+        raise
+
+    conn.close()
+
+    SALT_PATH.unlink()
+    logger.info("Salt migration complete: %d secrets re-encrypted, legacy salt file removed", migrated)
+
+    try:
+        from . import audit
+
+        audit.log_event(
+            event_type="security",
+            action="salt_migration",
+            status="success",
+            details={"migrated_count": migrated, "total_count": len(rows)},
+        )
+    except Exception:
+        pass
+
+
+def derive_key(master_password: str) -> bytes:
+    """Derive encryption key from master password using HKDF salt + PBKDF2."""
+    if not CRYPTO_AVAILABLE:
+        raise RuntimeError("cryptography package not installed. Run: pip install cryptography")
+
+    _migrate_salt(master_password)
+
+    salt = _derive_salt(master_password)
+    return _derive_key_with_salt(master_password, salt)
 
 
 def encrypt_value(plaintext: str, key: bytes) -> bytes:
@@ -407,6 +478,96 @@ def delete_secret(key: str, namespace: str = "default", user: str | None = None)
     return {"success": True, "message": f"Secret '{key}' deleted from namespace '{namespace}'"}
 
 
+def rotate_secret(
+    key: str,
+    new_value: str,
+    namespace: str = "default",
+    user: str | None = None,
+) -> dict[str, Any]:
+    """Rotate an individual secret by re-encrypting with a new value."""
+    encryption_key = get_master_key()
+    if not encryption_key:
+        return {
+            "success": False,
+            "error": f"Master key not set. Set {MASTER_KEY_ENV} environment variable.",
+        }
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT encrypted_value FROM secrets WHERE namespace = ? AND key = ?",
+        (namespace, key),
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        log_access("rotate", key, namespace, "failure", user)
+        return {"success": False, "error": f"Secret '{key}' not found in namespace '{namespace}'"}
+
+    # Store old value under _rotated/ prefix for rollback
+    try:
+        rotated_key = f"_rotated/{key}"
+        cursor.execute(
+            """
+            INSERT INTO secrets (namespace, key, encrypted_value, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(namespace, key) DO UPDATE SET
+                encrypted_value = excluded.encrypted_value,
+                updated_at = CURRENT_TIMESTAMP
+        """,
+            (namespace, rotated_key, row["encrypted_value"]),
+        )
+    except Exception as e:
+        conn.close()
+        log_access("rotate", key, namespace, "failure", user)
+        return {"success": False, "error": f"Failed to store rollback copy: {e!s}"}
+
+    # Encrypt and store new value
+    try:
+        new_encrypted = encrypt_value(new_value, encryption_key)
+        cursor.execute(
+            """
+            UPDATE secrets SET encrypted_value = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE namespace = ? AND key = ?
+        """,
+            (new_encrypted, namespace, key),
+        )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        log_access("rotate", key, namespace, "failure", user)
+        return {"success": False, "error": f"Rotation failed: {e!s}"}
+
+    conn.close()
+
+    rotated_at = datetime.now(timezone.utc).isoformat()
+    log_access("rotate", key, namespace, "success", user)
+
+    return {"success": True, "key": key, "rotated_at": rotated_at}
+
+
+def list_rotatable_secrets(namespace: str = "default") -> list[str]:
+    """Return keys eligible for rotation (non-expired, non-rollback secrets)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT key FROM secrets
+        WHERE namespace = ?
+        AND key NOT LIKE '_rotated/%%'
+        AND (expires_at IS NULL OR expires_at > datetime('now'))
+    """,
+        (namespace,),
+    )
+
+    keys = [row["key"] for row in cursor.fetchall()]
+    conn.close()
+    return keys
+
+
 def inject_env(
     namespace: str = "default",
     keys: list[str] | None = None,
@@ -475,7 +636,8 @@ def check_status() -> dict[str, Any]:
     status = {
         "crypto_available": CRYPTO_AVAILABLE,
         "master_key_set": MASTER_KEY_ENV in os.environ,
-        "salt_exists": SALT_PATH.exists(),
+        "salt_exists": True,  # HKDF-derived, always available when master key is set
+        "legacy_salt_pending": SALT_PATH.exists(),
         "database_exists": DB_PATH.exists(),
     }
 
@@ -496,16 +658,109 @@ def check_status() -> dict[str, Any]:
     return {"success": True, "status": status}
 
 
+def rotate_master_key(old_master_key: str, new_master_key: str) -> dict[str, Any]:
+    """Re-encrypt all secrets from old master key to new master key."""
+    if not CRYPTO_AVAILABLE:
+        return {"success": False, "error": "cryptography package not installed"}
+
+    # Derive old key material
+    try:
+        if SALT_PATH.exists():
+            old_salt = SALT_PATH.read_bytes()
+        else:
+            old_salt = _derive_salt(old_master_key)
+        old_key = _derive_key_with_salt(old_master_key, old_salt)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to derive old key: {e!s}"}
+
+    # Derive new key material using HKDF salt
+    try:
+        new_salt = _derive_salt(new_master_key)
+        new_key = _derive_key_with_salt(new_master_key, new_salt)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to derive new key: {e!s}"}
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, namespace, key, encrypted_value FROM secrets")
+    rows = cursor.fetchall()
+
+    if not rows:
+        conn.close()
+        return {"success": True, "secrets_rotated": 0}
+
+    # Decrypt all secrets with old key first to validate before writing
+    decrypted = []
+    for row in rows:
+        try:
+            plaintext = decrypt_value(row["encrypted_value"], old_key)
+            decrypted.append((row["id"], row["namespace"], row["key"], plaintext))
+        except Exception as e:
+            conn.close()
+            log_access("rotate_master_key", row["key"], row["namespace"], "failure")
+            return {
+                "success": False,
+                "error": f"Failed to decrypt secret '{row['namespace']}/{row['key']}': {e!s}",
+            }
+
+    # Back up before re-encryption for rollback safety
+    import shutil
+
+    backup_path = DB_PATH.with_suffix(".db.bak")
+    shutil.copy2(str(DB_PATH), str(backup_path))
+
+    try:
+        for row_id, namespace, key, plaintext in decrypted:
+            new_encrypted = encrypt_value(plaintext, new_key)
+            cursor.execute(
+                "UPDATE secrets SET encrypted_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (new_encrypted, row_id),
+            )
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        # Roll back by restoring backup
+        shutil.copy2(str(backup_path), str(DB_PATH))
+        log_access("rotate_master_key", "*", "all", "failure")
+        return {"success": False, "error": f"Re-encryption failed, rolled back: {e!s}"}
+
+    conn.close()
+
+    # Remove legacy salt file if it existed
+    if SALT_PATH.exists():
+        SALT_PATH.unlink()
+
+    # Remove backup after successful rotation
+    if backup_path.exists():
+        backup_path.unlink()
+
+    log_access("rotate_master_key", "*", "all", "success")
+
+    try:
+        from . import audit
+
+        audit.log_event(
+            event_type="security",
+            action="master_key_rotation",
+            status="success",
+            details={"secrets_rotated": len(decrypted)},
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "secrets_rotated": len(decrypted)}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Secrets Vault")
     parser.add_argument(
         "--action",
         required=True,
-        choices=["set", "get", "list", "delete", "inject-env", "status"],
+        choices=["set", "get", "list", "delete", "inject-env", "status", "rotate-key", "rotate-secret"],
         help="Action to perform",
     )
     parser.add_argument("--key", help="Secret key")
-    parser.add_argument("--value", help="Secret value (for set)")
+    parser.add_argument("--value", help="Secret value (for set/rotate-secret)")
     parser.add_argument("--namespace", default="default", help="Namespace")
     parser.add_argument("--expires", help="Expiration datetime (ISO format)")
     parser.add_argument("--user", help="User performing action (for audit)")
@@ -515,6 +770,8 @@ def main():
     parser.add_argument(
         "--keys", nargs="+", help="Specific secret keys to inject (for inject-env)"
     )
+    parser.add_argument("--old-key", help="Old master key (for rotate-key)")
+    parser.add_argument("--new-key", help="New master key (for rotate-key)")
 
     args = parser.parse_args()
     result = None
@@ -551,6 +808,23 @@ def main():
 
     elif args.action == "inject-env":
         result = inject_env(namespace=args.namespace, keys=args.keys)
+
+    elif args.action == "rotate-secret":
+        if not args.key or not args.value:
+            print("Error: --key and --value required for rotate-secret")
+            sys.exit(1)
+        result = rotate_secret(
+            key=args.key,
+            new_value=args.value,
+            namespace=args.namespace,
+            user=args.user,
+        )
+
+    elif args.action == "rotate-key":
+        if not args.old_key or not args.new_key:
+            print("Error: --old-key and --new-key required for rotate-key")
+            sys.exit(1)
+        result = rotate_master_key(old_master_key=args.old_key, new_master_key=args.new_key)
 
     elif args.action == "status":
         result = check_status()
