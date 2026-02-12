@@ -3,7 +3,6 @@
 import json
 import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -50,7 +49,7 @@ class TestSQLiteSaveLoad:
     def test_save_and_load_session(self, temp_db_path, temp_json_path):
         with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
              patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
-            from tools.channels.session_manager import SessionManager, Session
+            from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True)
 
@@ -71,7 +70,7 @@ class TestSQLiteSaveLoad:
     def test_stale_sessions_cleaned_on_save(self, temp_db_path, temp_json_path):
         with patch("tools.channels.session_manager._DB_PATH", temp_db_path), \
              patch("tools.channels.session_manager.SESSION_STORE_PATH", temp_json_path):
-            from tools.channels.session_manager import SessionManager, Session
+            from tools.channels.session_manager import SessionManager
 
             manager = SessionManager(persist=True, timeout_minutes=1)
             session = manager.get_session(channel="discord")

@@ -1,12 +1,12 @@
 """Tests for per-channel locking in tools/channels/router.py"""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from tools.channels.router import MessageRouter
 from tools.channels.models import UnifiedMessage
+from tools.channels.router import MessageRouter
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ class TestPerChannelLocking:
              patch("tools.channels.router._log_to_dashboard"), \
              patch("tools.channels.router._record_dashboard_metric"), \
              patch.object(router, "security_pipeline", side_effect=mock_pipeline):
-            results = await asyncio.gather(
+            await asyncio.gather(
                 router.route_inbound(msg1),
                 router.route_inbound(msg2),
             )

@@ -1,14 +1,14 @@
 """Tests for tools/agent/config_models.py"""
 
-import pytest
-from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from tools.agent.config_models import (
     AgentConfig,
-    RoutingConfig,
     MemoryConfig,
     MultimodalConfig,
+    RoutingConfig,
     SecurityConfig,
     WorkspaceConfig,
     load_and_validate,
@@ -39,7 +39,7 @@ class TestAgentConfig:
         assert config.agent.model == "test"
 
     def test_invalid_max_tokens_uses_default(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             AgentConfig(agent={"max_tokens": -1})
 
 

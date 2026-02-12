@@ -1,20 +1,16 @@
 """Tests for extraction queue crash recovery in tools/memory/extraction/queue.py"""
 
-import asyncio
 import json
 import sqlite3
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch
 
 import pytest
 
 from tools.memory.extraction.queue import (
-    ExtractionQueue,
     ConversationTurn,
-    ExtractionJob,
+    ExtractionQueue,
     _get_connection,
-    _DB_PATH,
 )
 
 
